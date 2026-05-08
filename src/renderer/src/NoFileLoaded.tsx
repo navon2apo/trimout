@@ -1,47 +1,54 @@
-import { Fragment, memo, useMemo, useState } from 'react';
-import type { MotionStyle } from 'motion/react';
+import { memo, useState } from 'react';
 import { motion } from 'motion/react';
-import { FaMouse } from 'react-icons/fa';
-import { useTranslation, Trans } from 'react-i18next';
-
-import SetCutpointButton from './components/SetCutpointButton';
-import SimpleModeButton from './components/SimpleModeButton';
-import useUserSettings from './hooks/useUserSettings';
 import type { StateSegment } from './types';
 import type { KeyBinding } from '../../common/types';
-import { splitKeyboardKeys } from './util';
-import { getModifier } from './hooks/useTimelineScroll';
-import Kbd from './components/Kbd';
 
-const electron = window.require('electron');
-
-function Keys({ keys }: { keys: string | undefined }) {
-  if (keys == null || keys === '') {
-    return <kbd>UNBOUND</kbd>;
-  }
-  const split = splitKeyboardKeys(keys);
-  return split.map((key, i) => (
-    <Fragment key={key}><Kbd code={key} />{i < split.length - 1 && <span style={{ fontSize: '.7em', marginLeft: '-.2em', marginRight: '-.2em' }}>{' + '}</span>}</Fragment>
-  ));
-}
-
-const dropzoneStyle: MotionStyle = {
+const container: React.CSSProperties = {
   position: 'absolute',
-  left: 0,
-  right: 0,
-  top: 0,
-  bottom: 0,
-  color: 'var(--gray-12)',
-  margin: '2em',
+  inset: 0,
   display: 'flex',
   flexDirection: 'column',
-  justifyContent: 'center',
   alignItems: 'center',
-  whiteSpace: 'nowrap',
-  borderWidth: '.7em',
-  borderStyle: 'dashed',
-  borderColor: 'var(--gray-3)',
+  justifyContent: 'center',
+  cursor: 'pointer',
+  overflow: 'hidden',
+  userSelect: 'none',
 };
+
+// Inline SVG icon — clean trim / cut mark
+function TrimIcon() {
+  return (
+    <svg width="54" height="54" viewBox="0 0 54 54" fill="none" xmlns="http://www.w3.org/2000/svg">
+      {/* Gradient defs */}
+      <defs>
+        <linearGradient id="g1" x1="0" y1="0" x2="54" y2="54" gradientUnits="userSpaceOnUse">
+          <stop offset="0%" stopColor="#38bdf8" />
+          <stop offset="100%" stopColor="#818cf8" />
+        </linearGradient>
+        <filter id="glow">
+          <feGaussianBlur stdDeviation="2.5" result="blur" />
+          <feMerge><feMergeNode in="blur" /><feMergeNode in="SourceGraphic" /></feMerge>
+        </filter>
+      </defs>
+      {/* Film strip left */}
+      <rect x="3" y="10" width="19" height="34" rx="3" stroke="url(#g1)" strokeWidth="2.2" fill="none" filter="url(#glow)" />
+      <rect x="6" y="14" width="4" height="4" rx="1" fill="url(#g1)" opacity="0.7" />
+      <rect x="6" y="22" width="4" height="4" rx="1" fill="url(#g1)" opacity="0.7" />
+      <rect x="6" y="30" width="4" height="4" rx="1" fill="url(#g1)" opacity="0.7" />
+      <rect x="6" y="38" width="4" height="4" rx="1" fill="url(#g1)" opacity="0.7" />
+      {/* Film strip right */}
+      <rect x="32" y="10" width="19" height="34" rx="3" stroke="url(#g1)" strokeWidth="2.2" fill="none" filter="url(#glow)" />
+      <rect x="44" y="14" width="4" height="4" rx="1" fill="url(#g1)" opacity="0.7" />
+      <rect x="44" y="22" width="4" height="4" rx="1" fill="url(#g1)" opacity="0.7" />
+      <rect x="44" y="30" width="4" height="4" rx="1" fill="url(#g1)" opacity="0.7" />
+      <rect x="44" y="38" width="4" height="4" rx="1" fill="url(#g1)" opacity="0.7" />
+      {/* Cut line */}
+      <line x1="22" y1="27" x2="32" y2="27" stroke="url(#g1)" strokeWidth="2.5" strokeLinecap="round" filter="url(#glow)" />
+      {/* Cut diamond */}
+      <rect x="24.5" y="24.5" width="5" height="5" rx="1" transform="rotate(45 27 27)" fill="url(#g1)" filter="url(#glow)" />
+    </svg>
+  );
+}
 
 function NoFileLoaded({ mifiLink, currentCutSeg, onClick, darkMode, keyBindingByAction }: {
   mifiLink: unknown,
@@ -50,48 +57,126 @@ function NoFileLoaded({ mifiLink, currentCutSeg, onClick, darkMode, keyBindingBy
   darkMode?: boolean,
   keyBindingByAction: Record<string, KeyBinding>,
 }) {
-  const { t } = useTranslation();
-  const { simpleMode, segmentMouseModifierKey } = useUserSettings();
   const [dragging, setDragging] = useState(false);
 
-  const currentCutSegOrDefault = useMemo(() => currentCutSeg ?? { segColorIndex: 0 }, [currentCutSeg]);
-
   return (
-    <motion.div
-      className="no-user-select"
-      style={dropzoneStyle}
-      animate={{ borderColor: dragging ? 'var(--gray-9)' : 'var(--gray-3)' }}
-      onDragOver={() => setDragging(true)}
-      onDragLeave={() => setDragging(false)}
+    <div
+      style={container}
       role="button"
       onClick={onClick}
+      onDragOver={() => setDragging(true)}
+      onDragLeave={() => setDragging(false)}
     >
-      <div style={{ fontSize: '1.7em', textTransform: 'uppercase', color: 'var(--gray-11)', marginBottom: '.1em' }}>{t('DROP FILE(S)')}</div>
+      {/* Ambient glow blobs */}
+      <div style={{
+        position: 'absolute', width: 340, height: 340, borderRadius: '50%',
+        background: 'radial-gradient(circle, rgba(56,189,248,0.07) 0%, transparent 70%)',
+        top: '10%', left: '50%', transform: 'translateX(-50%)',
+        pointerEvents: 'none',
+      }} />
+      <div style={{
+        position: 'absolute', width: 260, height: 260, borderRadius: '50%',
+        background: 'radial-gradient(circle, rgba(129,140,248,0.06) 0%, transparent 70%)',
+        bottom: '15%', left: '50%', transform: 'translateX(-50%)',
+        pointerEvents: 'none',
+      }} />
 
-      <div style={{ fontSize: '1.3em', color: 'var(--gray-11)', marginBottom: '.1em' }}>
-        <Trans>See <b>Help</b> menu for help</Trans>
-      </div>
+      {/* Dashed border */}
+      <motion.div
+        animate={{ borderColor: dragging ? 'rgba(56,189,248,0.5)' : 'rgba(255,255,255,0.07)' }}
+        transition={{ duration: 0.2 }}
+        style={{
+          position: 'absolute', inset: 16, borderRadius: 14,
+          border: '1.5px dashed rgba(255,255,255,0.07)',
+          pointerEvents: 'none',
+        }}
+      />
 
-      <div style={{ fontSize: '1.3em', color: 'var(--gray-11)' }}>
-        <Trans><SetCutpointButton currentCutSeg={currentCutSegOrDefault} side="start" style={{ verticalAlign: 'middle' }} /> <SetCutpointButton currentCutSeg={currentCutSegOrDefault} side="end" style={{ verticalAlign: 'middle' }} />, <Keys keys={keyBindingByAction['setCutStart']?.keys} /> <Keys keys={keyBindingByAction['setCutEnd']?.keys} /> or <span><kbd style={{ marginRight: '.1em' }}>{getModifier(segmentMouseModifierKey)}</kbd></span>+<FaMouse style={{ marginRight: '.1em', verticalAlign: 'middle' }} /> to set cutpoints</Trans>
-      </div>
+      {/* Content */}
+      <motion.div
+        initial={{ opacity: 0, y: 18 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.55, ease: [0.16, 1, 0.3, 1] }}
+        style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 0 }}
+      >
+        {/* Icon */}
+        <motion.div
+          animate={{ filter: dragging ? 'drop-shadow(0 0 18px rgba(56,189,248,0.6))' : 'drop-shadow(0 0 8px rgba(56,189,248,0.25))' }}
+          transition={{ duration: 0.3 }}
+          style={{ marginBottom: 20 }}
+        >
+          <TrimIcon />
+        </motion.div>
 
-      <div style={{ fontSize: '1.3em', color: 'var(--gray-11)' }} role="button" onClick={(e) => e.stopPropagation()}>
-        {simpleMode ? (
-          <Trans><SimpleModeButton style={{ verticalAlign: 'middle' }} /> to show advanced view</Trans>
-        ) : (
-          <Trans><SimpleModeButton style={{ verticalAlign: 'middle' }} /> to show simple view</Trans>
-        )}
-      </div>
-
-      {mifiLink && typeof mifiLink === 'object' && 'loadUrl' in mifiLink && typeof mifiLink.loadUrl === 'string' && mifiLink.loadUrl ? (
-        <div style={{ position: 'relative', margin: '.3em', width: '24em', height: '8em' }}>
-          <iframe src={`${mifiLink.loadUrl}#dark=${darkMode ? 'true' : 'false'}`} title="iframe" style={{ background: 'rgba(0,0,0,0)', border: 'none', pointerEvents: 'none', width: '100%', height: '100%', position: 'absolute', colorScheme: 'initial' }} />
-          {/* eslint-disable-next-line jsx-a11y/interactive-supports-focus */}
-          <div style={{ width: '100%', height: '100%', position: 'absolute', cursor: 'pointer' }} role="button" onClick={(e) => { e.stopPropagation(); if ('targetUrl' in mifiLink && typeof mifiLink.targetUrl === 'string') electron.shell.openExternal(mifiLink.targetUrl); }} />
+        {/* Logo text */}
+        <div style={{
+          fontSize: 36, fontWeight: 800, letterSpacing: '-0.02em', marginBottom: 10,
+          background: 'linear-gradient(135deg, #f8fafc 30%, #94a3b8 100%)',
+          WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent',
+          lineHeight: 1,
+        }}>
+          TrimOut
         </div>
-      ) : undefined}
-    </motion.div>
+
+        {/* Tagline */}
+        <div style={{
+          fontSize: 13.5, color: 'rgba(148,163,184,0.85)', marginBottom: 6,
+          letterSpacing: '0.01em', textAlign: 'center',
+        }}>
+          Any video. Any moment. Any use.
+        </div>
+
+        {/* Sub tagline */}
+        <div style={{
+          fontSize: 11.5, color: 'rgba(100,116,139,0.8)', marginBottom: 36,
+          textAlign: 'center', lineHeight: 1.7,
+        }}>
+          Instant lossless cuts — no rendering, no waiting, original quality.
+        </div>
+
+        {/* CTA button */}
+        <motion.div
+          whileHover={{ scale: 1.06 }}
+          whileTap={{ scale: 0.97 }}
+          style={{
+            width: 68, height: 68, borderRadius: '50%', marginBottom: 18,
+            background: 'linear-gradient(135deg, rgba(56,189,248,0.15), rgba(129,140,248,0.15))',
+            border: '1.5px solid rgba(56,189,248,0.3)',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            fontSize: 30, color: 'rgba(56,189,248,0.9)',
+            boxShadow: '0 0 24px rgba(56,189,248,0.1), inset 0 1px 0 rgba(255,255,255,0.06)',
+            cursor: 'pointer',
+          }}
+        >
+          +
+        </motion.div>
+
+        {/* Action label */}
+        <div style={{ fontSize: 13, color: 'rgba(148,163,184,0.7)', marginBottom: 20 }}>
+          Click or drag a video file to get started
+        </div>
+
+        {/* Info chips */}
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', justifyContent: 'center' }}>
+          {[
+            '← → Frame step',
+            'Drag handles to resize',
+            'Add clips with +',
+            'Export all at once',
+          ].map((tip) => (
+            <div key={tip} style={{
+              fontSize: 10.5, color: 'rgba(100,116,139,0.75)',
+              background: 'rgba(255,255,255,0.04)',
+              border: '1px solid rgba(255,255,255,0.06)',
+              borderRadius: 20, padding: '3px 10px',
+              letterSpacing: '0.01em',
+            }}>
+              {tip}
+            </div>
+          ))}
+        </div>
+      </motion.div>
+    </div>
   );
 }
 

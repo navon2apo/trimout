@@ -91,6 +91,10 @@ code.highlighted {
   display: inherit;
 }
 
+.segment-list-entry:hover {
+  background: var(--gray-4) !important;
+}
+
 .button-unstyled {
   all: unset;
   cursor: pointer;

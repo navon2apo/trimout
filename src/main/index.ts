@@ -282,7 +282,7 @@ const readyPromise = app.whenReady();
 
 async function init() {
   try {
-    logger.info('LosslessCut version', app.getVersion(), { isDev });
+    logger.info('TrimOut version', app.getVersion(), { isDev });
     await configStore.init({ customConfigDir: argv['configDir'] });
     logger.info('Initialized config store');
 

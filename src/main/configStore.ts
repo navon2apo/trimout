@@ -168,7 +168,7 @@ const defaults: Config = {
   invertTimelineScroll: undefined,
   storeWindowBounds: true,
   waveformMode: undefined,
-  thumbnailsEnabled: false,
+  thumbnailsEnabled: true,
   keyframesEnabled: true,
   reducedMotion: 'user',
   ffmpegHwaccel: 'none',
@@ -248,6 +248,10 @@ export async function init({ customConfigDir }: { customConfigDir: string | unde
   if (customStoragePath) logger.info('customStoragePath', customStoragePath);
 
   await tryCreateStore({ customStoragePath });
+
+  // TrimOut: always enforce simple mode and disable invert segments
+  set('simpleMode', true);
+  set('invertCutSegments', false);
 
   // migrate old configs:
   const enableTransferTimestamps = store.get('enableTransferTimestamps'); // todo remove after a while

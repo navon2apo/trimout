@@ -1,7 +1,7 @@
 import type { CSSProperties, ReactNode } from 'react';
 import { memo, useCallback, useEffect, useRef } from 'react';
 import { IoIosSettings } from 'react-icons/io';
-import { FaFilter, FaList, FaLock, FaMoon, FaSun, FaUnlock } from 'react-icons/fa';
+import { FaLock, FaMoon, FaSun, FaUnlock } from 'react-icons/fa';
 import { useTranslation } from 'react-i18next';
 import Button from './components/Button';
 
@@ -90,49 +90,30 @@ function TopMenu({
       style={{ background: controlsBackground, transition: darkModeTransition, display: 'flex', alignItems: 'center', padding: '.3em .3em', gap: '.3em', justifyContent: 'space-between', flexWrap: 'wrap' }}
     >
       {filePath && (
-        <>
-          <Button onClick={withBlur(() => setStreamsSelectorShown(true))}>
-            <FaList style={{ fontSize: '.7em', marginRight: '.5em' }} />
-            {t('Tracks')} ({numStreamsToCopy}/{numStreamsTotal})
-          </Button>
-
-          {enabledStreamsFilter != null && (
-            <Button
-              onClick={withBlur(() => applyEnabledStreamsFilter())}
-              title={t('Toggle tracks using current filter')}
-            >
-              <FaFilter
-                style={{ fontSize: '.8em', verticalAlign: 'middle' }}
-              />
-            </Button>
-          )}
-
-          <Button
-            onClick={changeEnabledStreamsFilter}
-          >
-            {enabledStreamsFilter == null && <FaFilter style={{ fontSize: '.7em', marginRight: '.4em' }} />}
-            {t('Filter tracks')}
-          </Button>
-        </>
+        <span style={{ fontWeight: 600, color: 'var(--gray-11)', fontSize: '.95em', paddingLeft: '.3em' }}>
+          ✂️ TrimOut
+        </span>
       )}
 
       <div style={{ flexGrow: 1 }} />
 
-      <OutDirSelector>
-        <Button
-          ref={workingDirButtonRef}
-          title={customOutDir}
-          style={{ paddingLeft: showClearWorkingDirButton ? '.4em' : undefined }}
-        >
-          {customOutDir ? t('Working dir set') : t('Working dir unset')}
-        </Button>
-      </OutDirSelector>
+      {!simpleMode && (
+        <OutDirSelector>
+          <Button
+            ref={workingDirButtonRef}
+            title={customOutDir}
+            style={{ paddingLeft: showClearWorkingDirButton ? '.4em' : undefined }}
+          >
+            {customOutDir ? t('Working dir set') : t('Working dir unset')}
+          </Button>
+        </OutDirSelector>
+      )}
 
-      {renderOutFmt(outFmtStyle)}
+      {!simpleMode && renderOutFmt(outFmtStyle)}
 
       {!simpleMode && (isCustomFormatSelected || outFormatLocked) && renderFormatLock()}
 
-      {filePath && (
+      {filePath && !simpleMode && (
         <ExportModeButton selectedSegments={selectedSegments} style={exportModeStyle} />
       )}
 

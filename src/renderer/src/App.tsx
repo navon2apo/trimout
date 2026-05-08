@@ -160,6 +160,8 @@ function App() {
   const [exportConfirmOpen, setExportConfirmOpen] = useState(false);
   const [cacheBuster, setCacheBuster] = useState(0);
   const [currentFileExportCount, setCurrentFileExportCount] = useState(0);
+  // Track ranges that have already been exported — shown as "gaps" in the timeline
+  const [exportedRanges, setExportedRanges] = useState<{ start: number; end: number }[]>([]);
 
   const { fileFormat, setFileFormat, detectedFileFormat, setDetectedFileFormat, isCustomFormatSelected } = useFileFormatState();
 
@@ -347,6 +349,40 @@ function App() {
   const {
     cutSegments, cutSegmentsHistory, createSegmentsFromKeyframes, shuffleSegments, detectBlackScenes, detectSilentScenes, detectSceneChanges, removeSegment, invertAllSegments, fillSegmentsGaps, combineOverlappingSegments, combineSelectedSegments, shiftAllSegmentTimes, alignSegmentTimesToKeyframes, updateSegOrder, updateSegOrders, reorderSegsByStartTime, addSegment, setCutStart, setCutEnd, labelSegment, splitCurrentSegment, focusSegmentAtCursor, selectSegmentsAtCursor, createNumSegments, createFixedDurationSegments, createFixedByteSizedSegments, createRandomSegments, getSegEstimatedSize, haveInvalidSegs, currentSegIndexSafe, currentCutSeg, inverseCutSegments, clearSegments, clearSegColorCounter, loadCutSegments, setCutTime, setCurrentSegIndex, labelSelectedSegments, deselectAllSegments, selectAllSegments, selectOnlyCurrentSegment, toggleCurrentSegmentSelected, invertSelectedSegments, removeSelectedSegments, selectSegmentsByLabel, selectSegmentsByExpr, selectAllMarkers, mutateSegmentsByExpr, toggleSegmentSelected, selectOnlySegment, selectedSegments, segmentsOrInverse, segmentsToExport, duplicateCurrentSegment, duplicateSegment, updateSegAtIndex, findSegmentsAtCursor, maybeCreateFullLengthSegment, currentCutSegOrWholeTimeline, segColorCounter,
   } = useSegments({ filePath, workingRef, setWorking, setProgress, videoStream: activeVideoStream, fileDuration, getRelevantTime, maxLabelLength, checkFileOpened, invertCutSegments, segmentsToChaptersOnly, timecodePlaceholder, parseTimecode, appendFfmpegCommandLog, fileDurationNonZero, mainFileMeta: mainFileMeta?.ffprobeMeta, seekAbs, activeVideoStreamIndex, activeAudioStreamIndexes, handleError, showGenericDialog, simpleMode, ffmpegHwaccel });
+
+  // In simple mode, marking start also auto-sets end to start + 20s (clip window)
+  const handleSimpleMarkStart = useCallback(() => {
+    const startTime = getRelevantTime();
+    setCutStart();
+    if (simpleMode) {
+      setCutTime('end', startTime + 20);
+    }
+  }, [getRelevantTime, setCutStart, setCutTime, simpleMode]);
+
+  // Trim window duration in seconds for simple mode
+  const trimWindowDuration = 15;
+
+  // Custom trim width persists across seeks (user can drag to 40s and it stays 40s)
+  const [customTrimDuration, setCustomTrimDuration] = useState(trimWindowDuration);
+  // Position override — cleared on seek so trim re-centers, but width stays
+  const [simpleTrimPositionOverride, setSimpleTrimPositionOverride] = useState<{ start: number; end: number } | null>(null);
+
+  // Actual trim start/end
+  const simpleTrimStart = simpleTrimPositionOverride?.start ?? Math.max(0, commandedTime - customTrimDuration / 2);
+  const simpleTrimEnd = simpleTrimPositionOverride?.end ?? Math.min(simpleTrimStart + customTrimDuration, fileDurationNonZero);
+
+  // Seeking re-centers the trim window but KEEPS the custom width
+  const seekAbsForTimeline = useCallback((time: number) => {
+    seekAbs(time);
+    if (simpleMode) setSimpleTrimPositionOverride(null);
+  }, [seekAbs, simpleMode]);
+
+  // Called from Timeline drag handles — saves both position AND new width
+  const onSimpleTrimAdjust = useCallback((newStart: number, newEnd: number) => {
+    setSimpleTrimPositionOverride({ start: newStart, end: newEnd });
+    setCustomTrimDuration(newEnd - newStart); // persist width for next seek
+  }, []);
+
 
   const { getEdlFilePath, projectFileSavePath, getProjectFileSavePath } = useSegmentsAutoSave({ autoSaveProjectFile, storeProjectInWorkingDir, filePath, customOutDir, cutSegments });
 
@@ -670,6 +706,7 @@ function App() {
     setExportConfirmOpen(false);
     setOutputPlaybackRateState(1);
     setCurrentFileExportCount(0);
+    setExportedRanges([]);
   }, [videoRef, setCommandedTime, setPlaybackRate, setPreviewFilePath, setUsingDummyVideo, setPlaying, playingRef, setPlaybackMode, cutSegmentsHistory, setDetectedFileFormat, setCopyStreamIdsByFile, setThumbnails, setSubtitlesByStreamId, setOutputPlaybackRateState]);
 
 
@@ -1179,6 +1216,12 @@ function App() {
 
       if (simpleMode && !prefersReducedMotion) shootConfetti({ ticks: 50 });
 
+      // Mark exported ranges as "done" — they will appear as gaps in the timeline
+      setExportedRanges((prev) => [
+        ...prev,
+        ...segmentsToExport.map((s) => ({ start: s.start, end: s.end ?? s.start })),
+      ]);
+
       if (cleanupChoices.cleanupAfterExport) {
         const newCleanupChoices = cleanupChoices.askForCleanup ? await askForCleanupChoices() : cleanupChoices;
         // only if not canceled
@@ -1234,7 +1277,7 @@ function App() {
       setWorking(undefined);
       setProgress(undefined);
     }
-  }, [filePath, numStreamsToCopy, haveInvalidSegs, workingRef, setWorking, segmentsToChaptersOnly, cutFileTemplateOrDefault, generateCutFileNames, cutMultiple, outputDir, customOutDir, fileFormat, fileDuration, isRotationSet, effectiveRotation, copyFileStreams, allFilesMeta, keyframeCut, segmentsToExport, shortestFlag, ffmpegExperimental, preserveMetadata, preserveMetadataOnMerge, preserveMovData, preserveChapters, movFastStart, avoidNegativeTs, customTagsByFile, paramsByStreamId, detectedFps, willMerge, enableOverwriteOutput, exportConfirmEnabled, mainFileFormat, mainStreams, exportExtraStreams, areWeCutting, simpleMode, prefersReducedMotion, cleanupChoices, hideAllNotifications, segmentsOrInverse.selected, t, cutMergedFileTemplateOrDefault, segmentsToChapters, invertCutSegments, generateCutMergedFileNames, concatCutSegments, autoDeleteMergedSegments, tryDeleteFiles, nonCopiedExtraStreams, extractStreams, askForCleanupChoices, cleanupFiles, showOsNotification, openCutFinishedDialog, handleExportFailed]);
+  }, [filePath, numStreamsToCopy, haveInvalidSegs, workingRef, setWorking, segmentsToChaptersOnly, cutFileTemplateOrDefault, generateCutFileNames, cutMultiple, outputDir, customOutDir, fileFormat, fileDuration, isRotationSet, effectiveRotation, copyFileStreams, allFilesMeta, keyframeCut, segmentsToExport, shortestFlag, ffmpegExperimental, preserveMetadata, preserveMetadataOnMerge, preserveMovData, preserveChapters, movFastStart, avoidNegativeTs, customTagsByFile, paramsByStreamId, detectedFps, willMerge, enableOverwriteOutput, exportConfirmEnabled, mainFileFormat, mainStreams, exportExtraStreams, areWeCutting, simpleMode, prefersReducedMotion, cleanupChoices, hideAllNotifications, segmentsOrInverse.selected, t, cutMergedFileTemplateOrDefault, segmentsToChapters, invertCutSegments, generateCutMergedFileNames, concatCutSegments, autoDeleteMergedSegments, tryDeleteFiles, nonCopiedExtraStreams, extractStreams, askForCleanupChoices, cleanupFiles, showOsNotification, openCutFinishedDialog, handleExportFailed, setExportedRanges]);
 
   const onExportPress = useCallback(async () => {
     if (!filePath) return;
@@ -1246,6 +1289,17 @@ function App() {
       setStreamsSelectorShown(false);
     }
   }, [filePath, exportConfirmEnabled, exportConfirmOpen, onExportConfirm]);
+
+  // Simple mode export: update the segment atomically (single setState call) then export
+  const onExportConfirmRef = useRef(onExportConfirm);
+  useEffect(() => { onExportConfirmRef.current = onExportConfirm; }, [onExportConfirm]);
+
+  const handleSimpleExport = useCallback(async () => {
+    // Use current trim window (auto-centered or manually dragged)
+    updateSegAtIndex(currentSegIndexSafe, { start: simpleTrimStart, end: simpleTrimEnd });
+    await new Promise<void>((resolve) => setTimeout(resolve, 50));
+    await onExportConfirmRef.current();
+  }, [simpleTrimStart, simpleTrimEnd, updateSegAtIndex, currentSegIndexSafe]);
 
   const captureSnapshot = useCallback(async () => {
     if (!filePath || workingRef.current) return;
@@ -1680,7 +1734,7 @@ function App() {
     const newStartTimeOffset = await promptTimecode({
       initialValue: startTimeOffset !== undefined ? formatTimecode({ seconds: startTimeOffset }) : undefined,
       title: i18n.t('Set custom start time offset'),
-      description: i18n.t('Instead of video apparently starting at 0, you can offset by a specified value. This only applies to the preview inside LosslessCut and does not modify the file in any way. (Useful for viewing/cutting videos according to timecodes)'),
+      description: i18n.t('Instead of video apparently starting at 0, you can offset by a specified value. This only applies to the preview inside TrimOut and does not modify the file in any way. (Useful for viewing/cutting videos according to timecodes)'),
       inputPlaceholder: timecodePlaceholder,
       allowRelative: true,
     });
@@ -2620,8 +2674,14 @@ function App() {
                   commandedTimeRef={commandedTimeRef}
                   startTimeOffset={startTimeOffset}
                   zoom={zoom}
-                  seekAbs={seekAbs}
+                  seekAbs={seekAbsForTimeline}
                   fileDurationNonZero={fileDurationNonZero}
+                  exportedRanges={exportedRanges}
+                  simpleMode={simpleMode}
+                  trimWindowDuration={trimWindowDuration}
+                  simpleTrimStart={simpleTrimStart}
+                  simpleTrimEnd={simpleTrimEnd}
+                  onSimpleTrimAdjust={onSimpleTrimAdjust}
                   cutSegments={cutSegments}
                   setCurrentSegIndex={setCurrentSegIndex}
                   currentSegIndexSafe={currentSegIndexSafe}
@@ -2652,14 +2712,14 @@ function App() {
                   increaseRotation={increaseRotation}
                   cleanupFilesDialog={cleanupFilesDialog}
                   captureSnapshot={captureSnapshot}
-                  onExportPress={onExportPress}
+                  onExportPress={simpleMode ? handleSimpleExport : onExportPress}
                   segmentsToExport={segmentsToExport}
                   seekAbs={seekAbs}
                   currentSegIndexSafe={currentSegIndexSafe}
                   cutSegments={cutSegments}
                   currentCutSeg={currentCutSeg}
                   selectedSegments={selectedSegments}
-                  setCutStart={setCutStart}
+                  setCutStart={simpleMode ? handleSimpleMarkStart : setCutStart}
                   setCutEnd={setCutEnd}
                   setCurrentSegIndex={setCurrentSegIndex}
                   jumpCutEnd={jumpCutEnd}

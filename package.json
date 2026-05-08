@@ -1,8 +1,8 @@
 {
-  "name": "lossless-cut",
-  "productName": "LosslessCut",
-  "description": "The swiss army knife of lossless video/audio editing",
-  "copyright": "Copyright © 2021 ${author}",
+  "name": "trimout",
+  "productName": "TrimOut",
+  "description": "Trim any video, mark highlights, export clips instantly — no rendering, no waiting.",
+  "copyright": "Copyright © 2026 Navon Amos. Based on LosslessCut © Mikael Finstad (GPL-2.0)",
   "version": "3.68.1",
   "main": "./out/main/index.js",
   "homepage": "./",
@@ -28,17 +28,22 @@
     "version": "node script/postversion.ts && git add no.mifi.losslesscut.appdata.xml",
     "pack-linux": "yarn build && electron-builder --linux",
     "scan-i18n": "i18next-cli -c i18next.config.scan.ts extract",
-    "generate-icon": "mkdirp icon-build build-resources/appx && node script/generateIcon.ts",
+    "generate-icon": "mkdirp icon-build build-resources/appx && tsx script/generateIcon.ts",
     "generate-licenses": "yarn licenses generate-disclaimer -R > licenses.txt && echo '\n\nffmpeg is licensed under GPL v2+:\n\nhttp://www.gnu.org/licenses/old-licenses/gpl-2.0.html' >> licenses.txt",
     "generate-docs": "node script/generateDocs.ts",
     "check-licenses": "node script/checkLicenses.ts",
     "upload-artifacts": "node script/uploadArtifacts.ts"
   },
   "author": {
-    "name": "Mikael Finstad",
-    "email": "finstaden@gmail.com",
-    "url": "https://mifi.no/"
+    "name": "Navon Amos"
   },
+  "contributors": [
+    {
+      "name": "Mikael Finstad",
+      "email": "finstaden@gmail.com",
+      "url": "https://mifi.no/"
+    }
+  ],
   "repository": {
     "type": "git",
     "url": "https://github.com/mifi/lossless-cut.git"
@@ -130,6 +135,7 @@
     "sweetalert2-react-content": "^5.1.1",
     "tiny-invariant": "^1.3.3",
     "ts-morph": "^27.0.2",
+    "tsx": "^4.21.0",
     "type-fest": "^5.3.1",
     "typescript": "~5.9.3",
     "use-debounce": "^5.2.1",

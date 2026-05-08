@@ -1,2 +1,2 @@
-export const appName = 'LosslessCut';
+export const appName = 'TrimOut';
 export const copyrightYear = 2026;

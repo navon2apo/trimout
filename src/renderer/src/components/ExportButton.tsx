@@ -30,14 +30,14 @@ const ExportButton = forwardRef<HTMLButtonElement, Props>(({
 
   const { autoMerge, simpleMode } = useUserSettings();
 
-  let title = t('Export');
+  let title = t('Export Clips');
   if (segmentsToExport.length === 1) {
-    title = t('Export selection');
+    title = t('Export 1 clip');
   } else if (segmentsToExport.length > 1) {
-    title = t('Export {{ num }} segments', { num: segmentsToExport.length });
+    title = t('Export {{ num }} clips', { num: segmentsToExport.length });
   }
 
-  const text = autoMerge && segmentsToExport && segmentsToExport.length > 1 ? t('Export+merge') : t('Export');
+  const text = segmentsToExport.length > 1 ? `Export ${segmentsToExport.length} Clips` : 'Export Clips';
 
   return (
     <button

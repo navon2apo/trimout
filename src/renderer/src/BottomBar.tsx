@@ -12,6 +12,8 @@ import invariant from 'tiny-invariant';
 import { primaryTextColor, primaryColor, darkModeTransition, dangerColor } from './colors';
 import SegmentCutpointButton from './components/SegmentCutpointButton';
 import SetCutpointButton from './components/SetCutpointButton';
+import ClipMarkButton from './components/ClipMarkButton';
+import SpeedStrip from './components/SpeedStrip';
 import ExportButton from './components/ExportButton';
 import ToggleExportConfirm from './components/ToggleExportConfirm';
 import CaptureFormatButton from './components/CaptureFormatButton';
@@ -365,6 +367,13 @@ function BottomBar({
     checkAppPath();
   }, []);
 
+  // In simple mode, invert segments mode is confusing — reset it silently
+  useEffect(() => {
+    if (simpleMode && invertCutSegments) {
+      setInvertCutSegments(false);
+    }
+  }, [simpleMode, invertCutSegments, setInvertCutSegments]);
+
   const handleChangePlaybackRateClick = useCallback(async () => {
     const newRate = await askForPlaybackRate({ detectedFps, outputPlaybackRate });
     if (newRate != null) setOutputPlaybackRate(newRate);
@@ -457,11 +466,13 @@ function BottomBar({
           </>
         )}
 
-        <SetCutpointButton currentCutSeg={currentCutSegOrDefault} side="start" onClick={setCutStart} title={t('Start current segment at current time')} style={{ marginRight: 5 }} />
+        {simpleMode
+          ? <FaCaretLeft style={{ flexShrink: 0, marginRight: 4, cursor: 'pointer' }} size={32} role="button" title={t('One frame back')} onClick={() => shortStep(-1)} />
+          : <SetCutpointButton currentCutSeg={currentCutSegOrDefault} side="start" onClick={setCutStart} title={t('Start current segment at current time')} style={{ marginRight: 5 }} />}
 
         {!simpleMode && <CutTimeInput disabled={!isFileOpened} darkMode={darkMode} currentCutSeg={currentCutSeg} startTimeOffset={startTimeOffset} seekAbs={seekAbs} cutTime={currentCutSeg?.start} setCutTime={setCutTime} isStart formatTimecode={formatTimecode} parseTimecode={parseTimecode} />}
 
-        {keyframesEnabled && (
+        {keyframesEnabled && !simpleMode && (
           <IoMdKey
             size={25}
             role="button"
@@ -495,7 +506,7 @@ function BottomBar({
           />
         )}
 
-        {keyframesEnabled && (
+        {keyframesEnabled && !simpleMode && (
           <IoMdKey
             style={{ flexShrink: 0, marginLeft: 2, ...keyframeStyle }}
             size={25}
@@ -507,7 +518,9 @@ function BottomBar({
 
         {!simpleMode && <CutTimeInput disabled={!isFileOpened} darkMode={darkMode} currentCutSeg={currentCutSeg} startTimeOffset={startTimeOffset} seekAbs={seekAbs} cutTime={currentCutSeg?.end} setCutTime={setCutTime} formatTimecode={formatTimecode} parseTimecode={parseTimecode} />}
 
-        <SetCutpointButton currentCutSeg={currentCutSeg} side="end" onClick={setCutEnd} title={t('End current segment at current time')} style={{ marginLeft: 5 }} />
+        {simpleMode
+          ? <FaCaretRight style={{ flexShrink: 0, marginLeft: 4, cursor: 'pointer' }} size={32} role="button" title={t('One frame forward')} onClick={() => shortStep(1)} />
+          : <SetCutpointButton currentCutSeg={currentCutSeg} side="end" onClick={setCutEnd} title={t('End current segment at current time')} style={{ marginLeft: 5 }} />}
 
         {!simpleMode && (
           <>
@@ -534,15 +547,15 @@ function BottomBar({
         className="no-user-select"
         style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '.1em .3em', gap: '.5em', height: '2em' }}
       >
-        <InvertCutModeButton invertCutSegments={invertCutSegments} setInvertCutSegments={setInvertCutSegments} />
+        {!simpleMode && <InvertCutModeButton invertCutSegments={invertCutSegments} setInvertCutSegments={setInvertCutSegments} />}
 
         <div style={{ display: 'flex', alignItems: 'center' }}>
           <SimpleModeButton />
-
-          {simpleMode && (
-            <div role="button" onClick={toggleSimpleMode} style={{ fontSize: '.8em', marginLeft: '.2em' }}>{t('Toggle advanced view')}</div>
-          )}
         </div>
+
+        {simpleMode && (
+          <SpeedStrip outputPlaybackRate={outputPlaybackRate} setOutputPlaybackRate={setOutputPlaybackRate} />
+        )}
 
         {isFileOpened && !simpleMode && (
           <>
@@ -588,7 +601,7 @@ function BottomBar({
           />
         )}
 
-        {hasVideo && (
+        {hasVideo && !simpleMode && (
           <div>
             <IoIosCamera
               role="button"
@@ -597,11 +610,11 @@ function BottomBar({
               onClick={captureSnapshot}
             />
 
-            {!simpleMode && <CaptureFormatButton style={{ width: '3.7em', textAlign: 'center', marginLeft: '.1em' }} />}
+            <CaptureFormatButton style={{ width: '3.7em', textAlign: 'center', marginLeft: '.1em' }} />
           </div>
         )}
 
-        {isFileOpened && (
+        {isFileOpened && !simpleMode && (
           <div role="button" onClick={toggleLoopSelectedSegments} title={t('Play selected segments in order')} style={loopSelectedSegmentsButtonStyle}>
             <PlayPauseMode />
           </div>

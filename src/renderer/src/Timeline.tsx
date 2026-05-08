@@ -95,6 +95,12 @@ function Timeline({
   zoom,
   neighbouringKeyFrames,
   seekAbs,
+  exportedRanges,
+  simpleMode,
+  trimWindowDuration,
+  simpleTrimStart,
+  simpleTrimEnd,
+  onSimpleTrimAdjust,
   cutSegments,
   setCurrentSegIndex,
   currentSegIndexSafe,
@@ -130,6 +136,12 @@ function Timeline({
   zoom: number,
   neighbouringKeyFrames: Frame[],
   seekAbs: (a: number) => void,
+  exportedRanges: { start: number; end: number }[],
+  simpleMode: boolean,
+  trimWindowDuration: number,
+  simpleTrimStart: number,
+  simpleTrimEnd: number,
+  onSimpleTrimAdjust: (start: number, end: number) => void,
   cutSegments: StateSegment[],
   setCurrentSegIndex: (a: number) => void,
   currentSegIndexSafe: number,
@@ -446,7 +458,7 @@ function Timeline({
           style={{ height: timelineHeight, width: `${zoom * 100}%`, position: 'relative', backgroundColor: timelineBackground, transition: darkModeTransition }}
           ref={timelineWrapperRef}
         >
-          {inverseCutSegments.map((seg) => (
+          {!simpleMode && inverseCutSegments.map((seg) => (
             <BetweenSegments
               key={seg.segId}
               start={seg.start}
@@ -456,7 +468,7 @@ function Timeline({
             />
           ))}
 
-          {cutSegments.map((seg, i) => {
+          {!simpleMode && cutSegments.map((seg, i) => {
             const selected = invertCutSegments || seg.selected;
 
             return (
@@ -474,9 +486,73 @@ function Timeline({
             );
           })}
 
+          {/* Simple mode: trim window with draggable handles */}
+          {simpleMode && (() => {
+            const leftPct = (simpleTrimStart / fileDurationNonZero) * 100;
+            const widthPct = ((simpleTrimEnd - simpleTrimStart) / fileDurationNonZero) * 100;
+
+            const makeHandleMouseDown = (side: 'start' | 'end') => (e: React.MouseEvent) => {
+              e.stopPropagation();
+              const fixedStart = simpleTrimStart;
+              const fixedEnd = simpleTrimEnd;
+              const onMove = (me: MouseEvent) => {
+                const newTime = getMouseTimelinePos(me);
+                if (side === 'start') {
+                  onSimpleTrimAdjust(Math.max(0, Math.min(newTime, fixedEnd - 0.5)), fixedEnd);
+                } else {
+                  onSimpleTrimAdjust(fixedStart, Math.min(fileDurationNonZero, Math.max(newTime, fixedStart + 0.5)));
+                }
+              };
+              const onUp = () => window.removeEventListener('mousemove', onMove);
+              window.addEventListener('mousemove', onMove);
+              window.addEventListener('mouseup', onUp, { once: true });
+            };
+
+            return (
+              <div style={{ position: 'absolute', top: 0, bottom: 0, left: `${leftPct}%`, width: `${widthPct}%`, pointerEvents: 'none', zIndex: 2, boxSizing: 'border-box' }}>
+                {/* Fill */}
+                <div style={{ position: 'absolute', inset: 0, background: 'rgba(0, 180, 220, 0.22)' }} />
+                {/* Left handle */}
+                <div
+                  onMouseDown={makeHandleMouseDown('start')}
+                  style={{ position: 'absolute', top: 0, bottom: 0, left: 0, width: 8, background: 'rgba(0, 220, 255, 0.95)', cursor: 'ew-resize', pointerEvents: 'auto', borderRadius: '2px 0 0 2px' }}
+                />
+                {/* Right handle */}
+                <div
+                  onMouseDown={makeHandleMouseDown('end')}
+                  style={{ position: 'absolute', top: 0, bottom: 0, right: 0, width: 8, background: 'rgba(0, 220, 255, 0.95)', cursor: 'ew-resize', pointerEvents: 'auto', borderRadius: '0 2px 2px 0' }}
+                />
+              </div>
+            );
+          })()}
+
           {shouldShowKeyframes && !areKeyframesTooClose && keyFramesInZoomWindow.map((f) => (
             <div key={f.time} style={{ position: 'absolute', top: 0, bottom: 0, left: `${(f.time / fileDurationNonZero) * 100}%`, marginLeft: -1, width: 1, background: 'var(--gray-10)', pointerEvents: 'none' }} />
           ))}
+
+          {/* Exported ranges — rendered as dark gaps so user sees what's been extracted */}
+          {exportedRanges.map((r) => {
+            const left = `${(r.start / fileDurationNonZero) * 100}%`;
+            const width = `${((r.end - r.start) / fileDurationNonZero) * 100}%`;
+            return (
+              <div
+                key={`${r.start}-${r.end}`}
+                style={{
+                  position: 'absolute',
+                  top: 0,
+                  bottom: 0,
+                  left,
+                  width,
+                  background: 'repeating-linear-gradient(45deg, rgba(0,0,0,0.7) 0px, rgba(0,0,0,0.7) 6px, rgba(30,30,30,0.5) 6px, rgba(30,30,30,0.5) 12px)',
+                  borderLeft: '2px solid rgba(255,255,255,0.15)',
+                  borderRight: '2px solid rgba(255,255,255,0.15)',
+                  pointerEvents: 'none',
+                  zIndex: 3,
+                }}
+                title={`Exported: ${r.start.toFixed(1)}s – ${r.end.toFixed(1)}s`}
+              />
+            );
+          })}
 
           {currentTimePercent !== undefined && (
             <motion.div transition={springAnimation} animate={{ left: currentTimePercent }} style={{ position: 'absolute', bottom: 0, top: 0, backgroundColor: 'var(--gray-12)', width: currentTimeWidth, pointerEvents: 'none' }} />

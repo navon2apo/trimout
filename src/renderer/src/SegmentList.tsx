@@ -1,6 +1,6 @@
 import type { SetStateAction, Dispatch, MouseEventHandler, CSSProperties } from 'react';
 import { memo, useMemo, useRef, useCallback, useState, useEffect } from 'react';
-import { FaYinYang, FaSave, FaPlus, FaMinus, FaTag, FaSortNumericDown, FaRegCheckCircle, FaRegCircle, FaTimes } from 'react-icons/fa';
+import { FaYinYang, FaSave, FaPlus, FaMinus, FaTag, FaSortNumericDown, FaRegCheckCircle, FaRegCircle, FaTimes, FaPencilAlt } from 'react-icons/fa';
 import { AiOutlineSplitCells } from 'react-icons/ai';
 import { motion } from 'motion/react';
 import { useTranslation, Trans } from 'react-i18next';
@@ -262,7 +262,25 @@ const Segment = memo(({
         <span style={{ cursor, fontSize: `${Math.min(1, 26 / timeStr.length) * 0.75}em`, whiteSpace: 'nowrap' }}>{timeStr}</span>
       </div>
 
-      {'name' in seg && seg.name && <span style={{ fontSize: '.75em', color: primaryTextColor, marginRight: '.3em' }}>{seg.name}</span>}
+      <span style={{ display: 'inline-flex', alignItems: 'center', gap: '.3em', marginBottom: '.1em' }}>
+        <span style={{ fontSize: '.75em', color: primaryTextColor }}>
+          {'name' in seg && seg.name ? seg.name : `Clip ${index + 1}`}
+        </span>
+        <span
+          title="Rename clip"
+          onClick={(e) => { e.stopPropagation(); onLabelPress(index); }}
+          style={{
+            display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+            width: 18, height: 18, borderRadius: '50%',
+            background: 'var(--gray-4)', cursor: 'pointer', flexShrink: 0,
+            transition: 'background 0.15s',
+          }}
+          onMouseEnter={(e) => { (e.currentTarget as HTMLElement).style.background = 'var(--gray-7)'; }}
+          onMouseLeave={(e) => { (e.currentTarget as HTMLElement).style.background = 'var(--gray-4)'; }}
+        >
+          <FaPencilAlt size={9} style={{ color: 'var(--gray-11)' }} />
+        </span>
+      </span>
       {Object.entries(tags).map(([name, value]) => (
         <span style={{ fontSize: '.7em', backgroundColor: 'var(--gray-5)', color: 'var(--gray-12)', borderRadius: '.4em', padding: '0 .2em', marginRight: '.1em' }} key={name}>{name}:<b>{value}</b></span>
       ))}

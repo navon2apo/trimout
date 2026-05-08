@@ -441,7 +441,7 @@ export async function renderThumbnails({ filePath, from, duration, onThumbnail, 
   onThumbnail: (a: { time: number, url: string }) => void,
   signal: AbortSignal,
 }) {
-  const numThumbs = 10;
+  const numThumbs = 20;
   const thumbTimes = Array.from({ length: numThumbs }).fill(undefined).map((_unused, i) => (from + ((duration * i) / numThumbs)));
   // console.log(thumbTimes);
 
