@@ -172,7 +172,9 @@ function App() {
   // State per application launch
   const [ffmpegInfo, setFfmpegInfo] = useState<Awaited<ReturnType<typeof runStartupCheck>>>();
   const lastOpenedPathRef = useRef<string>();
-  const [showRightBar, setShowRightBar] = useState(true);
+  // ClipsPanel (in the AI sidebar) is the primary clip browser, so SegmentList is
+  // hidden by default. Users can still toggle it via the keyboard shortcut or button.
+  const [showRightBar, setShowRightBar] = useState(false);
   const [lastCommandsVisible, setLastCommandsVisible] = useState(false);
   const [settingsVisible, setSettingsVisible] = useState(false);
   const [tunerVisible, setTunerVisible] = useState<TunerType>();
@@ -2748,6 +2750,7 @@ function App() {
                         formatTimecode={formatTimecode}
                         onSegClick={handleSegClick}
                         onAddSegment={addSegment}
+                        onDeleteSegment={removeSegment}
                       />
                       <div style={{ height: 1, background: 'rgba(255,255,255,0.06)', margin: '4px 0' }} />
                     </>

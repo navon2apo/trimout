@@ -5,7 +5,7 @@
  * Active clip is highlighted.
  * Works alongside (not replacing) the full SegmentList.
  */
-import { memo, useRef, useEffect } from 'react';
+import { memo, useRef, useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 
 interface Seg {
@@ -19,8 +19,9 @@ interface Props {
   segments: Seg[];
   currentSegIndex: number;
   formatTimecode: (s: number) => string;
-  onSegClick: (i: number) => void;   // select + seek
+  onSegClick: (i: number) => void;      // select + seek
   onAddSegment: () => void;
+  onDeleteSegment: (i: number) => void; // remove a clip
 }
 
 // Palette matching LosslessCut's segment colors (12 steps)
@@ -43,9 +44,10 @@ function fmtDuration(start: number, end: number | undefined): string {
   return `${m}m ${sec}s`;
 }
 
-function ClipsPanel({ segments, currentSegIndex, formatTimecode, onSegClick, onAddSegment }: Props) {
+function ClipsPanel({ segments, currentSegIndex, formatTimecode, onSegClick, onAddSegment, onDeleteSegment }: Props) {
   const listRef = useRef<HTMLDivElement>(null);
   const activeRef = useRef<HTMLDivElement>(null);
+  const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
 
   // Auto-scroll to active clip
   useEffect(() => {
@@ -106,16 +108,19 @@ function ClipsPanel({ segments, currentSegIndex, formatTimecode, onSegClick, onA
                 exit={{ opacity: 0, x: 6 }}
                 transition={{ duration: 0.15 }}
                 onClick={() => onSegClick(i)}
+                onMouseEnter={() => setHoveredIndex(i)}
+                onMouseLeave={() => setHoveredIndex(null)}
                 style={{
                   display: 'flex', alignItems: 'center', gap: 7,
                   padding: '6px 8px', borderRadius: 8, cursor: 'pointer',
-                  background: isActive ? `${color}18` : 'rgba(255,255,255,0.03)',
-                  border: `1px solid ${isActive ? `${color}55` : 'rgba(255,255,255,0.06)'}`,
-                  transition: 'background 0.15s, border-color 0.15s',
+                  background: isActive ? `${color}18` : hoveredIndex === i ? 'rgba(255,255,255,0.06)' : 'rgba(255,255,255,0.03)',
+                  border: `1px solid ${isActive ? `${color}55` : hoveredIndex === i ? 'rgba(255,255,255,0.12)' : 'rgba(255,255,255,0.06)'}`,
+                  transition: 'background 0.12s, border-color 0.12s',
                   userSelect: 'none',
+                  position: 'relative',
                 }}
               >
-                {/* Color dot */}
+                {/* Color bar */}
                 <div style={{
                   width: 3, borderRadius: 99, alignSelf: 'stretch', flexShrink: 0,
                   background: color,
@@ -145,8 +150,8 @@ function ClipsPanel({ segments, currentSegIndex, formatTimecode, onSegClick, onA
                   </div>
                 </div>
 
-                {/* Active playhead indicator */}
-                {isActive && (
+                {/* Active playhead indicator — hidden when hovered (X takes its place) */}
+                {isActive && hoveredIndex !== i && (
                   <motion.div
                     initial={{ opacity: 0 }}
                     animate={{ opacity: 1 }}
@@ -154,6 +159,33 @@ function ClipsPanel({ segments, currentSegIndex, formatTimecode, onSegClick, onA
                   >
                     ▶
                   </motion.div>
+                )}
+
+                {/* Delete button — appears on hover */}
+                {hoveredIndex === i && (
+                  <motion.button
+                    type="button"
+                    initial={{ opacity: 0, scale: 0.7 }}
+                    animate={{ opacity: 1, scale: 1 }}
+                    transition={{ duration: 0.1 }}
+                    onClick={(e) => { e.stopPropagation(); onDeleteSegment(i); }}
+                    title="Remove clip"
+                    style={{
+                      flexShrink: 0,
+                      background: 'rgba(248,113,113,0.15)',
+                      border: '1px solid rgba(248,113,113,0.3)',
+                      borderRadius: 5,
+                      color: 'rgba(248,113,113,0.85)',
+                      fontSize: 11,
+                      width: 18, height: 18,
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      cursor: 'pointer',
+                      padding: 0,
+                      lineHeight: 1,
+                    }}
+                  >
+                    ✕
+                  </motion.button>
                 )}
               </motion.div>
             );
