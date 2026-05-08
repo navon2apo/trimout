@@ -8,7 +8,7 @@
  */
 
 import { join } from 'node:path';
-import { existsSync, unlinkSync } from 'node:fs';
+import { existsSync, readFileSync, unlinkSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { app } from 'electron';
 import { execa } from 'execa';
@@ -126,6 +126,61 @@ async function transcribeWithOpenAI(
 }
 
 /**
+ * Read a WAV file and return its audio as a Float32Array.
+ *
+ * @xenova/transformers cannot use AudioContext in Node.js, so we must decode
+ * the WAV ourselves and pass raw audio data directly to the pipeline.
+ *
+ * We always produce 16kHz mono PCM s16le via ffmpeg, so the format is fixed:
+ *   - 44-byte standard RIFF/WAV header (or we scan for the "data" chunk)
+ *   - Int16 little-endian samples  →  scaled to [-1, 1] Float32
+ */
+function decodeWavToFloat32(wavPath: string): { data: Float32Array; sampling_rate: number } {
+  const buf = readFileSync(wavPath);
+
+  // Locate the "data" chunk by scanning the WAV header
+  // (safer than a fixed 44-byte offset in case ffmpeg adds extra chunks)
+  let dataOffset = 44;      // sensible default
+  let sampleRate = 16000;   // we set this with -ar 16000, but read it anyway
+  let bitsPerSample = 16;   // we get PCM s16le from ffmpeg
+
+  try {
+    sampleRate    = buf.readUInt32LE(24);
+    bitsPerSample = buf.readUInt16LE(34);
+
+    // Walk chunks starting after the fmt chunk
+    let i = 12;
+    while (i < buf.length - 8) {
+      const tag = buf.toString('ascii', i, i + 4);
+      const chunkSize = buf.readUInt32LE(i + 4);
+      if (tag === 'data') { dataOffset = i + 8; break; }
+      i += 8 + chunkSize;
+    }
+  } catch {
+    // If anything goes wrong, fall back to the defaults above
+  }
+
+  const pcm = buf.slice(dataOffset);
+
+  if (bitsPerSample === 16) {
+    const int16 = new Int16Array(pcm.buffer, pcm.byteOffset, pcm.byteLength >> 1);
+    const float32 = new Float32Array(int16.length);
+    for (let j = 0; j < int16.length; j++) float32[j] = int16[j] / 32768.0;
+    return { data: float32, sampling_rate: sampleRate };
+  }
+
+  if (bitsPerSample === 32) {
+    // float32 PCM — rare but handle it
+    return {
+      data: new Float32Array(pcm.buffer, pcm.byteOffset, pcm.byteLength >> 2),
+      sampling_rate: sampleRate,
+    };
+  }
+
+  throw new Error(`whisper: unsupported WAV bits-per-sample: ${bitsPerSample}`);
+}
+
+/**
  * Transcribe a video file.
  * If OpenAI API key is configured → uses cloud Whisper API (fast, ~10s for 1hr video).
  * Otherwise → uses local ONNX Whisper (~2-20 min depending on model + hardware).
@@ -191,8 +246,13 @@ export async function transcribeVideo(
     // Step 3 — transcribe
     onProgress({ stage: 'transcribing', percent: 60, message: 'Transcribing… (this may take a minute)' });
 
+    // Decode WAV to raw Float32 samples.
+    // We MUST NOT pass the file path to asr() — @xenova/transformers would try to
+    // use AudioContext (a browser API) to load it, which doesn't exist in Node.js.
+    const audioInput = decodeWavToFloat32(wavPath);
+
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const result: any = await asr(wavPath, {
+    const result: any = await asr(audioInput, {
       return_timestamps: true,
       chunk_length_s: 30,
       stride_length_s: 5,
