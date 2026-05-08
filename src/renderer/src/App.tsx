@@ -2720,26 +2720,38 @@ function App() {
                   )}
                 </AnimatePresence>
 
-                {/* AI Tools panel — always visible when file is open */}
-                {isFileOpened && filePath != null && (
-                  <AIToolsPanel
-                    filePath={filePath}
-                    fileDuration={fileDurationNonZero}
-                    onApplySegments={handleApplyAISegments}
-                  />
-                )}
+                {/* Right AI column — AI Tools + Transcript + API Keys */}
+                <div style={{
+                  width: rightBarWidth,
+                  flexShrink: 0,
+                  overflowY: 'auto',
+                  overflowX: 'hidden',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  borderLeft: '1px solid rgba(255,255,255,0.06)',
+                  background: 'rgba(0,0,0,0.15)',
+                }}>
+                  {/* AI Tools panel */}
+                  {isFileOpened && filePath != null && (
+                    <AIToolsPanel
+                      filePath={filePath}
+                      fileDuration={fileDurationNonZero}
+                      onApplySegments={handleApplyAISegments}
+                    />
+                  )}
 
-                {/* Transcript panel — Whisper local transcription */}
-                {isFileOpened && filePath != null && (
-                  <TranscriptPanel
-                    filePath={filePath}
-                    onSeek={seekAbs}
-                    onApplySegments={(segs) => loadCutSegments({ segments: segs, append: false })}
-                  />
-                )}
+                  {/* Transcript panel — Whisper local transcription */}
+                  {isFileOpened && filePath != null && (
+                    <TranscriptPanel
+                      filePath={filePath}
+                      onSeek={seekAbs}
+                      onApplySegments={(segs) => loadCutSegments({ segments: segs, append: false })}
+                    />
+                  )}
 
-                {/* API Keys panel — always visible at bottom of sidebar */}
-                <ApiKeysPanel />
+                  {/* API Keys panel */}
+                  <ApiKeysPanel />
+                </div>
               </div>
 
               <div className="no-user-select" style={bottomStyle}>
