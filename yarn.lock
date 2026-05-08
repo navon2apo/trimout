@@ -13253,6 +13253,7 @@ __metadata:
     winston: "npm:^3.19.0"
     yargs: "npm:^18.0.0"
     yargs-parser: "npm:^22.0.0"
+    yt-dlp-wrap: "npm:^2.3.12"
     zod: "npm:^4.3.5"
   languageName: unknown
   linkType: soft
@@ -14372,6 +14373,13 @@ __metadata:
   version: 2.1.2
   resolution: "yoctocolors@npm:2.1.2"
   checksum: 10/6ee42d665a4cc161c7de3f015b2a65d6c65d2808bfe3b99e228bd2b1b784ef1e54d1907415c025fc12b400f26f372bfc1b71966c6c738d998325ca422eb39363
+  languageName: node
+  linkType: hard
+
+"yt-dlp-wrap@npm:^2.3.12":
+  version: 2.3.12
+  resolution: "yt-dlp-wrap@npm:2.3.12"
+  checksum: 10/447d057ff308a3df80a1d6021bb5c825f5a8d3b7be844f784039c401998785472482e03cb9cecdc6fba455121aaefce9ccf15f838a385a864d641cf9d13fad4a
   languageName: node
   linkType: hard
 

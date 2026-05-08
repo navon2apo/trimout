@@ -29,6 +29,7 @@ import type { UserSettingsContextType, AppContextType, SegColorsContextType } fr
 import { UserSettingsContext, SegColorsContext, AppContext } from './contexts';
 
 import NoFileLoaded from './NoFileLoaded';
+import AIToolsPanel from './components/AIToolsPanel';
 import MediaSourcePlayer from './MediaSourcePlayer';
 import TopMenu from './TopMenu';
 import LastCommands from './LastCommands';
@@ -1301,6 +1302,20 @@ function App() {
     await onExportConfirmRef.current();
   }, [simpleTrimStart, simpleTrimEnd, updateSegAtIndex, currentSegIndexSafe]);
 
+  // ---- yt-dlp download ----
+  const [ytdlpDownloading, setYtdlpDownloading] = useState(false);
+  const [ytdlpProgress, setYtdlpProgress] = useState(0);
+  // ref so handleUrlDownload can call userOpenFiles even before it's declared
+  const userOpenFilesRef = useRef<((paths: string[]) => void) | null>(null);
+
+  // ---- AI analysis → replace segments ----
+  const handleApplyAISegments = useCallback((segs: { start: number; end: number }[], label: string) => {
+    loadCutSegments({
+      segments: segs.map((s, i) => ({ start: s.start, end: s.end, name: `${label} ${i + 1}` })),
+      append: false,
+    });
+  }, [loadCutSegments]);
+
   const captureSnapshot = useCallback(async () => {
     if (!filePath || workingRef.current) return;
     try {
@@ -1941,6 +1956,29 @@ function App() {
     userOpenFiles(filePaths);
   }, [t, userOpenFiles]);
 
+  // Sync userOpenFiles ref so handleUrlDownload can call it
+  useEffect(() => { userOpenFilesRef.current = userOpenFiles; }, [userOpenFiles]);
+
+  const handleUrlDownload = useCallback(async (url: string) => {
+    setYtdlpDownloading(true);
+    setYtdlpProgress(0);
+    try {
+      const { ipcRenderer } = window.require('electron');
+      ipcRenderer.on('ytdlpProgress', (_: unknown, p: { percent: number }) => {
+        setYtdlpProgress(Math.round(p.percent ?? 0));
+      });
+      const outDir = outputDir || (window.require('@electron/remote').app.getPath('downloads') as string);
+      const outFile: string = await ipcRenderer.invoke('ytdlpDownload', url, outDir);
+      ipcRenderer.removeAllListeners('ytdlpProgress');
+      if (outFile) userOpenFilesRef.current?.([outFile]);
+    } catch (err) {
+      console.error('ytdlp error', err);
+    } finally {
+      setYtdlpDownloading(false);
+      setYtdlpProgress(0);
+    }
+  }, [outputDir]);
+
   const openDirDialog = useCallback(async () => {
     const { canceled, filePaths } = await showOpenDialog({ properties: ['openDirectory', 'multiSelections'], defaultPath: lastOpenedPathRef.current!, title: t('Open folder') });
     if (canceled) return;
@@ -2539,7 +2577,31 @@ function App() {
 
                 {/* Middle part (also shown in fullscreen): */}
                 <div style={{ position: 'relative', flexGrow: 1, overflow: 'hidden' }} ref={videoContainerRef}>
-                  {!isFileOpened && <NoFileLoaded mifiLink={mifiLink} currentCutSeg={currentCutSeg} onClick={openFilesDialog} darkMode={darkMode} keyBindingByAction={keyBindingByAction} />}
+                  {!isFileOpened && (
+                    <NoFileLoaded
+                      mifiLink={mifiLink}
+                      currentCutSeg={currentCutSeg}
+                      onClick={openFilesDialog}
+                      darkMode={darkMode}
+                      keyBindingByAction={keyBindingByAction}
+                      onUrlDownload={handleUrlDownload}
+                    />
+                  )}
+                  {/* yt-dlp download progress overlay */}
+                  {ytdlpDownloading && (
+                    <div style={{
+                      position: 'absolute', inset: 0, zIndex: 20, display: 'flex', flexDirection: 'column',
+                      alignItems: 'center', justifyContent: 'center', gap: 18,
+                      background: 'rgba(10,15,25,0.85)', backdropFilter: 'blur(8px)',
+                    }}>
+                      <div style={{ fontSize: 36 }}>⬇️</div>
+                      <div style={{ fontSize: 15, fontWeight: 700, color: '#f1f5f9' }}>Downloading video…</div>
+                      <div style={{ width: 260, height: 6, background: 'rgba(255,255,255,0.1)', borderRadius: 99 }}>
+                        <div style={{ height: '100%', borderRadius: 99, width: `${ytdlpProgress}%`, background: 'linear-gradient(90deg,#38bdf8,#818cf8)', transition: 'width 0.4s' }} />
+                      </div>
+                      <div style={{ fontSize: 13, color: 'rgba(148,163,184,0.8)' }}>{ytdlpProgress}%</div>
+                    </div>
+                  )}
 
                   <div className="no-user-select" style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, visibility: !isFileOpened || !hasVideo || bigWaveformEnabled ? 'hidden' : undefined }} onWheel={onTimelineWheel}>
                     {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
@@ -2655,6 +2717,15 @@ function App() {
                     />
                   )}
                 </AnimatePresence>
+
+                {/* AI Tools panel — always visible when file is open */}
+                {isFileOpened && filePath != null && (
+                  <AIToolsPanel
+                    filePath={filePath}
+                    fileDuration={fileDurationNonZero}
+                    onApplySegments={handleApplyAISegments}
+                  />
+                )}
               </div>
 
               <div className="no-user-select" style={bottomStyle}>

@@ -1,5 +1,5 @@
-import { memo, useState } from 'react';
-import { motion } from 'motion/react';
+import { memo, useState, useRef, useCallback } from 'react';
+import { motion, AnimatePresence } from 'motion/react';
 import type { StateSegment } from './types';
 import type { KeyBinding } from '../../common/types';
 
@@ -50,14 +50,35 @@ function TrimIcon() {
   );
 }
 
-function NoFileLoaded({ mifiLink, currentCutSeg, onClick, darkMode, keyBindingByAction }: {
+function NoFileLoaded({ mifiLink, currentCutSeg, onClick, darkMode, keyBindingByAction, onUrlDownload }: {
   mifiLink: unknown,
   currentCutSeg: StateSegment | undefined,
   onClick: () => void,
   darkMode?: boolean,
   keyBindingByAction: Record<string, KeyBinding>,
+  onUrlDownload?: (url: string) => void,
 }) {
   const [dragging, setDragging] = useState(false);
+  const [urlValue, setUrlValue] = useState('');
+  const [urlFocused, setUrlFocused] = useState(false);
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  const isValidUrl = useCallback((s: string) => {
+    try { const u = new URL(s.trim()); return u.protocol === 'http:' || u.protocol === 'https:'; } catch { return false; }
+  }, []);
+
+  const handleUrlSubmit = useCallback(() => {
+    if (isValidUrl(urlValue) && onUrlDownload) onUrlDownload(urlValue.trim());
+  }, [urlValue, isValidUrl, onUrlDownload]);
+
+  const handleUrlPaste = useCallback((e: React.ClipboardEvent<HTMLInputElement>) => {
+    const text = e.clipboardData.getData('text');
+    if (isValidUrl(text)) {
+      setTimeout(() => {
+        setUrlValue(text.trim());
+      }, 10);
+    }
+  }, [isValidUrl]);
 
   return (
     <div
@@ -152,8 +173,55 @@ function NoFileLoaded({ mifiLink, currentCutSeg, onClick, darkMode, keyBindingBy
         </motion.div>
 
         {/* Action label */}
-        <div style={{ fontSize: 13, color: 'rgba(148,163,184,0.7)', marginBottom: 20 }}>
+        <div style={{ fontSize: 13, color: 'rgba(148,163,184,0.7)', marginBottom: 16 }}>
           Click or drag a video file to get started
+        </div>
+
+        {/* URL input */}
+        <div style={{ width: '100%', maxWidth: 340, marginBottom: 20 }} onClick={(e) => e.stopPropagation()}>
+          <div style={{
+            display: 'flex', gap: 6, alignItems: 'center',
+            background: 'rgba(255,255,255,0.05)',
+            border: `1px solid ${urlFocused ? 'rgba(56,189,248,0.5)' : 'rgba(255,255,255,0.1)'}`,
+            borderRadius: 10, padding: '6px 8px',
+            transition: 'border-color 0.2s',
+          }}>
+            <span style={{ fontSize: 14 }}>🔗</span>
+            <input
+              ref={inputRef}
+              value={urlValue}
+              onChange={(e) => setUrlValue(e.target.value)}
+              onPaste={handleUrlPaste}
+              onFocus={() => setUrlFocused(true)}
+              onBlur={() => setUrlFocused(false)}
+              onKeyDown={(e) => { if (e.key === 'Enter') handleUrlSubmit(); }}
+              placeholder="Paste a YouTube / video URL…"
+              style={{
+                flex: 1, background: 'none', border: 'none', outline: 'none',
+                color: '#e2e8f0', fontSize: 12.5, caretColor: '#38bdf8',
+              }}
+            />
+            <AnimatePresence>
+              {isValidUrl(urlValue) && (
+                <motion.button
+                  key="go"
+                  initial={{ opacity: 0, scale: 0.8 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  exit={{ opacity: 0, scale: 0.8 }}
+                  type="button"
+                  onClick={handleUrlSubmit}
+                  style={{
+                    padding: '3px 12px', borderRadius: 7,
+                    background: 'linear-gradient(135deg,rgba(56,189,248,0.25),rgba(129,140,248,0.25))',
+                    border: '1px solid rgba(56,189,248,0.4)', color: '#38bdf8',
+                    fontSize: 11.5, fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap',
+                  }}
+                >
+                  Download ↓
+                </motion.button>
+              )}
+            </AnimatePresence>
+          </div>
         </div>
 
         {/* Info chips */}

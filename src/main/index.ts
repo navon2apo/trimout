@@ -38,6 +38,8 @@ import type { ApiActionRequest } from '../common/types.js';
 import * as ffmpeg from './ffmpeg.js';
 import * as compatPlayer from './compatPlayer.js';
 import { downloadMediaUrl } from './ffmpeg.js';
+import { detectSpeechSegments, detectEnergyPeaks, detectSceneChanges } from './aiAnalysis.js';
+import { downloadVideo, isSupportedUrl } from './ytdlp.js';
 
 
 electronUnhandled({ showDialog: true, logger: (err) => logger.error('electron-unhandled', err) });
@@ -358,6 +360,13 @@ async function init() {
 
     ipcMain.handle('showItemInFolder', (_e, path) => shell.showItemInFolder(path));
 
+    // yt-dlp download with progress
+    ipcMain.handle('ytdlpDownload', async (event, url: string, outDir: string) => {
+      return downloadVideo(url, outDir, (p) => {
+        event.sender.send('ytdlpProgress', p);
+      });
+    });
+
     ipcMain.on('apiActionResponse', (_e, { id }) => {
       apiActionRequests.get(id)?.();
     });
@@ -445,6 +454,11 @@ const remoteApi = {
   quitApp,
   setProgressBar,
   sendOsNotification,
+  // AI analysis
+  detectSpeechSegments,
+  detectEnergyPeaks,
+  detectSceneChanges,
+  isSupportedUrl,
 };
 
 export type RemoteApi = typeof remoteApi;
