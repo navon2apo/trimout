@@ -32,6 +32,7 @@ import NoFileLoaded from './NoFileLoaded';
 import AIToolsPanel from './components/AIToolsPanel';
 import TranscriptPanel from './components/TranscriptPanel';
 import ApiKeysPanel from './components/ApiKeysPanel';
+import ClipsPanel from './components/ClipsPanel';
 import MediaSourcePlayer from './MediaSourcePlayer';
 import TopMenu from './TopMenu';
 import LastCommands from './LastCommands';
@@ -1317,6 +1318,13 @@ function App() {
       append: false,
     });
   }, [loadCutSegments]);
+
+  // Click a segment in the list → select it AND jump the playhead to its start
+  const handleSegClick = useCallback((index: number) => {
+    setCurrentSegIndex(index);
+    const seg = cutSegments[index];
+    if (seg?.start != null) seekAbs(seg.start);
+  }, [setCurrentSegIndex, cutSegments, seekAbs]);
 
   const captureSnapshot = useCallback(async () => {
     if (!filePath || workingRef.current) return;
@@ -2682,7 +2690,7 @@ function App() {
                       inverseCutSegments={inverseCutSegments}
                       getFrameCount={getFrameCount}
                       formatTimecode={formatTimecode}
-                      onSegClick={setCurrentSegIndex}
+                      onSegClick={handleSegClick}
                       updateSegOrder={updateSegOrder}
                       updateSegOrders={updateSegOrders}
                       onLabelSegment={labelSegment}
@@ -2720,7 +2728,7 @@ function App() {
                   )}
                 </AnimatePresence>
 
-                {/* Right AI column — AI Tools + Transcript + API Keys */}
+                {/* Right AI column — Clips + AI Tools + Transcript + API Keys */}
                 <div style={{
                   width: rightBarWidth,
                   flexShrink: 0,
@@ -2731,6 +2739,20 @@ function App() {
                   borderLeft: '1px solid rgba(255,255,255,0.06)',
                   background: 'rgba(0,0,0,0.15)',
                 }}>
+                  {/* Clips browser — visual segment list with seek-on-click */}
+                  {isFileOpened && filePath != null && (
+                    <>
+                      <ClipsPanel
+                        segments={cutSegments}
+                        currentSegIndex={currentSegIndexSafe}
+                        formatTimecode={formatTimecode}
+                        onSegClick={handleSegClick}
+                        onAddSegment={addSegment}
+                      />
+                      <div style={{ height: 1, background: 'rgba(255,255,255,0.06)', margin: '4px 0' }} />
+                    </>
+                  )}
+
                   {/* AI Tools panel */}
                   {isFileOpened && filePath != null && (
                     <AIToolsPanel
