@@ -30,6 +30,8 @@ import { UserSettingsContext, SegColorsContext, AppContext } from './contexts';
 
 import NoFileLoaded from './NoFileLoaded';
 import AIToolsPanel from './components/AIToolsPanel';
+import TranscriptPanel from './components/TranscriptPanel';
+import ApiKeysPanel from './components/ApiKeysPanel';
 import MediaSourcePlayer from './MediaSourcePlayer';
 import TopMenu from './TopMenu';
 import LastCommands from './LastCommands';
@@ -2726,6 +2728,18 @@ function App() {
                     onApplySegments={handleApplyAISegments}
                   />
                 )}
+
+                {/* Transcript panel — Whisper local transcription */}
+                {isFileOpened && filePath != null && (
+                  <TranscriptPanel
+                    filePath={filePath}
+                    onSeek={seekAbs}
+                    onApplySegments={(segs) => loadCutSegments({ segments: segs, append: false })}
+                  />
+                )}
+
+                {/* API Keys panel — always visible at bottom of sidebar */}
+                <ApiKeysPanel />
               </div>
 
               <div className="no-user-select" style={bottomStyle}>

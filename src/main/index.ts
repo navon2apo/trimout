@@ -40,7 +40,15 @@ import * as compatPlayer from './compatPlayer.js';
 import { downloadMediaUrl } from './ffmpeg.js';
 import { detectSpeechSegments, detectEnergyPeaks, detectSceneChanges } from './aiAnalysis.js';
 import { downloadVideo, isSupportedUrl } from './ytdlp.js';
+import { transcribeVideo } from './whisper.js';
 
+// Separate untyped store for API keys (not part of Config schema)
+// eslint-disable-next-line @typescript-eslint/no-require-imports
+const Store = require('electron-store');
+const apiKeyStore = new Store({ name: 'api-keys', encryptionKey: 'trimout-api-keys-v1' });
+
+function getApiKey(id: string): string { return (apiKeyStore.get(`key_${id}`) as string | undefined) ?? ''; }
+function setApiKey(id: string, value: string): void { if (value) apiKeyStore.set(`key_${id}`, value); else apiKeyStore.delete(`key_${id}`); }
 
 electronUnhandled({ showDialog: true, logger: (err) => logger.error('electron-unhandled', err) });
 
@@ -367,6 +375,13 @@ async function init() {
       });
     });
 
+    // Whisper transcription with progress
+    ipcMain.handle('whisperTranscribe', async (event, filePath: string, model: string) => {
+      return transcribeVideo(filePath, model as Parameters<typeof transcribeVideo>[1], (p) => {
+        event.sender.send('whisperProgress', p);
+      });
+    });
+
     ipcMain.on('apiActionResponse', (_e, { id }) => {
       apiActionRequests.get(id)?.();
     });
@@ -459,6 +474,9 @@ const remoteApi = {
   detectEnergyPeaks,
   detectSceneChanges,
   isSupportedUrl,
+  // API key management
+  getApiKey,
+  setApiKey,
 };
 
 export type RemoteApi = typeof remoteApi;
