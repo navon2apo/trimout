@@ -97,10 +97,10 @@ function Timeline({
   seekAbs,
   exportedRanges,
   simpleMode,
-  trimWindowDuration,
   simpleTrimStart,
   simpleTrimEnd,
   onSimpleTrimAdjust,
+  onSimpleTrimReset,
   cutSegments,
   setCurrentSegIndex,
   currentSegIndexSafe,
@@ -138,10 +138,10 @@ function Timeline({
   seekAbs: (a: number) => void,
   exportedRanges: { start: number; end: number }[],
   simpleMode: boolean,
-  trimWindowDuration: number,
   simpleTrimStart: number,
   simpleTrimEnd: number,
   onSimpleTrimAdjust: (start: number, end: number) => void,
+  onSimpleTrimReset: () => void,
   cutSegments: StateSegment[],
   setCurrentSegIndex: (a: number) => void,
   currentSegIndexSafe: number,
@@ -508,10 +508,27 @@ function Timeline({
               window.addEventListener('mouseup', onUp, { once: true });
             };
 
+            const trimDuration = simpleTrimEnd - simpleTrimStart;
+            const durationLabel = `${trimDuration.toFixed(1)}s`;
+
             return (
               <div style={{ position: 'absolute', top: 0, bottom: 0, left: `${leftPct}%`, width: `${widthPct}%`, pointerEvents: 'none', zIndex: 2, boxSizing: 'border-box' }}>
                 {/* Fill */}
                 <div style={{ position: 'absolute', inset: 0, background: 'rgba(0, 180, 220, 0.22)' }} />
+                {/* Duration label + reset button in center */}
+                <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 4, pointerEvents: 'auto' }}>
+                  <span style={{ fontSize: 11, fontWeight: 700, color: 'rgba(0,220,255,0.95)', background: 'rgba(0,0,0,0.55)', borderRadius: 4, padding: '1px 5px', pointerEvents: 'none', userSelect: 'none' }}>
+                    {durationLabel}
+                  </span>
+                  <button
+                    type="button"
+                    title="Re-center on playhead"
+                    onMouseDown={(e) => { e.stopPropagation(); onSimpleTrimReset(); }}
+                    style={{ fontSize: 10, color: 'rgba(0,220,255,0.7)', background: 'rgba(0,0,0,0.55)', border: '1px solid rgba(0,220,255,0.3)', borderRadius: 4, padding: '1px 5px', cursor: 'pointer', lineHeight: 1.4 }}
+                  >
+                    ⌖
+                  </button>
+                </div>
                 {/* Left handle */}
                 <div
                   onMouseDown={makeHandleMouseDown('start')}

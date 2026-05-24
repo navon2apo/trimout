@@ -377,17 +377,21 @@ function App() {
   const simpleTrimStart = simpleTrimPositionOverride?.start ?? Math.max(0, commandedTime - customTrimDuration / 2);
   const simpleTrimEnd = simpleTrimPositionOverride?.end ?? Math.min(simpleTrimStart + customTrimDuration, fileDurationNonZero);
 
-  // Seeking re-centers the trim window but KEEPS the custom width
   const seekAbsForTimeline = useCallback((time: number) => {
     seekAbs(time);
-    if (simpleMode) setSimpleTrimPositionOverride(null);
-  }, [seekAbs, simpleMode]);
+  }, [seekAbs]);
 
-  // Called from Timeline drag handles — saves both position AND new width
   const onSimpleTrimAdjust = useCallback((newStart: number, newEnd: number) => {
     setSimpleTrimPositionOverride({ start: newStart, end: newEnd });
-    setCustomTrimDuration(newEnd - newStart); // persist width for next seek
+    setCustomTrimDuration(newEnd - newStart);
   }, []);
+
+  // Re-center trim on current playhead (called from ⌖ button)
+  const onSimpleTrimReset = useCallback(() => {
+    const start = Math.max(0, commandedTime - customTrimDuration / 2);
+    const end = Math.min(start + customTrimDuration, fileDurationNonZero);
+    setSimpleTrimPositionOverride({ start, end });
+  }, [commandedTime, customTrimDuration, fileDurationNonZero]);
 
 
   const { getEdlFilePath, projectFileSavePath, getProjectFileSavePath } = useSegmentsAutoSave({ autoSaveProjectFile, storeProjectInWorkingDir, filePath, customOutDir, cutSegments });
@@ -2800,10 +2804,10 @@ function App() {
                   fileDurationNonZero={fileDurationNonZero}
                   exportedRanges={exportedRanges}
                   simpleMode={simpleMode}
-                  trimWindowDuration={trimWindowDuration}
                   simpleTrimStart={simpleTrimStart}
                   simpleTrimEnd={simpleTrimEnd}
                   onSimpleTrimAdjust={onSimpleTrimAdjust}
+                  onSimpleTrimReset={onSimpleTrimReset}
                   cutSegments={cutSegments}
                   setCurrentSegIndex={setCurrentSegIndex}
                   currentSegIndexSafe={currentSegIndexSafe}
