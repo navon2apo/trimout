@@ -8,7 +8,7 @@ import { useTranslation } from 'react-i18next';
 import { produce } from 'immer';
 import screenfull from 'screenfull';
 import type { IpcRendererEvent } from 'electron';
-import { IoMdMenu } from 'react-icons/io';
+// IoMdMenu removed — hamburger menu replaced by VEO-style QuickCut UI
 import fromPairs from 'lodash/fromPairs';
 import sum from 'lodash/sum';
 import invariant from 'tiny-invariant';
@@ -29,15 +29,18 @@ import type { UserSettingsContextType, AppContextType, SegColorsContextType } fr
 import { UserSettingsContext, SegColorsContext, AppContext } from './contexts';
 
 import NoFileLoaded from './NoFileLoaded';
-import AIToolsPanel from './components/AIToolsPanel';
+import LicenseGate from './components/LicenseGate';
 import TranscriptPanel from './components/TranscriptPanel';
-import ApiKeysPanel from './components/ApiKeysPanel';
 import ClipsPanel from './components/ClipsPanel';
+import ActionPickerModal, { type SoccerAction } from './components/ActionPickerModal';
+import LegalDialog from './components/LegalDialog';
+import { compressClip, QUALITY_PRESETS, type QualityPreset } from './util/qualityPresets';
+import FEATURES from './util/features';
 import MediaSourcePlayer from './MediaSourcePlayer';
 import TopMenu from './TopMenu';
 import LastCommands from './LastCommands';
 import StreamsSelector from './StreamsSelector';
-import SegmentList from './SegmentList';
+// SegmentList import removed — ClipsPanel in the AI sidebar is the primary clip browser
 import Settings from './components/Settings';
 import Timeline from './Timeline';
 import BottomBar from './BottomBar';
@@ -140,7 +143,43 @@ function emitEvent(appEvent: AppEvent) {
 function App() {
   const { t } = useTranslation();
 
+  // ─── License gate ────────────────────────────────────────────────────────
+  const [licenseChecked, setLicenseChecked] = useState(false);
+  const [licenseOk, setLicenseOk] = useState(false);
+  const [machineId, setMachineId] = useState('');
+
+  useEffect(() => {
+    (async () => {
+      const mid = await window.electron.getMachineFingerprint();
+      setMachineId(mid);
+      const result = await window.electron.checkLicense();
+      setLicenseOk(result.ok);
+      setLicenseChecked(true);
+    })();
+  }, []);
+
   // Per project state
+  // ─── QuickCut (✂️ button) ─────────────────────────────────────────────────
+  const [quickCutDuration, setQuickCutDuration] = useState(20); // default 20s forward
+  const [showTranscript, setShowTranscript] = useState(false);
+
+  // ─── Soccer player & action ────────────────────────────────────────────────
+  const [playerName, setPlayerName] = useState('');
+  // Pending clip range — set when ✂️ is pressed, consumed when action is picked
+  const pendingClipRef = useRef<{ start: number; end: number } | null>(null);
+  const [actionPickerOpen, setActionPickerOpen] = useState(false);
+
+  // ─── Export quality & package ──────────────────────────────────────────────
+  const [qualityPreset, setQualityPreset] = useState<QualityPreset>('lossless');
+  const [createExportPackage, setCreateExportPackage] = useState(false);
+
+  // ─── Legal dialog (Terms + Privacy) ────────────────────────────────────────
+  const [legalDialogOpen, setLegalDialogOpen] = useState(false);
+  // Ref used by handlePlayClip to stop playback at an exact time — avoids stale-closure bugs
+  const clipStopAtRef = useRef<number | null>(null);
+  // State mirror so the timeline overlay renders while a clip is playing
+  const [playingClipIndex, setPlayingClipIndex] = useState<number | null>(null);
+
   const [ffmpegCommandLog, setFfmpegCommandLog] = useState<FfmpegCommandLog>([]);
   const [rotation, setRotation] = useState(360);
   const [progress, setProgress] = useState<number>();
@@ -174,15 +213,20 @@ function App() {
   const lastOpenedPathRef = useRef<string>();
   // ClipsPanel (in the AI sidebar) is the primary clip browser, so SegmentList is
   // hidden by default. Users can still toggle it via the keyboard shortcut or button.
-  const [showRightBar, setShowRightBar] = useState(false);
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const [_showRightBar, setShowRightBar] = useState(false);
   const [lastCommandsVisible, setLastCommandsVisible] = useState(false);
   const [settingsVisible, setSettingsVisible] = useState(false);
   const [tunerVisible, setTunerVisible] = useState<TunerType>();
   const [keyboardShortcutsVisible, setKeyboardShortcutsVisible] = useState(false);
   const [mifiLink, setMifiLink] = useState<unknown>();
   const [alwaysConcatMultipleFiles, setAlwaysConcatMultipleFiles] = useState(false);
-  const [editingSegmentTagsSegmentIndex, setEditingSegmentTagsSegmentIndex] = useState<number>();
-  const [editingSegmentTags, setEditingSegmentTags] = useState<SegmentTags>();
+  // Legacy LosslessCut segment-tags editing — state is set via keyboard shortcut but no UI reads it.
+  // Kept to avoid breaking the keyBindings action; safe to remove if/when tags UI is dropped.
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const [_editingSegmentTagsSegmentIndex, setEditingSegmentTagsSegmentIndex] = useState<number>();
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const [_editingSegmentTags, setEditingSegmentTags] = useState<SegmentTags>();
   const [mediaSourceQuality, setMediaSourceQuality] = useState(0);
   const [encBitrate, setEncBitrate] = useState<number | undefined>();
   const [exportCount, setExportCount] = useState(0);
@@ -196,7 +240,7 @@ function App() {
 
   const allUserSettings = useUserSettingsRoot();
   const { captureFormat, keyframeCut, preserveMetadata, preserveMetadataOnMerge, preserveMovData, preserveChapters, movFastStart, avoidNegativeTs, autoMerge, timecodeFormat, invertCutSegments, autoExportExtraStreams, askBeforeClose, enableImportChapters, enableAskForFileOpenAction, playbackVolume, autoSaveProjectFile, wheelSensitivity, waveformHeight, invertTimelineScroll, language, ffmpegExperimental, hideNotifications, hideOsNotifications, autoLoadTimecode, autoDeleteMergedSegments, exportConfirmEnabled, segmentsToChapters, simpleMode, cutFileTemplate, cutMergedFileTemplate, mergedFileTemplate, keyboardSeekAccFactor, keyboardNormalSeekSpeed, keyboardSeekSpeed2, keyboardSeekSpeed3, treatInputFileModifiedTimeAsStart, treatOutputFileModifiedTimeAsStart, outFormatLocked, safeOutputFileName, enableAutoHtml5ify, segmentsToChaptersOnly, keyBindings, enableSmartCut, customFfPath, storeProjectInWorkingDir, enableOverwriteOutput, mouseWheelZoomModifierKey, mouseWheelFrameSeekModifierKey, mouseWheelKeyframeSeekModifierKey, captureFrameMethod, captureFrameQuality, captureFrameFileNameFormat, enableNativeHevc, cleanupChoices, darkMode, preferStrongColors, outputFileNameMinZeroPadding, cutFromAdjustmentFrames, cutToAdjustmentFrames, waveformMode: waveformModePreference, thumbnailsEnabled, keyframesEnabled, reducedMotion, ffmpegHwaccel } = allUserSettings.settings;
-  const { setCaptureFormat, setCustomOutDir, setKeyframeCut, setPlaybackVolume, setExportConfirmEnabled, setSimpleMode, setOutFormatLocked, setSafeOutputFileName, setKeyBindings, resetKeyBindings, setStoreProjectInWorkingDir, setCleanupChoices, toggleDarkMode, setWaveformMode, setThumbnailsEnabled, setKeyframesEnabled, prefersReducedMotion, customOutDir } = allUserSettings;
+  const { setCaptureFormat, setCustomOutDir, setKeyframeCut, setPlaybackVolume, setExportConfirmEnabled, setSimpleMode, setOutFormatLocked, setSafeOutputFileName, setKeyBindings, resetKeyBindings, setStoreProjectInWorkingDir, setCleanupChoices, toggleDarkMode, setWaveformMode, setThumbnailsEnabled, setKeyframesEnabled, prefersReducedMotion, customOutDir, setAutoMerge, setAutoDeleteMergedSegments } = allUserSettings;
 
   const [showAdvancedSettings, setShowAdvancedSettings] = useState(!simpleMode);
 
@@ -353,7 +397,7 @@ function App() {
   }, [isFileOpened]);
 
   const {
-    cutSegments, cutSegmentsHistory, createSegmentsFromKeyframes, shuffleSegments, detectBlackScenes, detectSilentScenes, detectSceneChanges, removeSegment, invertAllSegments, fillSegmentsGaps, combineOverlappingSegments, combineSelectedSegments, shiftAllSegmentTimes, alignSegmentTimesToKeyframes, updateSegOrder, updateSegOrders, reorderSegsByStartTime, addSegment, setCutStart, setCutEnd, labelSegment, splitCurrentSegment, focusSegmentAtCursor, selectSegmentsAtCursor, createNumSegments, createFixedDurationSegments, createFixedByteSizedSegments, createRandomSegments, getSegEstimatedSize, haveInvalidSegs, currentSegIndexSafe, currentCutSeg, inverseCutSegments, clearSegments, clearSegColorCounter, loadCutSegments, setCutTime, setCurrentSegIndex, labelSelectedSegments, deselectAllSegments, selectAllSegments, selectOnlyCurrentSegment, toggleCurrentSegmentSelected, invertSelectedSegments, removeSelectedSegments, selectSegmentsByLabel, selectSegmentsByExpr, selectAllMarkers, mutateSegmentsByExpr, toggleSegmentSelected, selectOnlySegment, selectedSegments, segmentsOrInverse, segmentsToExport, duplicateCurrentSegment, duplicateSegment, updateSegAtIndex, findSegmentsAtCursor, maybeCreateFullLengthSegment, currentCutSegOrWholeTimeline, segColorCounter,
+    cutSegments, cutSegmentsHistory, createSegmentsFromKeyframes, shuffleSegments, detectBlackScenes, detectSilentScenes, detectSceneChanges, removeSegment, invertAllSegments, fillSegmentsGaps, combineOverlappingSegments, combineSelectedSegments, shiftAllSegmentTimes, alignSegmentTimesToKeyframes, reorderSegsByStartTime, addSegment, addClip, setCutStart, setCutEnd, labelSegment, splitCurrentSegment, focusSegmentAtCursor, selectSegmentsAtCursor, createNumSegments, createFixedDurationSegments, createFixedByteSizedSegments, createRandomSegments, haveInvalidSegs, currentSegIndexSafe, currentCutSeg, inverseCutSegments, clearSegments, clearSegColorCounter, loadCutSegments, setCutTime, setCurrentSegIndex, labelSelectedSegments, deselectAllSegments, selectAllSegments, selectOnlyCurrentSegment, toggleCurrentSegmentSelected, invertSelectedSegments, removeSelectedSegments, selectSegmentsByLabel, selectSegmentsByExpr, selectAllMarkers, mutateSegmentsByExpr, selectedSegments, segmentsOrInverse, segmentsToExport, duplicateCurrentSegment, updateSegAtIndex, findSegmentsAtCursor, maybeCreateFullLengthSegment, currentCutSegOrWholeTimeline, segColorCounter,
   } = useSegments({ filePath, workingRef, setWorking, setProgress, videoStream: activeVideoStream, fileDuration, getRelevantTime, maxLabelLength, checkFileOpened, invertCutSegments, segmentsToChaptersOnly, timecodePlaceholder, parseTimecode, appendFfmpegCommandLog, fileDurationNonZero, mainFileMeta: mainFileMeta?.ffprobeMeta, seekAbs, activeVideoStreamIndex, activeAudioStreamIndexes, handleError, showGenericDialog, simpleMode, ffmpegHwaccel });
 
   // In simple mode, marking start also auto-sets end to start + 20s (clip window)
@@ -364,6 +408,32 @@ function App() {
       setCutTime('end', startTime + 20);
     }
   }, [getRelevantTime, setCutStart, setCutTime, simpleMode]);
+
+  // ✂️ QuickCut — saves the clip range then opens the action picker modal
+  const handleQuickCut = useCallback(() => {
+    if (fileDurationNonZero == null) return;
+    pendingClipRef.current = { start: commandedTime, end: Math.min(commandedTime + quickCutDuration, fileDurationNonZero) };
+    setActionPickerOpen(true);
+  }, [commandedTime, quickCutDuration, fileDurationNonZero]);
+
+  // Called when user picks an action in the modal (or cancels)
+  const handleActionPicked = useCallback((action: SoccerAction | null) => {
+    setActionPickerOpen(false);
+    const range = pendingClipRef.current;
+    pendingClipRef.current = null;
+    if (action == null || range == null) return;
+
+    // Build clip index for auto-naming (total clips so far + 1)
+    const clipNumber = cutSegments.filter((s) => !s.initial).length + 1;
+    const nameBase = [playerName.trim(), action.label, clipNumber].filter(Boolean).join(' ');
+
+    addClip(range.start, range.end, {
+      name: nameBase,
+      actionType: action.label,
+      playerName: playerName.trim() || undefined,
+      isUncertain: action.isUncertain ?? false,
+    });
+  }, [addClip, cutSegments, playerName]);
 
   // Trim window duration in seconds for simple mode
   const trimWindowDuration = 15;
@@ -379,7 +449,9 @@ function App() {
 
   const seekAbsForTimeline = useCallback((time: number) => {
     seekAbs(time);
-  }, [seekAbs]);
+    // Re-center trim window when user clicks on timeline
+    if (simpleMode) setSimpleTrimPositionOverride(null);
+  }, [seekAbs, simpleMode]);
 
   const onSimpleTrimAdjust = useCallback((newStart: number, newEnd: number) => {
     setSimpleTrimPositionOverride({ start: newStart, end: newEnd });
@@ -793,6 +865,14 @@ function App() {
     const { currentTime } = e.currentTarget;
     if (playerTime === currentTime) return;
     setPlayerTime(currentTime);
+
+    // QuickCut clip playback — stop exactly at the clip end (ref-based, no stale closure)
+    if (clipStopAtRef.current != null && currentTime >= clipStopAtRef.current) {
+      clipStopAtRef.current = null;
+      setPlayingClipIndex(null);
+      pause();
+      return;
+    }
 
     const segmentsAtCursorIndexes = findSegmentsAtCursor(commandedTimeRef.current);
     const firstSegmentAtCursorIndex = segmentsAtCursorIndexes[0];
@@ -1250,6 +1330,115 @@ function App() {
       setExportCount((c) => c + 1);
       setCurrentFileExportCount((c) => c + 1);
 
+      // ── Post-export pipeline: H.264 compression + export package + metadata.json ──
+      try {
+        const fsPromises = window.require('fs/promises') as {
+          writeFile: (p: string, d: string) => Promise<void>;
+          mkdir: (p: string, opts?: { recursive?: boolean }) => Promise<void>;
+          copyFile: (src: string, dst: string) => Promise<void>;
+          rename: (src: string, dst: string) => Promise<void>;
+        };
+        const { writeFile: fsWriteFile, mkdir: fsMkdir, copyFile: fsCopyFile, rename: fsRename } = fsPromises;
+        const { extname: pathExtname } = window.require('path') as { extname: (p: string) => string };
+        // pathJoin, basename, dirname are already imported at module scope (line 128)
+
+        const exportRootDir = dirname(revealPath);
+
+        // 1. Optional H.264 compression — replace each lossless file with the compressed version
+        if (qualityPreset !== 'lossless') {
+          setWorking({ text: i18n.t('Compressing') });
+          const allFiles = [
+            ...outFiles.map((f) => f.path),
+            ...(mergedOutFilePath != null ? [mergedOutFilePath] : []),
+          ];
+          for (const losslessPath of allFiles) {
+            const ext = pathExtname(losslessPath) || '.mp4';
+            const tmpPath = `${losslessPath}.compressing${ext}`;
+            try {
+              await compressClip({ inPath: losslessPath, outPath: tmpPath, preset: qualityPreset, appendCommandLog: appendFfmpegCommandLog });
+              // Swap: compressed replaces lossless
+              await fsRename(tmpPath, losslessPath);
+            } catch (compressErr) {
+              console.warn('Compression failed for', losslessPath, compressErr);
+              warnings.add(`${t('Compression failed')}: ${basename(losslessPath)}`);
+            }
+          }
+        }
+
+        // 2. Build the metadata object once — reused by metadata.json and project.json
+        const metadata = {
+          exportedAt: new Date().toISOString(),
+          playerName: playerName.trim() || null,
+          sourceVideo: filePath,
+          qualityPreset,
+          clips: outFiles.map((f, idx) => {
+            const seg = cutSegments[idx];
+            return {
+              clipIndex: idx + 1,
+              fileName: basename(f.path),
+              playerName: seg?.playerName ?? (playerName.trim() || null),
+              actionType: seg?.actionType ?? null,
+              startTime: seg?.start ?? null,
+              endTime: seg?.end ?? null,
+              duration: seg?.end != null && seg?.start != null ? seg.end - seg.start : null,
+              isFavorite: seg?.isFavorite ?? false,
+              isUncertain: seg?.isUncertain ?? false,
+              exportStatus: 'exported',
+            };
+          }),
+          combinedClip: mergedOutFilePath != null ? basename(mergedOutFilePath) : null,
+        };
+
+        // 3. Optional ExportPackage folder — clips/, combined/, metadata.json, project.json
+        if (createExportPackage) {
+          const pkgName = playerName.trim()
+            ? `ExportPackage_${playerName.trim()}_${Date.now()}`
+            : `ExportPackage_${Date.now()}`;
+          const pkgRoot = pathJoin(exportRootDir, pkgName);
+          const pkgClips = pathJoin(pkgRoot, 'clips');
+          const pkgCombined = pathJoin(pkgRoot, 'combined');
+          await fsMkdir(pkgClips, { recursive: true });
+          if (mergedOutFilePath != null) await fsMkdir(pkgCombined, { recursive: true });
+
+          // Copy individual clips
+          for (const f of outFiles) {
+            const dest = pathJoin(pkgClips, basename(f.path));
+            await fsCopyFile(f.path, dest);
+          }
+          // Copy combined clip
+          if (mergedOutFilePath != null) {
+            const dest = pathJoin(pkgCombined, basename(mergedOutFilePath));
+            await fsCopyFile(mergedOutFilePath, dest);
+          }
+          // Write metadata.json + project.json
+          await fsWriteFile(pathJoin(pkgRoot, 'metadata.json'), JSON.stringify(metadata, null, 2));
+          await fsWriteFile(pathJoin(pkgRoot, 'project.json'), JSON.stringify({
+            version: 1,
+            playerName: playerName.trim() || null,
+            sourceVideo: filePath,
+            quickCutDuration,
+            qualityPreset,
+            createdAt: new Date().toISOString(),
+            segments: cutSegments.map((s) => ({
+              name: s.name,
+              start: s.start,
+              end: s.end ?? null,
+              actionType: s.actionType ?? null,
+              playerName: s.playerName ?? null,
+              isFavorite: s.isFavorite ?? false,
+              isUncertain: s.isUncertain ?? false,
+            })),
+          }, null, 2));
+        } else {
+          // Just drop metadata.json next to the exported clips
+          await fsWriteFile(pathJoin(exportRootDir, 'metadata.json'), JSON.stringify(metadata, null, 2));
+        }
+      } catch (metaErr) {
+        console.warn('Failed to finalize export package / metadata', metaErr);
+      } finally {
+        setWorking(undefined);
+      }
+
       emitEvent({ eventName: 'export-complete', paths: exportedPaths });
     } catch (err) {
       emitEvent({ eventName: 'export-complete' });
@@ -1287,7 +1476,7 @@ function App() {
       setWorking(undefined);
       setProgress(undefined);
     }
-  }, [filePath, numStreamsToCopy, haveInvalidSegs, workingRef, setWorking, segmentsToChaptersOnly, cutFileTemplateOrDefault, generateCutFileNames, cutMultiple, outputDir, customOutDir, fileFormat, fileDuration, isRotationSet, effectiveRotation, copyFileStreams, allFilesMeta, keyframeCut, segmentsToExport, shortestFlag, ffmpegExperimental, preserveMetadata, preserveMetadataOnMerge, preserveMovData, preserveChapters, movFastStart, avoidNegativeTs, customTagsByFile, paramsByStreamId, detectedFps, willMerge, enableOverwriteOutput, exportConfirmEnabled, mainFileFormat, mainStreams, exportExtraStreams, areWeCutting, simpleMode, prefersReducedMotion, cleanupChoices, hideAllNotifications, segmentsOrInverse.selected, t, cutMergedFileTemplateOrDefault, segmentsToChapters, invertCutSegments, generateCutMergedFileNames, concatCutSegments, autoDeleteMergedSegments, tryDeleteFiles, nonCopiedExtraStreams, extractStreams, askForCleanupChoices, cleanupFiles, showOsNotification, openCutFinishedDialog, handleExportFailed, setExportedRanges]);
+  }, [filePath, numStreamsToCopy, haveInvalidSegs, workingRef, setWorking, segmentsToChaptersOnly, cutFileTemplateOrDefault, generateCutFileNames, cutMultiple, outputDir, customOutDir, fileFormat, fileDuration, isRotationSet, effectiveRotation, copyFileStreams, allFilesMeta, keyframeCut, segmentsToExport, shortestFlag, ffmpegExperimental, preserveMetadata, preserveMetadataOnMerge, preserveMovData, preserveChapters, movFastStart, avoidNegativeTs, customTagsByFile, paramsByStreamId, detectedFps, willMerge, enableOverwriteOutput, exportConfirmEnabled, mainFileFormat, mainStreams, exportExtraStreams, areWeCutting, simpleMode, prefersReducedMotion, cleanupChoices, hideAllNotifications, segmentsOrInverse.selected, t, cutMergedFileTemplateOrDefault, segmentsToChapters, invertCutSegments, generateCutMergedFileNames, concatCutSegments, autoDeleteMergedSegments, tryDeleteFiles, nonCopiedExtraStreams, extractStreams, askForCleanupChoices, cleanupFiles, showOsNotification, openCutFinishedDialog, handleExportFailed, setExportedRanges, qualityPreset, createExportPackage, playerName, cutSegments, quickCutDuration, appendFfmpegCommandLog]);
 
   const onExportPress = useCallback(async () => {
     if (!filePath) return;
@@ -1318,19 +1507,39 @@ function App() {
   const userOpenFilesRef = useRef<((paths: string[]) => void) | null>(null);
 
   // ---- AI analysis → replace segments ----
-  const handleApplyAISegments = useCallback((segs: { start: number; end: number }[], label: string) => {
-    loadCutSegments({
-      segments: segs.map((s, i) => ({ start: s.start, end: s.end, name: `${label} ${i + 1}` })),
-      append: false,
-    });
-  }, [loadCutSegments]);
-
   // Click a segment in the list → select it AND jump the playhead to its start
   const handleSegClick = useCallback((index: number) => {
     setCurrentSegIndex(index);
     const seg = cutSegments[index];
     if (seg?.start != null) seekAbs(seg.start);
   }, [setCurrentSegIndex, cutSegments, seekAbs]);
+
+  // Toggle isFavorite on a clip
+  const handleToggleFavorite = useCallback((index: number) => {
+    const seg = cutSegments[index];
+    if (seg == null) return;
+    updateSegAtIndex(index, { isFavorite: !seg.isFavorite });
+  }, [cutSegments, updateSegAtIndex]);
+
+  // Play a single clip from start to end then stop.
+  // Uses clipStopAtRef (a plain ref) to stop at clip.end — avoids the stale-selectedSegments bug.
+  const handlePlayClip = useCallback((index: number) => {
+    const seg = cutSegments[index];
+    if (seg == null || seg.end == null) return;
+    setCurrentSegIndex(index);
+    seekAbs(seg.start);
+    clipStopAtRef.current = seg.end;
+    setPlayingClipIndex(index);
+    setTimeout(() => { play(); }, 50);
+  }, [cutSegments, setCurrentSegIndex, seekAbs, play]);
+
+  // Clear the timeline overlay whenever playback stops (manual pause, seek, etc.)
+  useEffect(() => {
+    if (!playing) {
+      setPlayingClipIndex(null);
+      clipStopAtRef.current = null;
+    }
+  }, [playing]);
 
   const captureSnapshot = useCallback(async () => {
     if (!filePath || workingRef.current) return;
@@ -1462,6 +1671,10 @@ function App() {
 
     async function tryFindAndLoadProjectFile({ chapters, cod }: { chapters: FFprobeChapter[], cod: string | undefined }) {
       try {
+        // In QuickCut / simpleMode — always start with a clean slate.
+        // Don't auto-load saved project files or chapter segments.
+        if (simpleMode) return;
+
         // First try to open from from working dir
         if (await tryOpenProjectPath(getEdlFilePath(fp, cod))) return;
 
@@ -1606,7 +1819,7 @@ function App() {
       resetState();
       throw err;
     }
-  }, [storeProjectInWorkingDir, setWorking, loadEdlFile, getEdlFilePath, enableImportChapters, ensureAccessToSourceDir, loadCutSegments, autoLoadTimecode, enableNativeHevc, ensureWritableOutDir, customOutDir, resetState, clearSegColorCounter, setCopyStreamIdsForPath, setDetectedFileFormat, outFormatLocked, setUsingDummyVideo, setPreviewFilePath, html5ifyAndLoadWithPreferences, setFileFormat, showNotification, showPreviewFileLoadedMessage, showNotNativelySupportedMessage]);
+  }, [simpleMode, storeProjectInWorkingDir, setWorking, loadEdlFile, getEdlFilePath, enableImportChapters, ensureAccessToSourceDir, loadCutSegments, autoLoadTimecode, enableNativeHevc, ensureWritableOutDir, customOutDir, resetState, clearSegColorCounter, setCopyStreamIdsForPath, setDetectedFileFormat, outFormatLocked, setUsingDummyVideo, setPreviewFilePath, html5ifyAndLoadWithPreferences, setFileFormat, showNotification, showPreviewFileLoadedMessage, showNotNativelySupportedMessage]);
 
   const toggleLastCommands = useCallback(() => setLastCommandsVisible((val) => !val), []);
   const toggleSettings = useCallback(() => setSettingsVisible((val) => !val), []);
@@ -2550,6 +2763,19 @@ function App() {
 
   const rootStyle = useMemo<CSSProperties>(() => ({ ...baseColorStyle, display: 'flex', flexDirection: 'column', height: '100vh', transition: darkModeTransition }), [baseColorStyle]);
 
+  // Show nothing while checking license (avoids flash of main UI)
+  if (!licenseChecked) return null;
+
+  // Show gate if not activated
+  if (!licenseOk) {
+    return (
+      <LicenseGate
+        machineId={machineId}
+        onActivated={() => setLicenseOk(true)}
+      />
+    );
+  }
+
   return (
     <MotionConfig reducedMotion={reducedMotion}>
       <AppContext.Provider value={appContext}>
@@ -2606,10 +2832,18 @@ function App() {
                   {/* yt-dlp download progress overlay */}
                   {ytdlpDownloading && (
                     <div style={{
-                      position: 'absolute', inset: 0, zIndex: 20, display: 'flex', flexDirection: 'column',
-                      alignItems: 'center', justifyContent: 'center', gap: 18,
-                      background: 'rgba(10,15,25,0.85)', backdropFilter: 'blur(8px)',
-                    }}>
+                      position: 'absolute',
+                      inset: 0,
+                      zIndex: 20,
+                      display: 'flex',
+                      flexDirection: 'column',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: 18,
+                      background: 'rgba(10,15,25,0.85)',
+                      backdropFilter: 'blur(8px)',
+                    }}
+                    >
                       <div style={{ fontSize: 36 }}>⬇️</div>
                       <div style={{ fontSize: 15, fontWeight: 700, color: '#f1f5f9' }}>Downloading video…</div>
                       <div style={{ width: 260, height: 6, background: 'rgba(255,255,255,0.1)', borderRadius: 99 }}>
@@ -2667,72 +2901,141 @@ function App() {
                   )}
 
                   {isFileOpened && (
-                    <div className="no-user-select" style={{ position: 'absolute', right: 0, bottom: 0, marginBottom: 10, display: 'flex', alignItems: 'flex-end' }}>
-                      <VolumeControl playbackVolume={playbackVolume} setPlaybackVolume={setPlaybackVolume} onToggleMutedClick={toggleMuted} />
+                    <>
+                      {/* Volume + stream selectors — bottom right */}
+                      <div className="no-user-select" style={{ position: 'absolute', right: 0, bottom: 0, marginBottom: 10, display: 'flex', alignItems: 'flex-end' }}>
+                        <VolumeControl playbackVolume={playbackVolume} setPlaybackVolume={setPlaybackVolume} onToggleMutedClick={toggleMuted} />
+                        {shouldShowPlaybackStreamSelector && (
+                          <PlaybackStreamSelector subtitleStreams={subtitleStreams} videoStreams={videoStreams} audioStreams={audioStreams} activeSubtitleStreamIndex={activeSubtitleStreamIndex} activeVideoStreamIndex={activeVideoStreamIndex} activeAudioStreamIndexes={activeAudioStreamIndexes} onActiveSubtitleChange={onActiveSubtitleChange} onActiveVideoStreamChange={onActiveVideoStreamChange} onActiveAudioStreamsChange={onActiveAudioStreamsChange} />
+                        )}
+                      </div>
 
-                      {shouldShowPlaybackStreamSelector && (
-                        <PlaybackStreamSelector subtitleStreams={subtitleStreams} videoStreams={videoStreams} audioStreams={audioStreams} activeSubtitleStreamIndex={activeSubtitleStreamIndex} activeVideoStreamIndex={activeVideoStreamIndex} activeAudioStreamIndexes={activeAudioStreamIndexes} onActiveSubtitleChange={onActiveSubtitleChange} onActiveVideoStreamChange={onActiveVideoStreamChange} onActiveAudioStreamsChange={onActiveAudioStreamsChange} />
-                      )}
+                      {/* ✂️ QuickCut — bottom center */}
+                      <div
+                        className="no-user-select"
+                        style={{
+                          position: 'absolute',
+                          bottom: 12,
+                          left: '50%',
+                          transform: 'translateX(-50%)',
+                          display: 'flex',
+                          flexDirection: 'column',
+                          alignItems: 'center',
+                          gap: 6,
+                          zIndex: 5,
+                        }}
+                      >
+                        {/* Duration pills — with background panel */}
+                        <div style={{
+                          display: 'flex',
+                          gap: 4,
+                          alignItems: 'center',
+                          background: 'rgba(0,0,0,0.62)',
+                          border: '1px solid rgba(255,255,255,0.1)',
+                          borderRadius: 24,
+                          padding: '4px 8px',
+                          backdropFilter: 'blur(12px)',
+                          boxShadow: '0 2px 12px rgba(0,0,0,0.4)',
+                        }}
+                        >
+                          {[10, 15, 20, 30].map((d) => (
+                            <button
+                              key={d}
+                              type="button"
+                              onClick={() => setQuickCutDuration(d)}
+                              style={{
+                                background: quickCutDuration === d ? 'rgba(20,184,166,0.9)' : 'transparent',
+                                border: `1px solid ${quickCutDuration === d ? 'rgba(20,184,166,1)' : 'rgba(255,255,255,0.15)'}`,
+                                borderRadius: 20,
+                                color: quickCutDuration === d ? '#fff' : 'rgba(255,255,255,0.6)',
+                                fontSize: 11,
+                                fontWeight: 600,
+                                padding: '2px 9px',
+                                cursor: 'pointer',
+                                transition: 'background 0.15s, color 0.15s',
+                              }}
+                            >
+                              {d}s
+                            </button>
+                          ))}
+                          {/* Custom input */}
+                          {![10, 15, 20, 30].includes(quickCutDuration) && (
+                            <span style={{
+                              background: 'rgba(20,184,166,0.9)',
+                              border: '1px solid rgba(20,184,166,1)',
+                              borderRadius: 20,
+                              color: '#fff',
+                              fontSize: 11,
+                              fontWeight: 600,
+                              padding: '2px 9px',
+                            }}
+                            >
+                              {quickCutDuration}s
+                            </span>
+                          )}
+                          <input
+                            type="number"
+                            min={1}
+                            max={300}
+                            value={quickCutDuration}
+                            onChange={(e) => { const v = parseInt(e.target.value, 10); if (v > 0 && v <= 300) setQuickCutDuration(v); }}
+                            title="Custom duration (seconds)"
+                            style={{
+                              width: 42,
+                              background: 'transparent',
+                              border: '1px solid rgba(255,255,255,0.15)',
+                              borderRadius: 20,
+                              color: 'rgba(255,255,255,0.7)',
+                              fontSize: 11,
+                              textAlign: 'center',
+                              padding: '2px 6px',
+                              outline: 'none',
+                            }}
+                          />
+                        </div>
 
-                      {!showRightBar && (
-                        <IoMdMenu
-                          title={t('Show sidebar')}
-                          size={30}
-                          role="button"
-                          style={{ marginRight: 10, color: 'var(--gray-12)', opacity: 0.7 }}
-                          onClick={toggleSegmentsList}
-                        />
-                      )}
-                    </div>
+                        {/* Main ✂️ button */}
+                        <button
+                          type="button"
+                          onClick={handleQuickCut}
+                          title={`Add ${quickCutDuration}s clip from here`}
+                          style={{
+                            background: 'linear-gradient(135deg, rgba(20,184,166,0.9), rgba(14,165,233,0.9))',
+                            border: '2px solid rgba(255,255,255,0.25)',
+                            borderRadius: '50%',
+                            width: 52,
+                            height: 52,
+                            fontSize: 22,
+                            cursor: 'pointer',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            boxShadow: '0 4px 20px rgba(20,184,166,0.4)',
+                            backdropFilter: 'blur(6px)',
+                            transition: 'transform 0.1s, box-shadow 0.1s',
+                          }}
+                          onMouseEnter={(e) => { e.currentTarget.style.transform = 'scale(1.1)'; }}
+                          onMouseLeave={(e) => { e.currentTarget.style.transform = 'scale(1)'; }}
+                        >
+                          ✂️
+                        </button>
+                        <span style={{
+                          fontSize: 10,
+                          color: 'rgba(255,255,255,0.6)',
+                          background: 'rgba(0,0,0,0.5)',
+                          borderRadius: 6,
+                          padding: '1px 6px',
+                          backdropFilter: 'blur(4px)',
+                        }}
+                        >
+                          +{quickCutDuration}s clip
+                        </span>
+                      </div>
+                    </>
                   )}
                 </div>
 
-                <AnimatePresence>
-                  {showRightBar && isFileOpened && filePath != null && (
-                    <SegmentList
-                      width={rightBarWidth}
-                      currentSegIndex={currentSegIndexSafe}
-                      cutSegments={cutSegments}
-                      inverseCutSegments={inverseCutSegments}
-                      getFrameCount={getFrameCount}
-                      formatTimecode={formatTimecode}
-                      onSegClick={handleSegClick}
-                      updateSegOrder={updateSegOrder}
-                      updateSegOrders={updateSegOrders}
-                      onLabelSegment={labelSegment}
-                      currentCutSeg={currentCutSeg}
-                      firstSegmentAtCursor={firstSegmentAtCursor}
-                      addSegment={addSegment}
-                      onDuplicateSegmentClick={duplicateSegment}
-                      removeSegment={removeSegment}
-                      onRemoveSelected={removeSelectedSegments}
-                      toggleSegmentsList={toggleSegmentsList}
-                      splitCurrentSegment={splitCurrentSegment}
-                      selectedSegments={segmentsOrInverse.selected}
-                      onSelectSingleSegment={selectOnlySegment}
-                      onToggleSegmentSelected={toggleSegmentSelected}
-                      onDeselectAllSegments={deselectAllSegments}
-                      onSelectAllSegments={selectAllSegments}
-                      onInvertSelectedSegments={invertSelectedSegments}
-                      onExtractSegmentsFramesAsImages={extractSegmentsFramesAsImages}
-                      onExtractSelectedSegmentsFramesAsImages={extractSelectedSegmentsFramesAsImages}
-                      jumpSegStart={jumpSegStart}
-                      jumpSegEnd={jumpSegEnd}
-                      onSelectSegmentsByLabel={selectSegmentsByLabel}
-                      onSelectSegmentsByExpr={selectSegmentsByExpr}
-                      onSelectAllMarkers={selectAllMarkers}
-                      onMutateSegmentsByExpr={mutateSegmentsByExpr}
-                      onLabelSelectedSegments={labelSelectedSegments}
-                      updateSegAtIndex={updateSegAtIndex}
-                      editingSegmentTags={editingSegmentTags}
-                      editingSegmentTagsSegmentIndex={editingSegmentTagsSegmentIndex}
-                      setEditingSegmentTags={setEditingSegmentTags}
-                      setEditingSegmentTagsSegmentIndex={setEditingSegmentTagsSegmentIndex}
-                      onEditSegmentTags={onEditSegmentTags}
-                      getSegEstimatedSize={getSegEstimatedSize}
-                    />
-                  )}
-                </AnimatePresence>
+                {/* SegmentList panel hidden — clips shown in right AI column (ClipsPanel) */}
 
                 {/* Right AI column — Clips + AI Tools + Transcript + API Keys */}
                 <div style={{
@@ -2744,42 +3047,231 @@ function App() {
                   flexDirection: 'column',
                   borderLeft: '1px solid rgba(255,255,255,0.06)',
                   background: 'rgba(0,0,0,0.15)',
-                }}>
-                  {/* Clips browser — visual segment list with seek-on-click */}
+                }}
+                >
+                  {/* ── Player name — pinned at very top ── */}
+                  <div style={{ padding: '10px 14px 8px', borderBottom: '1px solid rgba(255,255,255,0.07)', flexShrink: 0 }}>
+                    <div style={{ fontSize: 10, color: 'rgba(148,163,184,0.55)', letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 5 }}>
+                      ⚽ שם שחקן
+                    </div>
+                    <input
+                      type="text"
+                      value={playerName}
+                      onChange={(e) => setPlayerName(e.target.value)}
+                      placeholder="למשל: לביא"
+                      maxLength={30}
+                      style={{
+                        width: '100%',
+                        boxSizing: 'border-box',
+                        background: 'rgba(255,255,255,0.06)',
+                        border: `1px solid ${playerName ? 'rgba(20,184,166,0.4)' : 'rgba(255,255,255,0.12)'}`,
+                        borderRadius: 8,
+                        color: '#f1f5f9',
+                        fontSize: 13,
+                        fontWeight: 600,
+                        padding: '6px 10px',
+                        outline: 'none',
+                        direction: 'rtl',
+                        transition: 'border-color 0.15s',
+                      }}
+                    />
+                    {!playerName && isFileOpened && (
+                      <div style={{ fontSize: 10, color: 'rgba(251,191,36,0.7)', marginTop: 4, direction: 'rtl' }}>
+                        כדאי להוסיף שם שחקן לסדר בקבצים
+                      </div>
+                    )}
+                  </div>
+
+                  {/* ── Transcript toggle — gated by FEATURES.transcript flag ── */}
+                  {FEATURES.transcript && (
+                  <div style={{ borderBottom: '1px solid rgba(255,255,255,0.07)', flexShrink: 0 }}>
+                    <button
+                      type="button"
+                      onClick={() => setShowTranscript((v) => !v)}
+                      style={{
+                        width: '100%',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'space-between',
+                        padding: '9px 14px',
+                        background: 'none',
+                        border: 'none',
+                        cursor: 'pointer',
+                        color: showTranscript ? '#38bdf8' : 'rgba(148,163,184,0.7)',
+                        fontSize: 11.5,
+                        fontWeight: 700,
+                        letterSpacing: '0.05em',
+                        transition: 'color 0.15s',
+                      }}
+                    >
+                      <span>📝 Transcript</span>
+                      <span style={{ fontSize: 10, opacity: 0.6 }}>{showTranscript ? '▲' : '▼'}</span>
+                    </button>
+
+                    {showTranscript && isFileOpened && filePath != null && (
+                      <TranscriptPanel
+                        filePath={filePath}
+                        onSeek={seekAbs}
+                        onApplySegments={(segs) => loadCutSegments({ segments: segs, append: false })}
+                      />
+                    )}
+                  </div>
+                  )}
+
+                  {/* ── Clips list — scrollable, below transcript toggle ── */}
                   {isFileOpened && filePath != null && (
-                    <>
+                    <div style={{ flex: 1, overflowY: 'auto', minHeight: 0 }}>
                       <ClipsPanel
                         segments={cutSegments}
                         currentSegIndex={currentSegIndexSafe}
-                        formatTimecode={formatTimecode}
+                        formatTimecode={(s: number) => formatTimecode({ seconds: s })}
                         onSegClick={handleSegClick}
+                        onPlayClip={handlePlayClip}
                         onAddSegment={addSegment}
                         onDeleteSegment={removeSegment}
+                        onToggleFavorite={handleToggleFavorite}
                       />
-                      <div style={{ height: 1, background: 'rgba(255,255,255,0.06)', margin: '4px 0' }} />
-                    </>
+                    </div>
                   )}
 
-                  {/* AI Tools panel */}
-                  {isFileOpened && filePath != null && (
-                    <AIToolsPanel
-                      filePath={filePath}
-                      fileDuration={fileDurationNonZero}
-                      onApplySegments={handleApplyAISegments}
-                    />
+                  {/* ── Export quality + package — pinned at bottom ── */}
+                  {isFileOpened && (
+                    <div style={{
+                      borderTop: '1px solid rgba(255,255,255,0.07)',
+                      padding: '10px 14px 12px',
+                      flexShrink: 0,
+                      background: 'rgba(0,0,0,0.18)',
+                      direction: 'rtl',
+                    }}
+                    >
+                      <div style={{ fontSize: 10, color: 'rgba(148,163,184,0.55)', letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 6 }}>
+                        ⚙️ ייצוא
+                      </div>
+
+                      {/* Export mode selector — separate / merged / both */}
+                      <div style={{ fontSize: 10, color: 'rgba(148,163,184,0.7)', marginBottom: 3 }}>מצב</div>
+                      <div style={{ display: 'flex', gap: 4, marginBottom: 8 }}>
+                        {([
+                          { v: 'separate' as const, label: 'נפרדים', title: 'כל קליפ כקובץ נפרד' },
+                          { v: 'merge' as const, label: 'מחובר', title: 'קליפ אחד שמחבר את הכל' },
+                          { v: 'both' as const, label: 'שניהם', title: 'גם קליפים נפרדים וגם קליפ מחובר' },
+                        ]).map(({ v, label, title }) => {
+                          const active = (v === 'separate' && !autoMerge)
+                            || (v === 'merge' && autoMerge && autoDeleteMergedSegments)
+                            || (v === 'both' && autoMerge && !autoDeleteMergedSegments);
+                          return (
+                            <button
+                              key={v}
+                              type="button"
+                              title={title}
+                              onClick={() => {
+                                if (v === 'separate') { setAutoMerge(false); setAutoDeleteMergedSegments(false); } else if (v === 'merge') { setAutoMerge(true); setAutoDeleteMergedSegments(true); } else { setAutoMerge(true); setAutoDeleteMergedSegments(false); }
+                              }}
+                              style={{
+                                flex: 1,
+                                background: active ? 'rgba(99,102,241,0.18)' : 'rgba(255,255,255,0.04)',
+                                border: `1px solid ${active ? 'rgba(99,102,241,0.5)' : 'rgba(255,255,255,0.08)'}`,
+                                borderRadius: 6,
+                                color: active ? 'rgba(199,210,254,0.95)' : 'rgba(148,163,184,0.75)',
+                                fontSize: 11,
+                                fontWeight: 600,
+                                padding: '5px 0',
+                                cursor: 'pointer',
+                                transition: 'background 0.1s, border-color 0.1s, color 0.1s',
+                              }}
+                            >
+                              {label}
+                            </button>
+                          );
+                        })}
+                      </div>
+
+                      {/* Quality preset selector */}
+                      <div style={{ fontSize: 10, color: 'rgba(148,163,184,0.7)', marginBottom: 3 }}>איכות</div>
+                      <div style={{ display: 'flex', gap: 4, marginBottom: 8 }}>
+                        {([
+                          { v: 'lossless' as const, label: 'מקורי' },
+                          { v: 'high' as const, label: 'גבוה' },
+                          { v: 'balanced' as const, label: 'מאוזן' },
+                          { v: 'small' as const, label: 'קטן' },
+                        ]).map(({ v, label }) => {
+                          const active = qualityPreset === v;
+                          return (
+                            <button
+                              key={v}
+                              type="button"
+                              onClick={() => setQualityPreset(v)}
+                              title={v !== 'lossless' ? QUALITY_PRESETS[v].descriptionHe : 'ללא קידוד מחדש, מהיר'}
+                              style={{
+                                flex: 1,
+                                background: active ? 'rgba(20,184,166,0.18)' : 'rgba(255,255,255,0.04)',
+                                border: `1px solid ${active ? 'rgba(20,184,166,0.5)' : 'rgba(255,255,255,0.08)'}`,
+                                borderRadius: 6,
+                                color: active ? 'rgba(94,234,212,0.95)' : 'rgba(148,163,184,0.75)',
+                                fontSize: 11,
+                                fontWeight: 600,
+                                padding: '5px 0',
+                                cursor: 'pointer',
+                                transition: 'background 0.1s, border-color 0.1s, color 0.1s',
+                              }}
+                            >
+                              {label}
+                            </button>
+                          );
+                        })}
+                      </div>
+
+                      {/* Export package toggle */}
+                      <label
+                        htmlFor="export-package-toggle"
+                        style={{
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: 7,
+                          cursor: 'pointer',
+                          userSelect: 'none',
+                          fontSize: 11.5,
+                          color: createExportPackage ? '#e2e8f0' : 'rgba(148,163,184,0.75)',
+                        }}
+                      >
+                        <input
+                          id="export-package-toggle"
+                          type="checkbox"
+                          checked={createExportPackage}
+                          onChange={(e) => setCreateExportPackage(e.target.checked)}
+                          style={{ cursor: 'pointer', accentColor: '#14b8a6' }}
+                        />
+                        <span>צור חבילת ייצוא מסודרת</span>
+                      </label>
+                      {createExportPackage && (
+                        <div style={{ fontSize: 10, color: 'rgba(100,116,139,0.7)', marginTop: 4, paddingRight: 22, lineHeight: 1.4 }}>
+                          תיקייה עם clips/ + combined/ + metadata.json
+                        </div>
+                      )}
+
+                      {/* Legal links */}
+                      <div style={{ marginTop: 10, paddingTop: 8, borderTop: '1px solid rgba(255,255,255,0.05)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                        <button
+                          type="button"
+                          onClick={() => setLegalDialogOpen(true)}
+                          style={{
+                            background: 'none',
+                            border: 'none',
+                            cursor: 'pointer',
+                            color: 'rgba(100,116,139,0.65)',
+                            fontSize: 10.5,
+                            padding: 0,
+                            textDecoration: 'underline',
+                          }}
+                        >
+                          תנאי שימוש · פרטיות
+                        </button>
+                        <span style={{ fontSize: 10, color: 'rgba(100,116,139,0.4)' }}>v1.0.0</span>
+                      </div>
+                    </div>
                   )}
 
-                  {/* Transcript panel — Whisper local transcription */}
-                  {isFileOpened && filePath != null && (
-                    <TranscriptPanel
-                      filePath={filePath}
-                      onSeek={seekAbs}
-                      onApplySegments={(segs) => loadCutSegments({ segments: segs, append: false })}
-                    />
-                  )}
-
-                  {/* API Keys panel */}
-                  <ApiKeysPanel />
+                  {/* AI Tools, ApiKeys hidden — VEO QuickCut workflow only */}
                 </div>
               </div>
 
@@ -2825,6 +3317,12 @@ function App() {
                   goToTimecode={goToTimecode}
                   darkMode={darkMode}
                   setCutTime={setCutTime}
+                  playingClip={(() => {
+                    if (playingClipIndex == null || !playing) return undefined;
+                    const seg = cutSegments[playingClipIndex];
+                    if (seg == null || seg.start == null || seg.end == null) return undefined;
+                    return { start: seg.start, end: seg.end, color: getSegColor(seg).desaturate(0.2).hex() };
+                  })()}
                 />
 
                 <BottomBar
@@ -2880,6 +3378,20 @@ function App() {
               </div>
 
               {tunerVisible != null && <ValueTuners type={tunerVisible} onFinished={() => setTunerVisible(undefined)} />}
+
+              {/* ─── Soccer Action Picker ──────────────────────────────── */}
+              <ActionPickerModal
+                visible={actionPickerOpen}
+                playerName={playerName}
+                clipDurationSec={quickCutDuration}
+                onConfirm={handleActionPicked}
+                onCancel={() => { setActionPickerOpen(false); pendingClipRef.current = null; }}
+              />
+
+              <LegalDialog
+                visible={legalDialogOpen}
+                onClose={() => setLegalDialogOpen(false)}
+              />
 
               {/* Dialogs */}
 

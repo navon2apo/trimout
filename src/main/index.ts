@@ -41,6 +41,7 @@ import { downloadMediaUrl } from './ffmpeg.js';
 import { detectSpeechSegments, detectEnergyPeaks, detectSceneChanges } from './aiAnalysis.js';
 import { downloadVideo, isSupportedUrl } from './ytdlp.js';
 import { transcribeVideo } from './whisper.js';
+import { activateLicense, checkLicense, deactivateLicense, getMachineFingerprint } from './license.js';
 
 // Separate untyped store for API keys (not part of Config schema)
 // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -477,6 +478,11 @@ const remoteApi = {
   // API key management
   getApiKey,
   setApiKey,
+  // License system
+  activateLicense,
+  checkLicense,
+  deactivateLicense,
+  getMachineFingerprint,
 };
 
 export type RemoteApi = typeof remoteApi;

@@ -73,6 +73,11 @@ export interface StateSegment extends SegmentBase, SegmentColorIndex {
   tags?: SegmentTags | undefined;
   initial?: true,
   selected: boolean,
+  // Soccer clip metadata
+  actionType?: string | undefined;
+  playerName?: string | undefined;
+  isFavorite?: boolean | undefined;
+  isUncertain?: boolean | undefined;
 }
 
 export interface SegmentToExport extends DefiniteSegmentBase {

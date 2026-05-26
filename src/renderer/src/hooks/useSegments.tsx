@@ -594,6 +594,28 @@ function useSegments({ filePath, workingRef, setWorking, setProgress, videoStrea
     }
   }, [getRelevantTime, fileDuration, cutSegments, simpleMode, createIndexedSegment, safeSetCutSegments]);
 
+  // QuickCut: create a segment with explicit start+end (bypasses the +10s hardcode in addSegment)
+  const addClip = useCallback((start: number, end: number, meta?: { name?: string, actionType?: string, playerName?: string, isFavorite?: boolean, isUncertain?: boolean }) => {
+    try {
+      if (fileDuration == null || start >= fileDuration) return;
+      const clampedEnd = Math.min(end, fileDuration);
+      const initial = isInitialSegment(cutSegments);
+      const base = createIndexedSegment({ segment: { start, end: clampedEnd, name: meta?.name ?? '' }, incrementCount: !initial });
+      const newSegment: typeof base = {
+        ...base,
+        ...(meta?.actionType != null && { actionType: meta.actionType }),
+        ...(meta?.playerName != null && { playerName: meta.playerName }),
+        ...(meta?.isFavorite != null && { isFavorite: meta.isFavorite }),
+        ...(meta?.isUncertain != null && { isUncertain: meta.isUncertain }),
+      };
+      const cutSegmentsNew = initial ? [newSegment] : [...cutSegments, newSegment];
+      safeSetCutSegments(cutSegmentsNew, fileDuration);
+      setCurrentSegIndex(cutSegmentsNew.length - 1);
+    } catch (err) {
+      console.error(err);
+    }
+  }, [fileDuration, cutSegments, createIndexedSegment, safeSetCutSegments]);
+
   const duplicateSegment = useCallback((segment: Pick<StateSegment, 'start' | 'end'> & Partial<Pick<StateSegment, 'name'>>) => {
     try {
       // Cannot duplicate if seg is not finished
@@ -992,6 +1014,7 @@ function useSegments({ filePath, workingRef, setWorking, setProgress, videoStrea
     updateSegOrders,
     reorderSegsByStartTime,
     addSegment,
+    addClip,
     duplicateCurrentSegment,
     duplicateSegment,
     setCutStart,

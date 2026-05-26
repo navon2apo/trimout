@@ -3,7 +3,7 @@
   "productName": "TrimOut",
   "description": "Trim any video, mark highlights, export clips instantly — no rendering, no waiting.",
   "copyright": "Copyright © 2026 Navon Amos. Based on LosslessCut © Mikael Finstad (GPL-2.0)",
-  "version": "3.68.1",
+  "version": "1.0.0",
   "main": "./out/main/index.js",
   "homepage": "./",
   "type": "module",

@@ -111,7 +111,7 @@ const defaults: Config = {
   autoExportExtraStreams: true,
   exportConfirmEnabled: true,
   askBeforeClose: false,
-  enableImportChapters: 'ask',
+  enableImportChapters: 'never',
   enableAskForFileOpenAction: true,
   playbackVolume: 0.3, // so that we don't shock new users with loud volume
   autoSaveProjectFile: true,

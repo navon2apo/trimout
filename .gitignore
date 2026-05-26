@@ -17,6 +17,7 @@ node_modules
 /notes
 /ffmpeg
 /app*.log
+/dev.log
 /main-ts-dist
 /common-ts-dist
 
