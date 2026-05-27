@@ -1337,19 +1337,31 @@ function App() {
           mkdir: (p: string, opts?: { recursive?: boolean }) => Promise<void>;
           copyFile: (src: string, dst: string) => Promise<void>;
           rename: (src: string, dst: string) => Promise<void>;
+          access: (p: string) => Promise<void>;
         };
-        const { writeFile: fsWriteFile, mkdir: fsMkdir, copyFile: fsCopyFile, rename: fsRename } = fsPromises;
+        const { writeFile: fsWriteFile, mkdir: fsMkdir, copyFile: fsCopyFile, rename: fsRename, access: fsAccess } = fsPromises;
         const { extname: pathExtname } = window.require('path') as { extname: (p: string) => string };
         // pathJoin, basename, dirname are already imported at module scope (line 128)
 
+        const fileExists = async (p: string): Promise<boolean> => {
+          try { await fsAccess(p); return true; } catch { return false; }
+        };
+
         const exportRootDir = dirname(revealPath);
 
-        // 1. Optional H.264 compression — replace each lossless file with the compressed version
+        // Determine which individual files actually still exist on disk
+        // (in "merge" mode, segment files are deleted after merging — so we skip them)
+        const existingOutFiles: typeof outFiles = [];
+        for (const f of outFiles) {
+          if (await fileExists(f.path)) existingOutFiles.push(f);
+        }
+
+        // 1. Optional H.264 compression — only compress files that actually exist on disk
         if (qualityPreset !== 'lossless') {
           setWorking({ text: i18n.t('Compressing') });
           const allFiles = [
-            ...outFiles.map((f) => f.path),
-            ...(mergedOutFilePath != null ? [mergedOutFilePath] : []),
+            ...existingOutFiles.map((f) => f.path),
+            ...(mergedOutFilePath != null && await fileExists(mergedOutFilePath) ? [mergedOutFilePath] : []),
           ];
           for (const losslessPath of allFiles) {
             const ext = pathExtname(losslessPath) || '.mp4';
@@ -1389,46 +1401,58 @@ function App() {
           combinedClip: mergedOutFilePath != null ? basename(mergedOutFilePath) : null,
         };
 
-        // 3. Optional ExportPackage folder — clips/, combined/, metadata.json, project.json
+        // 3. Optional ExportPackage folder — only create folders that actually have files
         if (createExportPackage) {
-          const pkgName = playerName.trim()
-            ? `ExportPackage_${playerName.trim()}_${Date.now()}`
-            : `ExportPackage_${Date.now()}`;
-          const pkgRoot = pathJoin(exportRootDir, pkgName);
-          const pkgClips = pathJoin(pkgRoot, 'clips');
-          const pkgCombined = pathJoin(pkgRoot, 'combined');
-          await fsMkdir(pkgClips, { recursive: true });
-          if (mergedOutFilePath != null) await fsMkdir(pkgCombined, { recursive: true });
+          const mergedExists = mergedOutFilePath != null && await fileExists(mergedOutFilePath);
+          const hasSeparates = existingOutFiles.length > 0;
 
-          // Copy individual clips
-          for (const f of outFiles) {
-            const dest = pathJoin(pkgClips, basename(f.path));
-            await fsCopyFile(f.path, dest);
+          if (!mergedExists && !hasSeparates) {
+            console.warn('ExportPackage skipped: no files were produced');
+          } else {
+            const pkgName = playerName.trim()
+              ? `ExportPackage_${playerName.trim()}_${Date.now()}`
+              : `ExportPackage_${Date.now()}`;
+            const pkgRoot = pathJoin(exportRootDir, pkgName);
+            await fsMkdir(pkgRoot, { recursive: true });
+
+            // clips/ — only if separate files survived
+            if (hasSeparates) {
+              const pkgClips = pathJoin(pkgRoot, 'clips');
+              await fsMkdir(pkgClips, { recursive: true });
+              for (const f of existingOutFiles) {
+                const dest = pathJoin(pkgClips, basename(f.path));
+                await fsCopyFile(f.path, dest);
+              }
+            }
+            // combined/ — only if merged file exists
+            if (mergedExists && mergedOutFilePath != null) {
+              const pkgCombined = pathJoin(pkgRoot, 'combined');
+              await fsMkdir(pkgCombined, { recursive: true });
+              const dest = pathJoin(pkgCombined, basename(mergedOutFilePath));
+              await fsCopyFile(mergedOutFilePath, dest);
+            }
+
+            // metadata.json + project.json — always written
+            await fsWriteFile(pathJoin(pkgRoot, 'metadata.json'), JSON.stringify(metadata, null, 2));
+            await fsWriteFile(pathJoin(pkgRoot, 'project.json'), JSON.stringify({
+              version: 1,
+              playerName: playerName.trim() || null,
+              sourceVideo: filePath,
+              quickCutDuration,
+              qualityPreset,
+              exportMode: mergedExists && hasSeparates ? 'merge+separate' : (mergedExists ? 'merge' : 'separate'),
+              createdAt: new Date().toISOString(),
+              segments: cutSegments.map((s) => ({
+                name: s.name,
+                start: s.start,
+                end: s.end ?? null,
+                actionType: s.actionType ?? null,
+                playerName: s.playerName ?? null,
+                isFavorite: s.isFavorite ?? false,
+                isUncertain: s.isUncertain ?? false,
+              })),
+            }, null, 2));
           }
-          // Copy combined clip
-          if (mergedOutFilePath != null) {
-            const dest = pathJoin(pkgCombined, basename(mergedOutFilePath));
-            await fsCopyFile(mergedOutFilePath, dest);
-          }
-          // Write metadata.json + project.json
-          await fsWriteFile(pathJoin(pkgRoot, 'metadata.json'), JSON.stringify(metadata, null, 2));
-          await fsWriteFile(pathJoin(pkgRoot, 'project.json'), JSON.stringify({
-            version: 1,
-            playerName: playerName.trim() || null,
-            sourceVideo: filePath,
-            quickCutDuration,
-            qualityPreset,
-            createdAt: new Date().toISOString(),
-            segments: cutSegments.map((s) => ({
-              name: s.name,
-              start: s.start,
-              end: s.end ?? null,
-              actionType: s.actionType ?? null,
-              playerName: s.playerName ?? null,
-              isFavorite: s.isFavorite ?? false,
-              isUncertain: s.isUncertain ?? false,
-            })),
-          }, null, 2));
         } else {
           // Just drop metadata.json next to the exported clips
           await fsWriteFile(pathJoin(exportRootDir, 'metadata.json'), JSON.stringify(metadata, null, 2));
@@ -3266,7 +3290,7 @@ function App() {
                         >
                           תנאי שימוש · פרטיות
                         </button>
-                        <span style={{ fontSize: 10, color: 'rgba(100,116,139,0.4)' }}>v1.0.0</span>
+                        <span style={{ fontSize: 10, color: 'rgba(100,116,139,0.4)' }}>v1.0.1</span>
                       </div>
                     </div>
                   )}
