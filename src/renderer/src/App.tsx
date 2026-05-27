@@ -930,42 +930,42 @@ function App() {
   }, [isFileOpened, workingRef, askBeforeClose, confirmDialog, resetState, clearSegments]);
 
   // 🧹 "נקה פרוייקט" — wipes the current file + clips + player name + any pending state.
-  // Always asks for confirmation with a count of what's about to be lost.
-  const handleFinishedWithVideo = useCallback(async () => {
-    // Note: we deliberately DON'T early-return on workingRef — the user expects a response
-    // even if something else is running. If a background job is active we just warn.
+  // Uses native window.confirm so it CAN'T silently fail (no async / no library bugs).
+  const handleFinishedWithVideo = useCallback(() => {
+    console.log('[CleanProject] click — cutSegments:', cutSegments.length, 'playerName:', playerName);
     const realClips = cutSegments.filter((s) => s.end != null && !s.initial);
     const hasContent = realClips.length > 0 || playerName.trim().length > 0;
 
-    const text = hasContent
-      ? `הפעולה תמחק:\n• ${realClips.length} קליפ${realClips.length === 1 ? '' : 'ים'} מהרשימה${playerName.trim() ? `\n• שם השחקן "${playerName.trim()}"` : ''}\n• הסרטון הפתוח\n\nלא ניתן לבטל.`
-      : 'הפעולה תסגור את הסרטון הפתוח ותנקה את כל ההגדרות. המשך?';
+    const parts: string[] = [];
+    if (realClips.length > 0) parts.push(`${realClips.length} קליפים`);
+    if (playerName.trim()) parts.push(`שם השחקן "${playerName.trim()}"`);
+    parts.push('הסרטון הפתוח');
 
-    const result = await getSwal().fire({
-      title: 'לנקות את הפרוייקט?',
-      text,
-      icon: hasContent ? 'warning' : 'question',
-      showCancelButton: true,
-      confirmButtonText: '🧹 כן, נקה הכל',
-      cancelButtonText: 'ביטול',
-      confirmButtonColor: '#ef4444',
-      reverseButtons: true,
-    });
+    const message = hasContent
+      ? `🧹 לנקות את הפרוייקט?\n\nיימחקו:\n• ${parts.join('\n• ')}\n\nפעולה זו לא ניתנת לביטול.`
+      : '🧹 לנקות את הפרוייקט?';
 
-    if (!result.isConfirmed) return;
+    // Native confirm — bulletproof, no library dependency, can't hang
+    const confirmed = window.confirm(message);
+    console.log('[CleanProject] confirmed?', confirmed);
+    if (!confirmed) return;
 
-    // Wipe everything
     try {
+      console.log('[CleanProject] wiping…');
       resetState();
       clearSegments();
       setPlayerName('');
       pendingClipRef.current = null;
       setActionPickerOpen(false);
       setExportConfirmOpen(false);
-      getSwal().toast.fire({ icon: 'success', title: 'הפרוייקט נוקה', timer: 2000 });
+      console.log('[CleanProject] done');
+      // Non-blocking toast (if it fails, the clean still happened)
+      try {
+        getSwal().toast.fire({ icon: 'success', title: 'הפרוייקט נוקה', timer: 2000 });
+      } catch { /* ignore toast failure */ }
     } catch (err) {
-      console.error('Failed to clean project', err);
-      getSwal().fire({ icon: 'error', title: 'הניקוי נכשל', text: String(err) });
+      console.error('[CleanProject] FAILED:', err);
+      window.alert(`הניקוי נכשל: ${err instanceof Error ? err.message : String(err)}`);
     }
   }, [cutSegments, playerName, resetState, clearSegments]);
 
@@ -3694,7 +3694,7 @@ function App() {
                         >
                           תנאי שימוש · פרטיות
                         </button>
-                        <span style={{ fontSize: 10, color: 'rgba(100,116,139,0.4)' }}>v1.0.5</span>
+                        <span style={{ fontSize: 10, color: 'rgba(100,116,139,0.4)' }}>v1.0.6</span>
                       </div>
                     </div>
                   )}
