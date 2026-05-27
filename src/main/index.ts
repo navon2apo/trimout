@@ -40,6 +40,7 @@ import * as compatPlayer from './compatPlayer.js';
 import { downloadMediaUrl } from './ffmpeg.js';
 import { detectSpeechSegments, detectEnergyPeaks, detectSceneChanges } from './aiAnalysis.js';
 import { downloadVideo, isSupportedUrl, listVideoFormats } from './ytdlp.js';
+import qrShare from './qrShare.js';
 import { transcribeVideo } from './whisper.js';
 import { activateLicense, checkLicense, deactivateLicense, getMachineFingerprint } from './license.js';
 
@@ -384,6 +385,23 @@ async function init() {
       () => { event.sender.send('ytdlpBootstrap'); },
       formatSelector,
     ));
+
+    // QR-share — start a local HTTP server for one file, return URL+token
+    ipcMain.handle('qrShareStart', async (event, filePath: string, ttlMs?: number) => {
+      // Wire status events to the renderer
+      const off = qrShare.onEvent((e) => {
+        try { event.sender.send('qrShareEvent', e); } catch { /* renderer might be gone */ }
+      });
+      try {
+        const session = await qrShare.start(filePath, ttlMs);
+        return session;
+      } catch (err) {
+        off();
+        throw err;
+      }
+    });
+    ipcMain.handle('qrShareStop', async () => qrShare.stop());
+    ipcMain.handle('qrShareStatus', async () => qrShare.getSession());
 
     // Whisper transcription with progress
     ipcMain.handle('whisperTranscribe', async (event, filePath: string, model: string) => transcribeVideo(filePath, model as Parameters<typeof transcribeVideo>[1], (p) => {

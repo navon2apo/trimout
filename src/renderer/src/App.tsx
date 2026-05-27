@@ -35,6 +35,7 @@ import ClipsPanel from './components/ClipsPanel';
 import ActionPickerModal, { type SoccerAction } from './components/ActionPickerModal';
 import LegalDialog from './components/LegalDialog';
 import FormatPickerDialog, { type VideoInfo } from './components/FormatPickerDialog';
+import QrShareDialog from './components/QrShareDialog';
 import { compressClip, QUALITY_PRESETS, type QualityPreset, type AspectRatio, type FitMode } from './util/qualityPresets';
 import FEATURES from './util/features';
 import MediaSourcePlayer from './MediaSourcePlayer';
@@ -180,6 +181,13 @@ function App() {
 
   // ─── Legal dialog (Terms + Privacy) ────────────────────────────────────────
   const [legalDialogOpen, setLegalDialogOpen] = useState(false);
+
+  // ─── QR Share — local network file transfer ────────────────────────────────
+  const [qrShareOpen, setQrShareOpen] = useState(false);
+  const [qrShareFilePath, setQrShareFilePath] = useState<string | null>(null);
+  // The last successfully exported file (merged > first separate). Surfaces the
+  // "📱 שלח לטלפון" button only after the user has something concrete to share.
+  const [lastExportedFile, setLastExportedFile] = useState<string | null>(null);
   // Ref used by handlePlayClip to stop playback at an exact time — avoids stale-closure bugs
   const clipStopAtRef = useRef<number | null>(null);
   // State mirror so the timeline overlay renders while a clip is playing
@@ -969,6 +977,16 @@ function App() {
     }
   }, [cutSegments, playerName, resetState, clearSegments]);
 
+  // 📱 "שלח לטלפון" — open the QR-share dialog for the most recent exported file.
+  const handleSendToPhone = useCallback(() => {
+    if (!lastExportedFile) {
+      window.alert('עוד אין קובץ מיוצא לשתף. צא ייצוא קודם ואז לחץ שוב.');
+      return;
+    }
+    setQrShareFilePath(lastExportedFile);
+    setQrShareOpen(true);
+  }, [lastExportedFile]);
+
   const closeBatch = useCallback(async () => {
     if (askBeforeClose && !(await confirmDialog({ focusConfirm: true, description: i18n.t('Are you sure you want to close the loaded batch of files?') }))) return;
     setBatchFiles([]);
@@ -1508,21 +1526,28 @@ function App() {
             await fsMkdir(finalRoot, { recursive: true });
 
             // clips/ — only if separate files survived
+            let firstClipInPkg: string | null = null;
             if (hasSeparates) {
               const pkgClips = pathJoin(finalRoot, 'clips');
               await fsMkdir(pkgClips, { recursive: true });
               for (const f of existingOutFiles) {
                 const dest = pathJoin(pkgClips, basename(f.path));
                 await fsCopyFile(f.path, dest);
+                if (firstClipInPkg == null) firstClipInPkg = dest;
               }
             }
             // combined/ — only if merged file exists
+            let mergedInPkg: string | null = null;
             if (mergedExists && mergedOutFilePath != null) {
               const pkgCombined = pathJoin(finalRoot, 'combined');
               await fsMkdir(pkgCombined, { recursive: true });
               const dest = pathJoin(pkgCombined, basename(mergedOutFilePath));
               await fsCopyFile(mergedOutFilePath, dest);
+              mergedInPkg = dest;
             }
+            // Remember the final path of the most useful file for QR-share:
+            // prefer the merged clip (single file to phone) over individual clips.
+            setLastExportedFile(mergedInPkg ?? firstClipInPkg);
 
             // Clean up the original files at the export root — they now live inside the package
             const fsUnlink = (window.require('fs/promises') as { unlink: (p: string) => Promise<void> }).unlink;
@@ -1557,8 +1582,14 @@ function App() {
             }, null, 2));
           }
         } else {
-          // Just drop metadata.json next to the exported clips
+          // Flat mode — files stayed at the export root, just drop metadata.json
           await fsWriteFile(pathJoin(exportRootDir, 'metadata.json'), JSON.stringify(metadata, null, 2));
+          // Track last exported file for QR-share (merged preferred over first separate)
+          if (mergedOutFilePath != null && await fileExists(mergedOutFilePath)) {
+            setLastExportedFile(mergedOutFilePath);
+          } else if (existingOutFiles[0]?.path) {
+            setLastExportedFile(existingOutFiles[0].path);
+          }
         }
       } catch (metaErr) {
         console.warn('Failed to finalize export package / metadata', metaErr);
@@ -3677,6 +3708,36 @@ function App() {
                         </div>
                       </div>
 
+                      {/* 📱 Send to phone — visible only after at least one successful export */}
+                      {lastExportedFile && (
+                        <button
+                          type="button"
+                          onClick={handleSendToPhone}
+                          title={`שלח ${basename(lastExportedFile)} לטלפון דרך QR מקומי`}
+                          style={{
+                            width: '100%',
+                            marginTop: 10,
+                            background: 'linear-gradient(135deg, rgba(20,184,166,0.18), rgba(56,189,248,0.18))',
+                            border: '1px solid rgba(56,189,248,0.45)',
+                            borderRadius: 8,
+                            color: '#7dd3fc',
+                            fontSize: 12,
+                            fontWeight: 700,
+                            padding: '8px 10px',
+                            cursor: 'pointer',
+                            display: 'flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            gap: 6,
+                            transition: 'background 0.12s, border-color 0.12s',
+                          }}
+                          onMouseEnter={(e) => { e.currentTarget.style.background = 'linear-gradient(135deg, rgba(20,184,166,0.3), rgba(56,189,248,0.3))'; }}
+                          onMouseLeave={(e) => { e.currentTarget.style.background = 'linear-gradient(135deg, rgba(20,184,166,0.18), rgba(56,189,248,0.18))'; }}
+                        >
+                          📱 שלח לטלפון (QR)
+                        </button>
+                      )}
+
                       {/* Legal links */}
                       <div style={{ marginTop: 10, paddingTop: 8, borderTop: '1px solid rgba(255,255,255,0.05)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                         <button
@@ -3694,7 +3755,7 @@ function App() {
                         >
                           תנאי שימוש · פרטיות
                         </button>
-                        <span style={{ fontSize: 10, color: 'rgba(100,116,139,0.4)' }}>v1.0.6</span>
+                        <span style={{ fontSize: 10, color: 'rgba(100,116,139,0.4)' }}>v1.1.0</span>
                       </div>
                     </div>
                   )}
@@ -3829,6 +3890,15 @@ function App() {
                   setFormatPickerOpen(false);
                   setFormatPickerInfo(null);
                   pendingDownloadUrlRef.current = null;
+                }}
+              />
+
+              <QrShareDialog
+                visible={qrShareOpen}
+                filePath={qrShareFilePath}
+                onClose={() => {
+                  setQrShareOpen(false);
+                  setQrShareFilePath(null);
                 }}
               />
 
