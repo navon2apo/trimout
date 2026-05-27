@@ -34,6 +34,7 @@ import TranscriptPanel from './components/TranscriptPanel';
 import ClipsPanel from './components/ClipsPanel';
 import ActionPickerModal, { type SoccerAction } from './components/ActionPickerModal';
 import LegalDialog from './components/LegalDialog';
+import FormatPickerDialog, { type VideoInfo } from './components/FormatPickerDialog';
 import { compressClip, QUALITY_PRESETS, type QualityPreset } from './util/qualityPresets';
 import FEATURES from './util/features';
 import MediaSourcePlayer from './MediaSourcePlayer';
@@ -171,7 +172,8 @@ function App() {
 
   // ─── Export quality & package ──────────────────────────────────────────────
   const [qualityPreset, setQualityPreset] = useState<QualityPreset>('lossless');
-  const [createExportPackage, setCreateExportPackage] = useState(false);
+  // Default ON — each export creates its own dated folder inside the output dir
+  const [createExportPackage, setCreateExportPackage] = useState(true);
 
   // ─── Legal dialog (Terms + Privacy) ────────────────────────────────────────
   const [legalDialogOpen, setLegalDialogOpen] = useState(false);
@@ -924,6 +926,46 @@ function App() {
     clearSegments();
   }, [isFileOpened, workingRef, askBeforeClose, confirmDialog, resetState, clearSegments]);
 
+  // ✕ Soccer-flow "סיימתי עם הסרטון" — smart dialog if there are unexported clips
+  const handleFinishedWithVideo = useCallback(async () => {
+    if (!isFileOpened || workingRef.current) return;
+
+    // Count meaningful clips (must have end time + not initial placeholder)
+    const unexportedClips = cutSegments.filter((s) => s.end != null && !s.initial);
+
+    if (unexportedClips.length === 0) {
+      // Nothing to lose — close immediately
+      resetState();
+      clearSegments();
+      return;
+    }
+
+    // 3-option dialog
+    const result = await getSwal().fire({
+      title: 'יש לך קליפים שלא ייצאת',
+      text: `יש ${unexportedClips.length} קליפ${unexportedClips.length === 1 ? '' : 'ים'} שעוד לא ייצאת. מה לעשות?`,
+      icon: 'warning',
+      showCancelButton: true,
+      showDenyButton: true,
+      confirmButtonText: 'ייצא עכשיו ועבור',
+      denyButtonText: 'סיים בלי לייצא',
+      cancelButtonText: 'ביטול',
+      confirmButtonColor: '#14b8a6',
+      denyButtonColor: '#ef4444',
+      reverseButtons: true,
+    });
+
+    if (result.isConfirmed) {
+      // Trigger normal export flow — they'll be returned to a clean state via the export onFinish handlers
+      setExportConfirmOpen(true);
+    } else if (result.isDenied) {
+      // User accepts losing the clips
+      resetState();
+      clearSegments();
+    }
+    // result.dismiss === cancel → do nothing
+  }, [isFileOpened, workingRef, cutSegments, resetState, clearSegments, setExportConfirmOpen]);
+
   const closeBatch = useCallback(async () => {
     if (askBeforeClose && !(await confirmDialog({ focusConfirm: true, description: i18n.t('Are you sure you want to close the loaded batch of files?') }))) return;
     setBatchFiles([]);
@@ -1409,15 +1451,26 @@ function App() {
           if (!mergedExists && !hasSeparates) {
             console.warn('ExportPackage skipped: no files were produced');
           } else {
-            const pkgName = playerName.trim()
-              ? `ExportPackage_${playerName.trim()}_${Date.now()}`
-              : `ExportPackage_${Date.now()}`;
+            // Folder name: "<playerName>_YYYY-MM-DD_HH-MM" — readable, sortable, unique per minute
+            const now = new Date();
+            const pad = (n: number) => String(n).padStart(2, '0');
+            const timestamp = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}_${pad(now.getHours())}-${pad(now.getMinutes())}`;
+            // Sanitize player name — strip filesystem-unsafe chars
+            const safePlayer = playerName.trim().replaceAll(/[<>:"|?*\\/]/g, '').slice(0, 30);
+            const pkgName = safePlayer ? `${safePlayer}_${timestamp}` : `Export_${timestamp}`;
             const pkgRoot = pathJoin(exportRootDir, pkgName);
-            await fsMkdir(pkgRoot, { recursive: true });
+            // Avoid collision if user clicks export twice in same minute
+            let finalRoot = pkgRoot;
+            let suffix = 2;
+            while (await fileExists(finalRoot)) {
+              finalRoot = `${pkgRoot}_${suffix}`;
+              suffix += 1;
+            }
+            await fsMkdir(finalRoot, { recursive: true });
 
             // clips/ — only if separate files survived
             if (hasSeparates) {
-              const pkgClips = pathJoin(pkgRoot, 'clips');
+              const pkgClips = pathJoin(finalRoot, 'clips');
               await fsMkdir(pkgClips, { recursive: true });
               for (const f of existingOutFiles) {
                 const dest = pathJoin(pkgClips, basename(f.path));
@@ -1426,15 +1479,24 @@ function App() {
             }
             // combined/ — only if merged file exists
             if (mergedExists && mergedOutFilePath != null) {
-              const pkgCombined = pathJoin(pkgRoot, 'combined');
+              const pkgCombined = pathJoin(finalRoot, 'combined');
               await fsMkdir(pkgCombined, { recursive: true });
               const dest = pathJoin(pkgCombined, basename(mergedOutFilePath));
               await fsCopyFile(mergedOutFilePath, dest);
             }
 
+            // Clean up the original files at the export root — they now live inside the package
+            const fsUnlink = (window.require('fs/promises') as { unlink: (p: string) => Promise<void> }).unlink;
+            for (const f of existingOutFiles) {
+              try { await fsUnlink(f.path); } catch (e) { console.warn('Could not remove original', f.path, e); }
+            }
+            if (mergedExists && mergedOutFilePath != null) {
+              try { await fsUnlink(mergedOutFilePath); } catch (e) { console.warn('Could not remove original merged', mergedOutFilePath, e); }
+            }
+
             // metadata.json + project.json — always written
-            await fsWriteFile(pathJoin(pkgRoot, 'metadata.json'), JSON.stringify(metadata, null, 2));
-            await fsWriteFile(pathJoin(pkgRoot, 'project.json'), JSON.stringify({
+            await fsWriteFile(pathJoin(finalRoot, 'metadata.json'), JSON.stringify(metadata, null, 2));
+            await fsWriteFile(pathJoin(finalRoot, 'project.json'), JSON.stringify({
               version: 1,
               playerName: playerName.trim() || null,
               sourceVideo: filePath,
@@ -1527,6 +1589,13 @@ function App() {
   // ---- yt-dlp download ----
   const [ytdlpDownloading, setYtdlpDownloading] = useState(false);
   const [ytdlpProgress, setYtdlpProgress] = useState(0);
+  const [ytdlpBootstrap, setYtdlpBootstrap] = useState(false);
+  // ---- yt-dlp format picker ----
+  const [formatPickerOpen, setFormatPickerOpen] = useState(false);
+  const [formatPickerInfo, setFormatPickerInfo] = useState<VideoInfo | null>(null);
+  const [formatPickerLoading, setFormatPickerLoading] = useState(false);
+  // URL being processed — kept between the listFormats and download steps
+  const pendingDownloadUrlRef = useRef<string | null>(null);
   // ref so handleUrlDownload can call userOpenFiles even before it's declared
   const userOpenFilesRef = useRef<((paths: string[]) => void) | null>(null);
 
@@ -2212,23 +2281,113 @@ function App() {
   // Sync userOpenFiles ref so handleUrlDownload can call it
   useEffect(() => { userOpenFilesRef.current = userOpenFiles; }, [userOpenFiles]);
 
+  // Stage 1: User pastes URL → we fetch available formats (1 HTTP roundtrip, ~1-3 sec)
+  // and open the FormatPickerDialog. The actual download happens in stage 2 (handleFormatPicked).
   const handleUrlDownload = useCallback(async (url: string) => {
+    pendingDownloadUrlRef.current = url;
+    setFormatPickerLoading(true);
+    const { ipcRenderer } = window.require('electron');
+    try {
+      const info: VideoInfo = await ipcRenderer.invoke('ytdlpListFormats', url);
+      setFormatPickerInfo(info);
+      setFormatPickerOpen(true);
+    } catch (err) {
+      console.error('ytdlp list formats error', err);
+      const errMsg = err instanceof Error ? err.message : String(err);
+      let userMsg = errMsg;
+      const sportsPattern = /pixellot|veo\.co|hudl|trace\.video|playsight/i;
+      if (sportsPattern.test(url)) {
+        userMsg = `${url.match(sportsPattern)?.[0] ?? 'הפלטפורמה'} לא נתמכת ישירות. הורד מהאתר הרשמי או מצא קישור .m3u8 ישיר.`;
+      } else if (errMsg.includes('Unsupported URL')) {
+        userMsg = 'האתר הזה לא נתמך. נסה YouTube, Vimeo, Facebook או קישור ישיר.';
+      } else if (errMsg.includes('Sign in') || errMsg.includes('private')) {
+        userMsg = 'הסרטון פרטי או דורש התחברות. לא ניתן להוריד.';
+      } else if (errMsg.includes('downloadFromGithub')) {
+        userMsg = 'כשל בהתקנת yt-dlp. בדוק חיבור אינטרנט ו-Antivirus.';
+      }
+      await getSwal().fire({
+        icon: 'error',
+        title: 'לא ניתן לקרוא את הסרטון',
+        text: userMsg,
+        confirmButtonText: 'הבנתי',
+        confirmButtonColor: '#14b8a6',
+      });
+    } finally {
+      setFormatPickerLoading(false);
+    }
+  }, []);
+
+  // Stage 2: User picked a quality → run the actual download
+  const handleFormatPicked = useCallback(async (formatSelector: string) => {
+    const url = pendingDownloadUrlRef.current;
+    setFormatPickerOpen(false);
+    setFormatPickerInfo(null);
+    if (!url) return;
+    pendingDownloadUrlRef.current = null;
+
     setYtdlpDownloading(true);
     setYtdlpProgress(0);
+    setYtdlpBootstrap(false);
+    const { ipcRenderer } = window.require('electron');
+    const onProgress = (_: unknown, p: { percent: number }) => {
+      setYtdlpProgress(Math.round(p.percent ?? 0));
+    };
+    const onBootstrap = () => setYtdlpBootstrap(true);
+    ipcRenderer.on('ytdlpProgress', onProgress);
+    ipcRenderer.on('ytdlpBootstrap', onBootstrap);
     try {
-      const { ipcRenderer } = window.require('electron');
-      ipcRenderer.on('ytdlpProgress', (_: unknown, p: { percent: number }) => {
-        setYtdlpProgress(Math.round(p.percent ?? 0));
-      });
       const outDir = outputDir || (window.require('@electron/remote').app.getPath('downloads') as string);
-      const outFile: string = await ipcRenderer.invoke('ytdlpDownload', url, outDir);
-      ipcRenderer.removeAllListeners('ytdlpProgress');
-      if (outFile) userOpenFilesRef.current?.([outFile]);
+      const outFile: string = await ipcRenderer.invoke('ytdlpDownload', url, outDir, formatSelector);
+      if (!outFile) {
+        throw new Error('ההורדה הסתיימה אך לא נמצא קובץ פלט');
+      }
+      userOpenFilesRef.current?.([outFile]);
+      getSwal().toast.fire({ icon: 'success', title: 'הסרטון ירד והועלה בהצלחה', timer: 3000 });
     } catch (err) {
       console.error('ytdlp error', err);
+      // Surface the actual error message to the user — no more silent failures
+      const errMsg = err instanceof Error ? err.message : String(err);
+      let title = 'הורדה נכשלה';
+      let userMsg = errMsg;
+      let html: string | undefined;
+
+      // Detect sports/private platforms specifically — they often need special handling
+      const sportsPattern = /pixellot|veo\.co|hudl|trace\.video|playsight/i;
+      if (sportsPattern.test(url)) {
+        title = 'פלטפורמת ספורט לא נתמכת ישירות';
+        html = `
+          <div style="text-align:right; direction:rtl; line-height:1.6; font-size:14px;">
+            <p><b>${url.match(sportsPattern)?.[0] ?? 'הפלטפורמה הזו'}</b> דורשת אימות מיוחד והקישור הוא לדף הצופה, לא לסרטון עצמו.</p>
+            <p style="margin-top:12px;"><b>אפשרויות:</b></p>
+            <ul style="text-align:right; padding-right:20px;">
+              <li>הורד את הסרטון מהאתר הרשמי של הפלטפורמה (כפתור Download שלהם)</li>
+              <li>מצא את כתובת ה-<code>.m3u8</code> הישירה בכלי מפתחים של הדפדפן (F12 → Network) והדבק אותה כאן</li>
+            </ul>
+          </div>
+        `;
+      } else if (errMsg.includes('Unsupported URL')) {
+        userMsg = 'האתר הזה לא נתמך. נסה לינק ישיר לסרטון, YouTube, Vimeo או Facebook.';
+      } else if (errMsg.includes('Sign in') || errMsg.includes('login') || errMsg.includes('private')) {
+        userMsg = 'הסרטון דורש התחברות / פרטי / DRM. לא ניתן להוריד.';
+      } else if (errMsg.includes('ENOTFOUND') || errMsg.includes('network')) {
+        userMsg = 'בעיית רשת — בדוק חיבור אינטרנט ונסה שוב.';
+      } else if (errMsg.includes('downloadFromGithub') || errMsg.includes('ENOENT')) {
+        userMsg = 'כשל בהתקנת כלי ההורדה (yt-dlp). בדוק חיבור אינטרנט ו-Antivirus, ונסה שוב.';
+      }
+
+      await getSwal().fire({
+        icon: 'error',
+        title,
+        ...(html ? { html } : { text: userMsg }),
+        confirmButtonText: 'הבנתי',
+        confirmButtonColor: '#14b8a6',
+      });
     } finally {
+      ipcRenderer.removeListener('ytdlpProgress', onProgress);
+      ipcRenderer.removeListener('ytdlpBootstrap', onBootstrap);
       setYtdlpDownloading(false);
       setYtdlpProgress(0);
+      setYtdlpBootstrap(false);
     }
   }, [outputDir]);
 
@@ -2853,7 +3012,33 @@ function App() {
                       onUrlDownload={handleUrlDownload}
                     />
                   )}
-                  {/* yt-dlp download progress overlay */}
+                  {/* Format-picker loading overlay (while yt-dlp probes available qualities) */}
+                  {formatPickerLoading && !formatPickerOpen && (
+                    <div style={{
+                      position: 'absolute',
+                      inset: 0,
+                      zIndex: 19,
+                      display: 'flex',
+                      flexDirection: 'column',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: 14,
+                      background: 'rgba(10,15,25,0.85)',
+                      backdropFilter: 'blur(6px)',
+                      direction: 'rtl',
+                    }}
+                    >
+                      <div style={{ fontSize: 30 }}>🔍</div>
+                      <div style={{ fontSize: 14, fontWeight: 700, color: '#f1f5f9' }}>
+                        בודק איכויות זמינות...
+                      </div>
+                      <div style={{ fontSize: 11, color: 'rgba(148,163,184,0.7)' }}>
+                        קריאה אחת לאתר — בלי הורדה
+                      </div>
+                    </div>
+                  )}
+
+                  {/* yt-dlp download progress overlay — distinguishes bootstrap vs video download */}
                   {ytdlpDownloading && (
                     <div style={{
                       position: 'absolute',
@@ -2863,17 +3048,40 @@ function App() {
                       flexDirection: 'column',
                       alignItems: 'center',
                       justifyContent: 'center',
-                      gap: 18,
-                      background: 'rgba(10,15,25,0.85)',
+                      gap: 14,
+                      background: 'rgba(10,15,25,0.88)',
                       backdropFilter: 'blur(8px)',
+                      direction: 'rtl',
+                      padding: 24,
                     }}
                     >
-                      <div style={{ fontSize: 36 }}>⬇️</div>
-                      <div style={{ fontSize: 15, fontWeight: 700, color: '#f1f5f9' }}>Downloading video…</div>
-                      <div style={{ width: 260, height: 6, background: 'rgba(255,255,255,0.1)', borderRadius: 99 }}>
-                        <div style={{ height: '100%', borderRadius: 99, width: `${ytdlpProgress}%`, background: 'linear-gradient(90deg,#38bdf8,#818cf8)', transition: 'width 0.4s' }} />
+                      <div style={{ fontSize: 36 }}>{ytdlpBootstrap ? '🔧' : '⬇️'}</div>
+                      <div style={{ fontSize: 15, fontWeight: 700, color: '#f1f5f9', textAlign: 'center' }}>
+                        {ytdlpBootstrap ? 'מתקין כלי הורדה (פעם ראשונה)...' : 'מוריד את הסרטון...'}
                       </div>
-                      <div style={{ fontSize: 13, color: 'rgba(148,163,184,0.8)' }}>{ytdlpProgress}%</div>
+                      <div style={{ fontSize: 11, color: 'rgba(148,163,184,0.7)', maxWidth: 340, textAlign: 'center', lineHeight: 1.5 }}>
+                        {ytdlpBootstrap
+                          ? 'הורדה חד-פעמית של ~12MB מ-GitHub. זה לוקח עד דקה ויקרה רק בפעם הזו.'
+                          : 'אל תסגור את האפליקציה. סרטון של 90 דקות יכול לקחת 10-30 דקות תלוי במהירות.'}
+                      </div>
+                      <div style={{ width: 280, height: 6, background: 'rgba(255,255,255,0.1)', borderRadius: 99, overflow: 'hidden' }}>
+                        <div style={{
+                          height: '100%',
+                          borderRadius: 99,
+                          width: ytdlpBootstrap ? '100%' : `${ytdlpProgress}%`,
+                          background: ytdlpBootstrap
+                            ? 'linear-gradient(90deg,#f59e0b,#fbbf24,#f59e0b)'
+                            : 'linear-gradient(90deg,#38bdf8,#818cf8)',
+                          backgroundSize: ytdlpBootstrap ? '200% 100%' : '100% 100%',
+                          animation: ytdlpBootstrap ? 'shimmer 1.5s linear infinite' : undefined,
+                          transition: 'width 0.4s',
+                        }}
+                        />
+                      </div>
+                      <div style={{ fontSize: 13, color: 'rgba(148,163,184,0.8)' }}>
+                        {ytdlpBootstrap ? '...' : `${ytdlpProgress}%`}
+                      </div>
+                      <style>{'@keyframes shimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }'}</style>
                     </div>
                   )}
 
@@ -3073,7 +3281,62 @@ function App() {
                   background: 'rgba(0,0,0,0.15)',
                 }}
                 >
-                  {/* ── Player name — pinned at very top ── */}
+                  {/* ── Current file + ✕ סיימתי — pinned at very top, most visible spot ── */}
+                  {filePath != null && (
+                    <div style={{
+                      padding: '10px 14px',
+                      borderBottom: '1px solid rgba(255,255,255,0.07)',
+                      background: 'rgba(20,184,166,0.04)',
+                      flexShrink: 0,
+                    }}
+                    >
+                      <div style={{ fontSize: 10, color: 'rgba(148,163,184,0.55)', letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 5 }}>
+                        📼 הסרטון הנוכחי
+                      </div>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                        <span
+                          style={{
+                            flex: 1,
+                            minWidth: 0,
+                            fontSize: 12,
+                            color: 'rgba(203,213,225,0.9)',
+                            whiteSpace: 'nowrap',
+                            overflow: 'hidden',
+                            textOverflow: 'ellipsis',
+                            direction: 'ltr',
+                            textAlign: 'right',
+                          }}
+                          title={filePath}
+                        >
+                          {basename(filePath)}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={handleFinishedWithVideo}
+                          title="סיימתי עם הסרטון — סגור וחזור לבחירת קובץ"
+                          style={{
+                            background: 'rgba(239,68,68,0.12)',
+                            border: '1px solid rgba(239,68,68,0.28)',
+                            borderRadius: 6,
+                            color: 'rgba(252,165,165,0.95)',
+                            fontSize: 11,
+                            fontWeight: 600,
+                            padding: '4px 10px',
+                            cursor: 'pointer',
+                            flexShrink: 0,
+                            transition: 'background 0.12s, border-color 0.12s',
+                            whiteSpace: 'nowrap',
+                          }}
+                          onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(239,68,68,0.24)'; e.currentTarget.style.borderColor = 'rgba(239,68,68,0.55)'; }}
+                          onMouseLeave={(e) => { e.currentTarget.style.background = 'rgba(239,68,68,0.12)'; e.currentTarget.style.borderColor = 'rgba(239,68,68,0.28)'; }}
+                        >
+                          ✕ סיימתי
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* ── Player name ── */}
                   <div style={{ padding: '10px 14px 8px', borderBottom: '1px solid rgba(255,255,255,0.07)', flexShrink: 0 }}>
                     <div style={{ fontSize: 10, color: 'rgba(148,163,184,0.55)', letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 5 }}>
                       ⚽ שם שחקן
@@ -3151,7 +3414,6 @@ function App() {
                         formatTimecode={(s: number) => formatTimecode({ seconds: s })}
                         onSegClick={handleSegClick}
                         onPlayClip={handlePlayClip}
-                        onAddSegment={addSegment}
                         onDeleteSegment={removeSegment}
                         onToggleFavorite={handleToggleFavorite}
                       />
@@ -3245,33 +3507,56 @@ function App() {
                         })}
                       </div>
 
-                      {/* Export package toggle */}
-                      <label
-                        htmlFor="export-package-toggle"
-                        style={{
-                          display: 'flex',
-                          alignItems: 'center',
-                          gap: 7,
-                          cursor: 'pointer',
-                          userSelect: 'none',
-                          fontSize: 11.5,
-                          color: createExportPackage ? '#e2e8f0' : 'rgba(148,163,184,0.75)',
-                        }}
-                      >
-                        <input
-                          id="export-package-toggle"
-                          type="checkbox"
-                          checked={createExportPackage}
-                          onChange={(e) => setCreateExportPackage(e.target.checked)}
-                          style={{ cursor: 'pointer', accentColor: '#14b8a6' }}
-                        />
-                        <span>צור חבילת ייצוא מסודרת</span>
-                      </label>
-                      {createExportPackage && (
-                        <div style={{ fontSize: 10, color: 'rgba(100,116,139,0.7)', marginTop: 4, paddingRight: 22, lineHeight: 1.4 }}>
-                          תיקייה עם clips/ + combined/ + metadata.json
+                      {/* Auto-folder ON/OFF toggle */}
+                      <div style={{ marginTop: 4 }}>
+                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+                          <div style={{ display: 'flex', flexDirection: 'column', minWidth: 0 }}>
+                            <span style={{
+                              fontSize: 11.5,
+                              fontWeight: 600,
+                              color: createExportPackage ? '#e2e8f0' : 'rgba(148,163,184,0.7)',
+                              lineHeight: 1.2,
+                            }}
+                            >
+                              תיקייה לכל ייצוא
+                            </span>
+                            <span style={{ fontSize: 9.5, color: 'rgba(100,116,139,0.65)', marginTop: 2 }}>
+                              {createExportPackage ? 'כל ייצוא בתיקייה משלו' : 'כל הקבצים בתיקיית היעד'}
+                            </span>
+                          </div>
+                          <button
+                            type="button"
+                            role="switch"
+                            aria-checked={createExportPackage}
+                            onClick={() => setCreateExportPackage((v) => !v)}
+                            style={{
+                              flexShrink: 0,
+                              width: 36,
+                              height: 20,
+                              borderRadius: 10,
+                              background: createExportPackage ? '#14b8a6' : 'rgba(255,255,255,0.12)',
+                              border: `1px solid ${createExportPackage ? 'rgba(20,184,166,0.6)' : 'rgba(255,255,255,0.15)'}`,
+                              position: 'relative',
+                              cursor: 'pointer',
+                              transition: 'background 0.18s, border-color 0.18s',
+                              padding: 0,
+                            }}
+                          >
+                            <span style={{
+                              position: 'absolute',
+                              top: 1,
+                              left: createExportPackage ? 17 : 1,
+                              width: 16,
+                              height: 16,
+                              borderRadius: '50%',
+                              background: '#fff',
+                              boxShadow: '0 1px 3px rgba(0,0,0,0.3)',
+                              transition: 'left 0.18s ease',
+                            }}
+                            />
+                          </button>
                         </div>
-                      )}
+                      </div>
 
                       {/* Legal links */}
                       <div style={{ marginTop: 10, paddingTop: 8, borderTop: '1px solid rgba(255,255,255,0.05)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -3290,7 +3575,7 @@ function App() {
                         >
                           תנאי שימוש · פרטיות
                         </button>
-                        <span style={{ fontSize: 10, color: 'rgba(100,116,139,0.4)' }}>v1.0.1</span>
+                        <span style={{ fontSize: 10, color: 'rgba(100,116,139,0.4)' }}>v1.0.2</span>
                       </div>
                     </div>
                   )}
@@ -3415,6 +3700,17 @@ function App() {
               <LegalDialog
                 visible={legalDialogOpen}
                 onClose={() => setLegalDialogOpen(false)}
+              />
+
+              <FormatPickerDialog
+                visible={formatPickerOpen}
+                info={formatPickerInfo}
+                onConfirm={handleFormatPicked}
+                onCancel={() => {
+                  setFormatPickerOpen(false);
+                  setFormatPickerInfo(null);
+                  pendingDownloadUrlRef.current = null;
+                }}
               />
 
               {/* Dialogs */}

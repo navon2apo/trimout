@@ -24,7 +24,6 @@ interface Props {
   formatTimecode: (s: number) => string;
   onSegClick: (i: number) => void;
   onPlayClip?: (i: number) => void;
-  onAddSegment: () => void;
   onDeleteSegment: (i: number) => void;
   onToggleFavorite?: (i: number) => void;
   onUploadClip?: (i: number) => void;
@@ -62,7 +61,7 @@ function actionBadgeStyle(actionType: string | undefined, isUncertain: boolean |
   return { background: 'rgba(20,184,166,0.15)', color: 'rgba(94,234,212,0.95)', border: '1px solid rgba(20,184,166,0.3)' };
 }
 
-function ClipsPanel({ segments, currentSegIndex, formatTimecode, onSegClick, onPlayClip, onAddSegment, onDeleteSegment, onToggleFavorite, onUploadClip }: Props) {
+function ClipsPanel({ segments, currentSegIndex, formatTimecode, onSegClick, onPlayClip, onDeleteSegment, onToggleFavorite, onUploadClip }: Props) {
   const listRef = useRef<HTMLDivElement>(null);
   const activeRef = useRef<HTMLDivElement>(null);
   const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
@@ -84,32 +83,11 @@ function ClipsPanel({ segments, currentSegIndex, formatTimecode, onSegClick, onP
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 0, padding: '0 0 4px 0' }}>
-      {/* Header */}
+      {/* Header — no duplicate add button; the main ✂️ on the video is the only way to add */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '10px 14px 6px' }}>
         <span style={{ fontSize: 11, color: 'rgba(148,163,184,0.6)', letterSpacing: '0.08em', textTransform: 'uppercase', flex: 1 }}>
           ✂️ {segments.length} קליפ{segments.length !== 1 ? 'ים' : ''}
         </span>
-        <button
-          type="button"
-          onClick={onAddSegment}
-          title="הוסף קליפ"
-          style={{
-            background: 'rgba(56,189,248,0.12)',
-            border: '1px solid rgba(56,189,248,0.25)',
-            borderRadius: 20,
-            color: '#38bdf8',
-            fontSize: 14,
-            width: 22,
-            height: 22,
-            cursor: 'pointer',
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            lineHeight: 1,
-            padding: 0,
-          }}
-        >+
-        </button>
       </div>
 
       {/* Clip list */}

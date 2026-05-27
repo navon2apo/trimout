@@ -39,13 +39,14 @@ import * as ffmpeg from './ffmpeg.js';
 import * as compatPlayer from './compatPlayer.js';
 import { downloadMediaUrl } from './ffmpeg.js';
 import { detectSpeechSegments, detectEnergyPeaks, detectSceneChanges } from './aiAnalysis.js';
-import { downloadVideo, isSupportedUrl } from './ytdlp.js';
+import { downloadVideo, isSupportedUrl, listVideoFormats } from './ytdlp.js';
 import { transcribeVideo } from './whisper.js';
 import { activateLicense, checkLicense, deactivateLicense, getMachineFingerprint } from './license.js';
 
 // Separate untyped store for API keys (not part of Config schema)
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const Store = require('electron-store');
+
 const apiKeyStore = new Store({ name: 'api-keys', encryptionKey: 'trimout-api-keys-v1' });
 
 function getApiKey(id: string): string { return (apiKeyStore.get(`key_${id}`) as string | undefined) ?? ''; }
@@ -369,19 +370,25 @@ async function init() {
 
     ipcMain.handle('showItemInFolder', (_e, path) => shell.showItemInFolder(path));
 
-    // yt-dlp download with progress
-    ipcMain.handle('ytdlpDownload', async (event, url: string, outDir: string) => {
-      return downloadVideo(url, outDir, (p) => {
-        event.sender.send('ytdlpProgress', p);
-      });
-    });
+    // yt-dlp download with progress + bootstrap notification
+    // List available video formats without downloading — fast (1 HTTP roundtrip)
+    ipcMain.handle('ytdlpListFormats', async (event, url: string) => listVideoFormats(
+      url,
+      () => { event.sender.send('ytdlpBootstrap'); },
+    ));
+
+    ipcMain.handle('ytdlpDownload', async (event, url: string, outDir: string, formatSelector?: string) => downloadVideo(
+      url,
+      outDir,
+      (p) => { event.sender.send('ytdlpProgress', p); },
+      () => { event.sender.send('ytdlpBootstrap'); },
+      formatSelector,
+    ));
 
     // Whisper transcription with progress
-    ipcMain.handle('whisperTranscribe', async (event, filePath: string, model: string) => {
-      return transcribeVideo(filePath, model as Parameters<typeof transcribeVideo>[1], (p) => {
-        event.sender.send('whisperProgress', p);
-      });
-    });
+    ipcMain.handle('whisperTranscribe', async (event, filePath: string, model: string) => transcribeVideo(filePath, model as Parameters<typeof transcribeVideo>[1], (p) => {
+      event.sender.send('whisperProgress', p);
+    }));
 
     ipcMain.on('apiActionResponse', (_e, { id }) => {
       apiActionRequests.get(id)?.();
