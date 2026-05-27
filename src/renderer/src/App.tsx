@@ -1416,6 +1416,8 @@ function App() {
             ...existingOutFiles.map((f) => f.path),
             ...(mergedOutFilePath != null && await fileExists(mergedOutFilePath) ? [mergedOutFilePath] : []),
           ];
+          const fsUnlinkSafe = async (p: string) => { try { await (window.require('fs/promises') as { unlink: (s: string) => Promise<void> }).unlink(p); } catch { /* ignore */ } };
+
           for (const losslessPath of allFiles) {
             const ext = pathExtname(losslessPath) || '.mp4';
             const tmpPath = `${losslessPath}.compressing${ext}`;
@@ -1428,11 +1430,28 @@ function App() {
                 fitMode: exportFitMode,
                 appendCommandLog: appendFfmpegCommandLog,
               });
-              // Swap: compressed replaces lossless
-              await fsRename(tmpPath, losslessPath);
+              // Swap: compressed must replace lossless. On Windows, `rename` can fail
+              // if the original file is held by Explorer thumbnail cache or antivirus.
+              // Try the simple swap first; if it fails, delete the original and retry;
+              // as a last resort, copy + unlink (slower but works through locks).
+              try {
+                await fsRename(tmpPath, losslessPath);
+              } catch (renameErr) {
+                console.warn('Direct rename failed, trying delete-then-rename', renameErr);
+                await fsUnlinkSafe(losslessPath);
+                try {
+                  await fsRename(tmpPath, losslessPath);
+                } catch (rename2Err) {
+                  console.warn('Rename still failing, falling back to copy+delete', rename2Err);
+                  await fsCopyFile(tmpPath, losslessPath);
+                  await fsUnlinkSafe(tmpPath);
+                }
+              }
             } catch (compressErr) {
               console.warn('Compression failed for', losslessPath, compressErr);
               warnings.add(`${t('Compression failed')}: ${basename(losslessPath)}`);
+              // Best-effort cleanup of the leftover .compressing.mp4
+              await fsUnlinkSafe(tmpPath);
             }
           }
         }
@@ -3675,7 +3694,7 @@ function App() {
                         >
                           תנאי שימוש · פרטיות
                         </button>
-                        <span style={{ fontSize: 10, color: 'rgba(100,116,139,0.4)' }}>v1.0.3</span>
+                        <span style={{ fontSize: 10, color: 'rgba(100,116,139,0.4)' }}>v1.0.4</span>
                       </div>
                     </div>
                   )}
