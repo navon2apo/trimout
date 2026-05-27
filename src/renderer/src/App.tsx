@@ -1385,13 +1385,15 @@ function App() {
       const exportedPaths = willMerge && mergedOutFilePath != null ? [mergedOutFilePath] : outFiles.map((f) => f.path);
       const [revealPath] = exportedPaths;
       invariant(revealPath != null);
-      if (!hideAllNotifications) {
-        showOsNotification(i18n.t('Export finished'));
-        openCutFinishedDialog({ filePath: revealPath, warnings: [...warnings], notices: [...notices] });
-      }
+      // NOTE: we DO NOT open the cut-finished dialog yet — we'll open it after the
+      // post-export pipeline so "Show in folder" points to the final file location
+      // (which moves into ExportPackage if that mode is on).
+      if (!hideAllNotifications) showOsNotification(i18n.t('Export finished'));
 
       setExportCount((c) => c + 1);
       setCurrentFileExportCount((c) => c + 1);
+      // Track final reveal path — updated by the post-export pipeline if files were moved.
+      let finalRevealPath: string = revealPath;
 
       // ── Post-export pipeline: H.264 compression + export package + metadata.json ──
       try {
@@ -1548,6 +1550,8 @@ function App() {
             // Remember the final path of the most useful file for QR-share:
             // prefer the merged clip (single file to phone) over individual clips.
             setLastExportedFile(mergedInPkg ?? firstClipInPkg);
+            // Update reveal path so "Show in folder" opens the package, not the empty source dir.
+            finalRevealPath = mergedInPkg ?? firstClipInPkg ?? finalRoot;
 
             // Clean up the original files at the export root — they now live inside the package
             const fsUnlink = (window.require('fs/promises') as { unlink: (p: string) => Promise<void> }).unlink;
@@ -1595,6 +1599,12 @@ function App() {
         console.warn('Failed to finalize export package / metadata', metaErr);
       } finally {
         setWorking(undefined);
+      }
+
+      // NOW open the cut-finished dialog with the final reveal path — by this point
+      // any file moves into ExportPackage are done, so "Show in folder" works correctly.
+      if (!hideAllNotifications) {
+        openCutFinishedDialog({ filePath: finalRevealPath, warnings: [...warnings], notices: [...notices] });
       }
 
       emitEvent({ eventName: 'export-complete', paths: exportedPaths });
@@ -3755,7 +3765,7 @@ function App() {
                         >
                           תנאי שימוש · פרטיות
                         </button>
-                        <span style={{ fontSize: 10, color: 'rgba(100,116,139,0.4)' }}>v1.1.0</span>
+                        <span style={{ fontSize: 10, color: 'rgba(100,116,139,0.4)' }}>v1.1.1</span>
                       </div>
                     </div>
                   )}
