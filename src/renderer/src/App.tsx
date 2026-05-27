@@ -35,7 +35,7 @@ import ClipsPanel from './components/ClipsPanel';
 import ActionPickerModal, { type SoccerAction } from './components/ActionPickerModal';
 import LegalDialog from './components/LegalDialog';
 import FormatPickerDialog, { type VideoInfo } from './components/FormatPickerDialog';
-import { compressClip, QUALITY_PRESETS, type QualityPreset } from './util/qualityPresets';
+import { compressClip, QUALITY_PRESETS, type QualityPreset, type AspectRatio, type FitMode } from './util/qualityPresets';
 import FEATURES from './util/features';
 import MediaSourcePlayer from './MediaSourcePlayer';
 import TopMenu from './TopMenu';
@@ -174,6 +174,9 @@ function App() {
   const [qualityPreset, setQualityPreset] = useState<QualityPreset>('lossless');
   // Default ON — each export creates its own dated folder inside the output dir
   const [createExportPackage, setCreateExportPackage] = useState(true);
+  // Aspect ratio output — when not 'original', re-encode is forced (lossless ignored).
+  const [exportAspectRatio, setExportAspectRatio] = useState<AspectRatio>('original');
+  const [exportFitMode, setExportFitMode] = useState<FitMode>('crop');
 
   // ─── Legal dialog (Terms + Privacy) ────────────────────────────────────────
   const [legalDialogOpen, setLegalDialogOpen] = useState(false);
@@ -1399,7 +1402,15 @@ function App() {
         }
 
         // 1. Optional H.264 compression — only compress files that actually exist on disk
-        if (qualityPreset !== 'lossless') {
+        // A re-encode pass is needed when the user wants compression OR a different aspect ratio.
+        // Lossless export can't change geometry, so aspect != 'original' forces re-encode with
+        // a sensible default quality ('balanced'); the user's quality choice is respected if set.
+        const needsAspectChange = exportAspectRatio !== 'original';
+        const needsCompress = qualityPreset !== 'lossless' || needsAspectChange;
+        if (needsCompress) {
+          // When the user chose 'lossless' but also picked an aspect ratio, fall back to 'balanced'
+          // (CRF 23) — visually transparent and reasonable file size.
+          const effectivePreset: Exclude<QualityPreset, 'lossless'> = qualityPreset === 'lossless' ? 'balanced' : qualityPreset;
           setWorking({ text: i18n.t('Compressing') });
           const allFiles = [
             ...existingOutFiles.map((f) => f.path),
@@ -1409,7 +1420,14 @@ function App() {
             const ext = pathExtname(losslessPath) || '.mp4';
             const tmpPath = `${losslessPath}.compressing${ext}`;
             try {
-              await compressClip({ inPath: losslessPath, outPath: tmpPath, preset: qualityPreset, appendCommandLog: appendFfmpegCommandLog });
+              await compressClip({
+                inPath: losslessPath,
+                outPath: tmpPath,
+                preset: effectivePreset,
+                aspectRatio: exportAspectRatio,
+                fitMode: exportFitMode,
+                appendCommandLog: appendFfmpegCommandLog,
+              });
               // Swap: compressed replaces lossless
               await fsRename(tmpPath, losslessPath);
             } catch (compressErr) {
@@ -1425,6 +1443,8 @@ function App() {
           playerName: playerName.trim() || null,
           sourceVideo: filePath,
           qualityPreset,
+          aspectRatio: exportAspectRatio,
+          fitMode: exportAspectRatio === 'original' ? null : exportFitMode,
           clips: outFiles.map((f, idx) => {
             const seg = cutSegments[idx];
             return {
@@ -1502,6 +1522,8 @@ function App() {
               sourceVideo: filePath,
               quickCutDuration,
               qualityPreset,
+              aspectRatio: exportAspectRatio,
+              fitMode: exportAspectRatio === 'original' ? null : exportFitMode,
               exportMode: mergedExists && hasSeparates ? 'merge+separate' : (mergedExists ? 'merge' : 'separate'),
               createdAt: new Date().toISOString(),
               segments: cutSegments.map((s) => ({
@@ -1562,7 +1584,7 @@ function App() {
       setWorking(undefined);
       setProgress(undefined);
     }
-  }, [filePath, numStreamsToCopy, haveInvalidSegs, workingRef, setWorking, segmentsToChaptersOnly, cutFileTemplateOrDefault, generateCutFileNames, cutMultiple, outputDir, customOutDir, fileFormat, fileDuration, isRotationSet, effectiveRotation, copyFileStreams, allFilesMeta, keyframeCut, segmentsToExport, shortestFlag, ffmpegExperimental, preserveMetadata, preserveMetadataOnMerge, preserveMovData, preserveChapters, movFastStart, avoidNegativeTs, customTagsByFile, paramsByStreamId, detectedFps, willMerge, enableOverwriteOutput, exportConfirmEnabled, mainFileFormat, mainStreams, exportExtraStreams, areWeCutting, simpleMode, prefersReducedMotion, cleanupChoices, hideAllNotifications, segmentsOrInverse.selected, t, cutMergedFileTemplateOrDefault, segmentsToChapters, invertCutSegments, generateCutMergedFileNames, concatCutSegments, autoDeleteMergedSegments, tryDeleteFiles, nonCopiedExtraStreams, extractStreams, askForCleanupChoices, cleanupFiles, showOsNotification, openCutFinishedDialog, handleExportFailed, setExportedRanges, qualityPreset, createExportPackage, playerName, cutSegments, quickCutDuration, appendFfmpegCommandLog]);
+  }, [filePath, numStreamsToCopy, haveInvalidSegs, workingRef, setWorking, segmentsToChaptersOnly, cutFileTemplateOrDefault, generateCutFileNames, cutMultiple, outputDir, customOutDir, fileFormat, fileDuration, isRotationSet, effectiveRotation, copyFileStreams, allFilesMeta, keyframeCut, segmentsToExport, shortestFlag, ffmpegExperimental, preserveMetadata, preserveMetadataOnMerge, preserveMovData, preserveChapters, movFastStart, avoidNegativeTs, customTagsByFile, paramsByStreamId, detectedFps, willMerge, enableOverwriteOutput, exportConfirmEnabled, mainFileFormat, mainStreams, exportExtraStreams, areWeCutting, simpleMode, prefersReducedMotion, cleanupChoices, hideAllNotifications, segmentsOrInverse.selected, t, cutMergedFileTemplateOrDefault, segmentsToChapters, invertCutSegments, generateCutMergedFileNames, concatCutSegments, autoDeleteMergedSegments, tryDeleteFiles, nonCopiedExtraStreams, extractStreams, askForCleanupChoices, cleanupFiles, showOsNotification, openCutFinishedDialog, handleExportFailed, setExportedRanges, qualityPreset, createExportPackage, playerName, cutSegments, quickCutDuration, appendFfmpegCommandLog, exportAspectRatio, exportFitMode]);
 
   const onExportPress = useCallback(async () => {
     if (!filePath) return;
@@ -3507,6 +3529,84 @@ function App() {
                         })}
                       </div>
 
+                      {/* Aspect ratio selector */}
+                      <div style={{ fontSize: 10, color: 'rgba(148,163,184,0.7)', marginBottom: 3 }}>פורמט</div>
+                      <div style={{ display: 'flex', gap: 4, marginBottom: 8 }}>
+                        {([
+                          { v: 'original' as const, label: 'מקורי', title: 'ללא שינוי גיאומטריה' },
+                          { v: '16:9' as const, label: '16:9', title: 'אופקי — טלוויזיה / YouTube (1920×1080)' },
+                          { v: '9:16' as const, label: '9:16', title: 'אנכי — Reels / TikTok / Shorts (1080×1920)' },
+                          { v: '1:1' as const, label: '1:1', title: 'ריבועי — Instagram Feed (1080×1080)' },
+                        ]).map(({ v, label, title }) => {
+                          const active = exportAspectRatio === v;
+                          return (
+                            <button
+                              key={v}
+                              type="button"
+                              title={title}
+                              onClick={() => setExportAspectRatio(v)}
+                              style={{
+                                flex: 1,
+                                background: active ? 'rgba(236,72,153,0.18)' : 'rgba(255,255,255,0.04)',
+                                border: `1px solid ${active ? 'rgba(236,72,153,0.5)' : 'rgba(255,255,255,0.08)'}`,
+                                borderRadius: 6,
+                                color: active ? 'rgba(251,207,232,0.95)' : 'rgba(148,163,184,0.75)',
+                                fontSize: 11,
+                                fontWeight: 600,
+                                padding: '5px 0',
+                                cursor: 'pointer',
+                                transition: 'background 0.1s, border-color 0.1s, color 0.1s',
+                              }}
+                            >
+                              {label}
+                            </button>
+                          );
+                        })}
+                      </div>
+
+                      {/* Fit mode — only relevant when aspect ratio ≠ original */}
+                      {exportAspectRatio !== 'original' && (
+                        <>
+                          <div style={{ fontSize: 10, color: 'rgba(148,163,184,0.7)', marginBottom: 3 }}>התאמה</div>
+                          <div style={{ display: 'flex', gap: 4, marginBottom: 8 }}>
+                            {([
+                              { v: 'crop' as const, label: '✂️ חיתוך מרכז', title: 'חותך מהמרכז — אין שחור, אבל ייתכן איבוד תוכן בקצוות' },
+                              { v: 'pad' as const, label: '⬛ שחור בצדדים', title: 'משאיר את כל התוכן — מוסיף פסים שחורים בצדדים' },
+                            ]).map(({ v, label, title }) => {
+                              const active = exportFitMode === v;
+                              return (
+                                <button
+                                  key={v}
+                                  type="button"
+                                  title={title}
+                                  onClick={() => setExportFitMode(v)}
+                                  style={{
+                                    flex: 1,
+                                    background: active ? 'rgba(168,85,247,0.18)' : 'rgba(255,255,255,0.04)',
+                                    border: `1px solid ${active ? 'rgba(168,85,247,0.5)' : 'rgba(255,255,255,0.08)'}`,
+                                    borderRadius: 6,
+                                    color: active ? 'rgba(216,180,254,0.95)' : 'rgba(148,163,184,0.75)',
+                                    fontSize: 10.5,
+                                    fontWeight: 600,
+                                    padding: '5px 0',
+                                    cursor: 'pointer',
+                                    transition: 'background 0.1s, border-color 0.1s, color 0.1s',
+                                  }}
+                                >
+                                  {label}
+                                </button>
+                              );
+                            })}
+                          </div>
+                          {/* Helper note when user picked aspect != original but quality is lossless */}
+                          {qualityPreset === 'lossless' && (
+                            <div style={{ fontSize: 10, color: 'rgba(251,191,36,0.7)', marginBottom: 8, lineHeight: 1.4 }}>
+                              ⚠ שינוי פורמט דורש קידוד מחדש — האיכות תעבור ל&quot;מאוזן&quot; אוטומטית
+                            </div>
+                          )}
+                        </>
+                      )}
+
                       {/* Auto-folder ON/OFF toggle */}
                       <div style={{ marginTop: 4 }}>
                         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
@@ -3575,7 +3675,7 @@ function App() {
                         >
                           תנאי שימוש · פרטיות
                         </button>
-                        <span style={{ fontSize: 10, color: 'rgba(100,116,139,0.4)' }}>v1.0.2</span>
+                        <span style={{ fontSize: 10, color: 'rgba(100,116,139,0.4)' }}>v1.0.3</span>
                       </div>
                     </div>
                   )}
