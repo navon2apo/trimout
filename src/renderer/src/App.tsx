@@ -929,45 +929,45 @@ function App() {
     clearSegments();
   }, [isFileOpened, workingRef, askBeforeClose, confirmDialog, resetState, clearSegments]);
 
-  // ✕ Soccer-flow "סיימתי עם הסרטון" — smart dialog if there are unexported clips
+  // 🧹 "נקה פרוייקט" — wipes the current file + clips + player name + any pending state.
+  // Always asks for confirmation with a count of what's about to be lost.
   const handleFinishedWithVideo = useCallback(async () => {
-    if (!isFileOpened || workingRef.current) return;
+    // Note: we deliberately DON'T early-return on workingRef — the user expects a response
+    // even if something else is running. If a background job is active we just warn.
+    const realClips = cutSegments.filter((s) => s.end != null && !s.initial);
+    const hasContent = realClips.length > 0 || playerName.trim().length > 0;
 
-    // Count meaningful clips (must have end time + not initial placeholder)
-    const unexportedClips = cutSegments.filter((s) => s.end != null && !s.initial);
+    const text = hasContent
+      ? `הפעולה תמחק:\n• ${realClips.length} קליפ${realClips.length === 1 ? '' : 'ים'} מהרשימה${playerName.trim() ? `\n• שם השחקן "${playerName.trim()}"` : ''}\n• הסרטון הפתוח\n\nלא ניתן לבטל.`
+      : 'הפעולה תסגור את הסרטון הפתוח ותנקה את כל ההגדרות. המשך?';
 
-    if (unexportedClips.length === 0) {
-      // Nothing to lose — close immediately
-      resetState();
-      clearSegments();
-      return;
-    }
-
-    // 3-option dialog
     const result = await getSwal().fire({
-      title: 'יש לך קליפים שלא ייצאת',
-      text: `יש ${unexportedClips.length} קליפ${unexportedClips.length === 1 ? '' : 'ים'} שעוד לא ייצאת. מה לעשות?`,
-      icon: 'warning',
+      title: 'לנקות את הפרוייקט?',
+      text,
+      icon: hasContent ? 'warning' : 'question',
       showCancelButton: true,
-      showDenyButton: true,
-      confirmButtonText: 'ייצא עכשיו ועבור',
-      denyButtonText: 'סיים בלי לייצא',
+      confirmButtonText: '🧹 כן, נקה הכל',
       cancelButtonText: 'ביטול',
-      confirmButtonColor: '#14b8a6',
-      denyButtonColor: '#ef4444',
+      confirmButtonColor: '#ef4444',
       reverseButtons: true,
     });
 
-    if (result.isConfirmed) {
-      // Trigger normal export flow — they'll be returned to a clean state via the export onFinish handlers
-      setExportConfirmOpen(true);
-    } else if (result.isDenied) {
-      // User accepts losing the clips
+    if (!result.isConfirmed) return;
+
+    // Wipe everything
+    try {
       resetState();
       clearSegments();
+      setPlayerName('');
+      pendingClipRef.current = null;
+      setActionPickerOpen(false);
+      setExportConfirmOpen(false);
+      getSwal().toast.fire({ icon: 'success', title: 'הפרוייקט נוקה', timer: 2000 });
+    } catch (err) {
+      console.error('Failed to clean project', err);
+      getSwal().fire({ icon: 'error', title: 'הניקוי נכשל', text: String(err) });
     }
-    // result.dismiss === cancel → do nothing
-  }, [isFileOpened, workingRef, cutSegments, resetState, clearSegments, setExportConfirmOpen]);
+  }, [cutSegments, playerName, resetState, clearSegments]);
 
   const closeBatch = useCallback(async () => {
     if (askBeforeClose && !(await confirmDialog({ focusConfirm: true, description: i18n.t('Are you sure you want to close the loaded batch of files?') }))) return;
@@ -3322,7 +3322,7 @@ function App() {
                   background: 'rgba(0,0,0,0.15)',
                 }}
                 >
-                  {/* ── Current file + ✕ סיימתי — pinned at very top, most visible spot ── */}
+                  {/* ── Current file + 🧹 נקה פרוייקט — pinned at very top, most visible spot ── */}
                   {filePath != null && (
                     <div style={{
                       padding: '10px 14px',
@@ -3354,7 +3354,7 @@ function App() {
                         <button
                           type="button"
                           onClick={handleFinishedWithVideo}
-                          title="סיימתי עם הסרטון — סגור וחזור לבחירת קובץ"
+                          title="נקה פרוייקט — סוגר את הסרטון, מוחק את כל הקליפים ומאפס את ההגדרות"
                           style={{
                             background: 'rgba(239,68,68,0.12)',
                             border: '1px solid rgba(239,68,68,0.28)',
@@ -3371,7 +3371,7 @@ function App() {
                           onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(239,68,68,0.24)'; e.currentTarget.style.borderColor = 'rgba(239,68,68,0.55)'; }}
                           onMouseLeave={(e) => { e.currentTarget.style.background = 'rgba(239,68,68,0.12)'; e.currentTarget.style.borderColor = 'rgba(239,68,68,0.28)'; }}
                         >
-                          ✕ סיימתי
+                          🧹 נקה פרוייקט
                         </button>
                       </div>
                     </div>
@@ -3694,7 +3694,7 @@ function App() {
                         >
                           תנאי שימוש · פרטיות
                         </button>
-                        <span style={{ fontSize: 10, color: 'rgba(100,116,139,0.4)' }}>v1.0.4</span>
+                        <span style={{ fontSize: 10, color: 'rgba(100,116,139,0.4)' }}>v1.0.5</span>
                       </div>
                     </div>
                   )}
