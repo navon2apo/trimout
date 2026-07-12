@@ -50,8 +50,8 @@ function fmtDuration(start: number, end: number | undefined): string {
 
 // Secondary (negative) actions shown in a muted red tone
 const SECONDARY_ACTION_LABELS = new Set([
-  'איבוד כדור', 'מסירה לא טובה', 'איחור לכדור', 'טעות הגנתית',
-  'מיקום לא נכון', 'החלטה לא טובה', 'עבירה מיותרת', 'לא רלוונטי',
+  'Turnover', 'Poor pass', 'Late to ball', 'Defensive mistake',
+  'Wrong position', 'Poor decision', 'Unnecessary foul', 'Not relevant',
 ]);
 
 function actionBadgeStyle(actionType: string | undefined, isUncertain: boolean | undefined): React.CSSProperties {
@@ -75,7 +75,7 @@ function ClipsPanel({ segments, currentSegIndex, formatTimecode, onSegClick, onP
       <div style={{ padding: '10px 14px' }}>
         <div style={{ fontSize: 11, color: 'rgba(100,116,139,0.55)', textAlign: 'center', padding: '14px 0', lineHeight: 1.5 }}>
           <div style={{ fontSize: 22, marginBottom: 6 }}>✂️</div>
-          לחץ על הכפתור למטה<br />כדי לסמן רגע חשוב
+          Press the button below<br />to mark an important moment
         </div>
       </div>
     );
@@ -86,7 +86,7 @@ function ClipsPanel({ segments, currentSegIndex, formatTimecode, onSegClick, onP
       {/* Header — no duplicate add button; the main ✂️ on the video is the only way to add */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '10px 14px 6px' }}>
         <span style={{ fontSize: 11, color: 'rgba(148,163,184,0.6)', letterSpacing: '0.08em', textTransform: 'uppercase', flex: 1 }}>
-          ✂️ {segments.length} קליפ{segments.length !== 1 ? 'ים' : ''}
+          ✂️ {segments.length} clip{segments.length !== 1 ? 's' : ''}
         </span>
       </div>
 
@@ -97,7 +97,7 @@ function ClipsPanel({ segments, currentSegIndex, formatTimecode, onSegClick, onP
             const isActive = i === currentSegIndex;
             const color = segColor(seg.segColorIndex);
             // Display name: use actionType if available, else fallback to seg.name or generic
-            const displayName = seg.name || (seg.actionType ? `${seg.playerName ? `${seg.playerName} ` : ''}${seg.actionType} ${i + 1}` : `קליפ ${i + 1}`);
+            const displayName = seg.name || (seg.actionType ? `${seg.playerName ? `${seg.playerName} ` : ''}${seg.actionType} ${i + 1}` : `Clip ${i + 1}`);
 
             return (
               <motion.div
@@ -122,7 +122,7 @@ function ClipsPanel({ segments, currentSegIndex, formatTimecode, onSegClick, onP
                   transition: 'background 0.12s, border-color 0.12s, box-shadow 0.12s',
                   userSelect: 'none',
                   overflow: 'hidden',
-                  direction: 'rtl',
+                  direction: 'ltr',
                 }}
               >
                 {/* Color bar */}
@@ -156,7 +156,7 @@ function ClipsPanel({ segments, currentSegIndex, formatTimecode, onSegClick, onP
                       <button
                         type="button"
                         onClick={(e) => { e.stopPropagation(); onToggleFavorite(i); }}
-                        title={seg.isFavorite ? 'הסר ממועדפים' : 'סמן כמועדף'}
+                        title={seg.isFavorite ? 'Remove from favorites' : 'Mark as favorite'}
                         style={{
                           background: 'none',
                           border: 'none',
@@ -241,7 +241,7 @@ function ClipsPanel({ segments, currentSegIndex, formatTimecode, onSegClick, onP
                     initial={{ opacity: 0 }}
                     animate={{ opacity: 1 }}
                     onClick={(e) => { e.stopPropagation(); if (onPlayClip) onPlayClip(i); else onSegClick(i); }}
-                    title="נגן קליפ"
+                    title="Play clip"
                     style={{
                       background: isActive ? `${color}30` : 'rgba(255,255,255,0.07)',
                       border: `1px solid ${isActive ? `${color}60` : 'rgba(255,255,255,0.12)'}`,
@@ -278,7 +278,7 @@ function ClipsPanel({ segments, currentSegIndex, formatTimecode, onSegClick, onP
                         animate={{ opacity: 1, scale: 1 }}
                         transition={{ duration: 0.1 }}
                         onClick={(e) => { e.stopPropagation(); onUploadClip?.(i); }}
-                        title={onUploadClip ? 'העלה לענן' : 'העלאה לענן (בקרוב)'}
+                        title={onUploadClip ? 'Upload to cloud' : 'Cloud upload coming soon'}
                         style={{
                           background: onUploadClip ? 'rgba(56,189,248,0.15)' : 'rgba(100,116,139,0.08)',
                           border: `1px solid ${onUploadClip ? 'rgba(56,189,248,0.35)' : 'rgba(100,116,139,0.18)'}`,
@@ -303,7 +303,7 @@ function ClipsPanel({ segments, currentSegIndex, formatTimecode, onSegClick, onP
                         animate={{ opacity: 1, scale: 1 }}
                         transition={{ duration: 0.1 }}
                         onClick={(e) => { e.stopPropagation(); onDeleteSegment(i); }}
-                        title="מחק קליפ"
+                        title="Delete clip"
                         style={{
                           background: 'rgba(248,113,113,0.15)',
                           border: '1px solid rgba(248,113,113,0.3)',

@@ -30,50 +30,52 @@ const H_STYLE: React.CSSProperties = {
 
 function TermsContent() {
   return (
-    <div style={{ direction: 'rtl' }}>
+    <div style={{ direction: 'ltr' }}>
       <p style={SECTION_STYLE}>
-        ברוכים הבאים ל-TrimOut. שימושך באפליקציה מהווה הסכמה לתנאים הבאים.
+        Welcome to TrimOut. By using the app, you agree to the following terms.
       </p>
 
-      <h3 style={H_STYLE}>1. רישיון השימוש</h3>
+      <h3 style={H_STYLE}>1. License</h3>
       <p style={SECTION_STYLE}>
-        רכישת TrimOut מעניקה לך רישיון אישי, לא בלעדי, להתקנה ולשימוש באפליקציה
-        על המחשבים שלך. אסור להפיץ, למכור או להעביר את המפתח לאחרים.
+        Purchasing TrimOut grants you a personal, non-exclusive license to install
+        and use the app on your computers. You may not distribute, sell, or transfer
+        your license key to others.
       </p>
 
-      <h3 style={H_STYLE}>2. שימוש בתוכן</h3>
+      <h3 style={H_STYLE}>2. Content Use</h3>
       <p style={SECTION_STYLE}>
-        אתה האחראי הבלעדי לתוכן שאתה מעלה ועורך באפליקציה. עליך לוודא שיש לך
-        זכויות שימוש מלאות בקבצי הווידאו, ולקבל הסכמת כל מי שמופיע בהם, במיוחד
-        כאשר מדובר בקטינים.
+        You are solely responsible for the content you import and edit in the app.
+        You must make sure you have the required rights to use the video files and
+        consent from anyone appearing in them, especially when minors are involved.
       </p>
 
-      <h3 style={H_STYLE}>3. הגבלת אחריות</h3>
+      <h3 style={H_STYLE}>3. Limitation of Liability</h3>
       <p style={SECTION_STYLE}>
-        TrimOut מסופקת &quot;כמות שהיא&quot; (AS IS). איננו אחראים לאובדן נתונים, לקבצים
-        פגומים, או לנזק עקיף שייגרם משימוש בתוכנה. מומלץ לשמור עותקי גיבוי של
-        קבצי המקור לפני עריכה.
+        TrimOut is provided &quot;as is&quot;. We are not responsible for data loss,
+        damaged files, or indirect damage caused by using the software. Keep backup
+        copies of your original files before editing.
       </p>
 
-      <h3 style={H_STYLE}>4. רכיבים חיצוניים</h3>
+      <h3 style={H_STYLE}>4. Third-Party Components</h3>
       <p style={SECTION_STYLE}>
-        TrimOut מבוססת על LosslessCut של Mikael Finstad (רישיון GPL-2.0)
-        ומשתמשת ב-FFmpeg. הרכיבים החיצוניים כפופים לרישיונותיהם הנפרדים.
+        TrimOut is based on LosslessCut by Mikael Finstad (GPL-2.0 license) and
+        uses FFmpeg. Third-party components are governed by their own licenses.
       </p>
 
-      <h3 style={H_STYLE}>5. עדכונים והפסקת שירות</h3>
+      <h3 style={H_STYLE}>5. Updates and Service Availability</h3>
       <p style={SECTION_STYLE}>
-        אנו עשויים להוציא עדכונים מעת לעת. אין התחייבות לזמינות שירות אונליין;
-        האפליקציה פועלת לחלוטין מקומית ולא דורשת חיבור לאינטרנט לפעולתה הבסיסית.
+        We may release updates from time to time. Online services are not guaranteed
+        to remain available. The core app works locally and does not require an
+        internet connection for basic editing.
       </p>
 
-      <h3 style={H_STYLE}>6. תמיכה</h3>
+      <h3 style={H_STYLE}>6. Support</h3>
       <p style={SECTION_STYLE}>
-        לבעיות ובקשות פנו ל: info@demente-show.com
+        For issues and requests, contact: info@demente-show.com
       </p>
 
       <p style={{ ...SECTION_STYLE, fontSize: 11, color: 'rgba(148,163,184,0.6)', marginTop: 18 }}>
-        עודכן לאחרונה: 2026
+        Last updated: 2026
       </p>
     </div>
   );
@@ -81,56 +83,59 @@ function TermsContent() {
 
 function PrivacyContent() {
   return (
-    <div style={{ direction: 'rtl' }}>
+    <div style={{ direction: 'ltr' }}>
       <p style={SECTION_STYLE}>
-        TrimOut מכבדת את הפרטיות שלך. מסמך זה מסביר אילו נתונים נאספים ואילו לא.
+        TrimOut respects your privacy. This document explains what data is collected
+        and what is not.
       </p>
 
-      <h3 style={H_STYLE}>1. עיבוד מקומי בלבד</h3>
+      <h3 style={H_STYLE}>1. Local Processing Only</h3>
       <p style={SECTION_STYLE}>
-        כל עריכת הווידאו מתבצעת על המחשב שלך. קבצי הווידאו, הקליפים שיוצרת,
-        השמות שאתה נותן והפעולות שאתה בוחר <strong>אינם נשלחים לאף שרת חיצוני</strong>.
+        All video editing happens on your computer. Your video files, generated
+        clips, names, and selected actions <strong>are not sent to any external server</strong>.
       </p>
 
-      <h3 style={H_STYLE}>2. נתונים נשמרים מקומית</h3>
+      <h3 style={H_STYLE}>2. Locally Stored Data</h3>
       <p style={SECTION_STYLE}>
-        האפליקציה שומרת על המחשב שלך:
-        <br />• הגדרות משתמש (תיקיית ייצוא, איכות מועדפת)
-        <br />• רישיון התוכנה
-        <br />• קובץ metadata.json לצד הייצוא (אם בחרת ליצור)
+        The app stores the following on your computer:
+        <br />- User settings, such as export folder and preferred quality
+        <br />- Software license data
+        <br />- A metadata.json file next to exports, if you choose to create one
       </p>
 
-      <h3 style={H_STYLE}>3. בדיקת רישיון</h3>
+      <h3 style={H_STYLE}>3. License Check</h3>
       <p style={SECTION_STYLE}>
-        בעת ההפעלה הראשונה, TrimOut מאמתת את הרישיון שלך מול שרת ההפצה. בבדיקה
-        זו נשלחים רק: מפתח הרישיון, מזהה המכשיר (hash) וגרסת התוכנה. לא נאסף
-        מידע אישי נוסף.
+        On first launch, TrimOut may verify your license with the distribution
+        server. Only the license key, device identifier hash, and app version are
+        sent. No additional personal information is collected.
       </p>
 
-      <h3 style={H_STYLE}>4. בדיקת עדכונים</h3>
+      <h3 style={H_STYLE}>4. Update Checks</h3>
       <p style={SECTION_STYLE}>
-        האפליקציה עשויה לבדוק מעת לעת אם יש גרסה חדשה זמינה. בדיקה זו אנונימית
-        ולא מזוהה אישית.
+        The app may occasionally check whether a new version is available. This
+        check is anonymous and not personally identifying.
       </p>
 
-      <h3 style={H_STYLE}>5. עוגיות ומעקב</h3>
+      <h3 style={H_STYLE}>5. Cookies and Tracking</h3>
       <p style={SECTION_STYLE}>
-        אין עוגיות. אין analytics. אין שירותי צד שלישי שעוקבים אחר השימוש שלך.
+        There are no cookies, no analytics, and no third-party services tracking
+        your app usage.
       </p>
 
-      <h3 style={H_STYLE}>6. ילדים</h3>
+      <h3 style={H_STYLE}>6. Children</h3>
       <p style={SECTION_STYLE}>
-        TrimOut מיועדת לבני 13+. במיוחד כאשר אתה עורך וידאו של ילדים, וודא שיש
-        לך את הסמכות ההורית להפיץ את התוצרים.
+        TrimOut is intended for users aged 13 and older. When editing videos of
+        children, make sure you have the appropriate parental authority to share
+        the resulting files.
       </p>
 
-      <h3 style={H_STYLE}>7. פנייה</h3>
+      <h3 style={H_STYLE}>7. Contact</h3>
       <p style={SECTION_STYLE}>
-        לבירורי פרטיות: info@demente-show.com
+        For privacy questions: info@demente-show.com
       </p>
 
       <p style={{ ...SECTION_STYLE, fontSize: 11, color: 'rgba(148,163,184,0.6)', marginTop: 18 }}>
-        עודכן לאחרונה: 2026
+        Last updated: 2026
       </p>
     </div>
   );
@@ -204,14 +209,14 @@ function LegalDialog({ visible, onClose }: Props) {
                     transition: 'color 0.12s, border-color 0.12s',
                   }}
                 >
-                  {t === 'terms' ? 'תנאי שימוש' : 'פרטיות'}
+                  {t === 'terms' ? 'Terms' : 'Privacy'}
                 </button>
               ))}
               <div style={{ flex: 1 }} />
               <button
                 type="button"
                 onClick={onClose}
-                aria-label="סגור"
+                aria-label="Close"
                 style={{
                   background: 'none',
                   border: 'none',

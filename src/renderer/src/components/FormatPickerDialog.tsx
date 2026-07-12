@@ -97,7 +97,7 @@ function FormatPickerDialog({ visible, info, onConfirm, onCancel }: Props) {
               overflow: 'hidden',
               display: 'flex',
               flexDirection: 'column',
-              direction: 'rtl',
+              direction: 'ltr',
             }}
           >
             {/* Header */}
@@ -134,7 +134,7 @@ function FormatPickerDialog({ visible, info, onConfirm, onCancel }: Props) {
                 </div>
                 {info.durationSec != null && (
                   <div style={{ fontSize: 11, color: 'rgba(148,163,184,0.6)' }}>
-                    {formatDuration(info.durationSec)} דק׳
+                    {formatDuration(info.durationSec)}
                   </div>
                 )}
               </div>
@@ -144,7 +144,7 @@ function FormatPickerDialog({ visible, info, onConfirm, onCancel }: Props) {
             <div style={{ flex: 1, overflowY: 'auto', padding: '8px 12px' }}>
               {info.formats.length === 0 && (
                 <div style={{ padding: 20, textAlign: 'center', color: 'rgba(148,163,184,0.6)' }}>
-                  לא נמצאו פורמטים זמינים לקובץ הזה.
+                  No available formats were found for this file.
                 </div>
               )}
               {info.formats.map((f, i) => {
@@ -168,8 +168,8 @@ function FormatPickerDialog({ visible, info, onConfirm, onCancel }: Props) {
                       color: isSel ? '#e2e8f0' : 'rgba(203,213,225,0.85)',
                       cursor: 'pointer',
                       transition: 'background 0.1s, border-color 0.1s',
-                      textAlign: 'right',
-                      direction: 'rtl',
+                      textAlign: 'left',
+                      direction: 'ltr',
                     }}
                   >
                     {/* Radio indicator */}
@@ -215,7 +215,7 @@ function FormatPickerDialog({ visible, info, onConfirm, onCancel }: Props) {
                         border: '1px solid rgba(20,184,166,0.3)',
                       }}
                       >
-                        מומלץ
+                        Recommended
                       </div>
                     )}
                   </button>
@@ -245,7 +245,7 @@ function FormatPickerDialog({ visible, info, onConfirm, onCancel }: Props) {
                   cursor: 'pointer',
                 }}
               >
-                ביטול
+                Cancel
               </button>
               <button
                 type="button"
@@ -269,7 +269,7 @@ function FormatPickerDialog({ visible, info, onConfirm, onCancel }: Props) {
                   opacity: info.formats.length === 0 ? 0.5 : 1,
                 }}
               >
-                הורד עכשיו
+                Download now
               </button>
             </div>
           </motion.div>

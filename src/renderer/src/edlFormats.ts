@@ -7,7 +7,7 @@ import { parse as csvParse } from 'csv-parse/browser/esm/sync';
 import { stringify as csvStringify } from 'csv-stringify/browser/esm/sync';
 import sortBy from 'lodash/sortBy';
 import type { ICueSheet, ITrack } from 'cue-parser/lib/types';
-import { z } from 'zod';
+import { z } from '../../common/zod';
 
 import { formatDuration } from './util/duration';
 import { invertSegments, sortSegments } from './segments';

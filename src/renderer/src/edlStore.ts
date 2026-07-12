@@ -1,7 +1,7 @@
 import JSON5 from 'json5';
 import i18n from 'i18next';
 import invariant from 'tiny-invariant';
-import { ZodError } from 'zod';
+import { ZodError } from '../../common/zod';
 
 import { parseSrtToSegments, formatSrt, parseCuesheet, parseXmeml, parseFcpXml, parseCsv, parseCutlist, parsePbf, parseEdl, formatCsvHuman, formatTsvHuman, formatCsvFrames, formatCsvSeconds, parseCsvTime, getFrameValParser, parseDvAnalyzerSummaryTxt, parseOtio } from './edlFormats';
 import { askForYouTubeInput, showOpenDialog } from './dialogs';

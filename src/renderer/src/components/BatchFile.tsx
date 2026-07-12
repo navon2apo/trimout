@@ -81,7 +81,7 @@ function BatchFile({ path, index, isOpen, isSelected, name, onSelect, onDelete, 
     >
       <FaFile style={{ color: isSelected ? primaryTextColor : undefined, flexShrink: 0, fontSize: '1em', marginRight: '.1em' }} />
       <div style={{ flexShrink: 0, marginRight: '.1em' }}>{index + 1}.</div>
-      <div style={{ whiteSpace: 'nowrap', overflow: 'hidden', direction: 'rtl' }}>
+      <div style={{ whiteSpace: 'nowrap', overflow: 'hidden', direction: 'ltr' }}>
         <span style={{ direction: 'ltr', unicodeBidi: 'isolate', display: 'inline-block' }}>{name}</span>
       </div>
       <div style={{ flexGrow: 1 }} />

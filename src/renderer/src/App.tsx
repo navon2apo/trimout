@@ -186,7 +186,7 @@ function App() {
   const [qrShareOpen, setQrShareOpen] = useState(false);
   const [qrShareFilePath, setQrShareFilePath] = useState<string | null>(null);
   // The last successfully exported file (merged > first separate). Surfaces the
-  // "📱 שלח לטלפון" button only after the user has something concrete to share.
+  // "Send to phone" button only after the user has something concrete to share.
   const [lastExportedFile, setLastExportedFile] = useState<string | null>(null);
   // Ref used by handlePlayClip to stop playback at an exact time — avoids stale-closure bugs
   const clipStopAtRef = useRef<number | null>(null);
@@ -443,7 +443,7 @@ function App() {
     addClip(range.start, range.end, {
       name: nameBase,
       actionType: action.label,
-      playerName: playerName.trim() || undefined,
+      ...(playerName.trim() ? { playerName: playerName.trim() } : {}),
       isUncertain: action.isUncertain ?? false,
     });
   }, [addClip, cutSegments, playerName]);
@@ -937,7 +937,7 @@ function App() {
     clearSegments();
   }, [isFileOpened, workingRef, askBeforeClose, confirmDialog, resetState, clearSegments]);
 
-  // 🧹 "נקה פרוייקט" — wipes the current file + clips + player name + any pending state.
+  // "Clean project" wipes the current file + clips + player name + any pending state.
   // Uses native window.confirm so it CAN'T silently fail (no async / no library bugs).
   const handleFinishedWithVideo = useCallback(() => {
     console.log('[CleanProject] click — cutSegments:', cutSegments.length, 'playerName:', playerName);
@@ -945,13 +945,13 @@ function App() {
     const hasContent = realClips.length > 0 || playerName.trim().length > 0;
 
     const parts: string[] = [];
-    if (realClips.length > 0) parts.push(`${realClips.length} קליפים`);
-    if (playerName.trim()) parts.push(`שם השחקן "${playerName.trim()}"`);
-    parts.push('הסרטון הפתוח');
+    if (realClips.length > 0) parts.push(`${realClips.length} clip${realClips.length !== 1 ? 's' : ''}`);
+    if (playerName.trim()) parts.push(`player name "${playerName.trim()}"`);
+    parts.push('the open video');
 
     const message = hasContent
-      ? `🧹 לנקות את הפרוייקט?\n\nיימחקו:\n• ${parts.join('\n• ')}\n\nפעולה זו לא ניתנת לביטול.`
-      : '🧹 לנקות את הפרוייקט?';
+      ? `Clean this project?\n\nThis will remove:\n- ${parts.join('\n- ')}\n\nThis action cannot be undone.`
+      : 'Clean this project?';
 
     // Native confirm — bulletproof, no library dependency, can't hang
     const confirmed = window.confirm(message);
@@ -969,18 +969,18 @@ function App() {
       console.log('[CleanProject] done');
       // Non-blocking toast (if it fails, the clean still happened)
       try {
-        getSwal().toast.fire({ icon: 'success', title: 'הפרוייקט נוקה', timer: 2000 });
+        getSwal().toast.fire({ icon: 'success', title: 'Project cleaned', timer: 2000 });
       } catch { /* ignore toast failure */ }
     } catch (err) {
       console.error('[CleanProject] FAILED:', err);
-      window.alert(`הניקוי נכשל: ${err instanceof Error ? err.message : String(err)}`);
+      window.alert(`Cleanup failed: ${err instanceof Error ? err.message : String(err)}`);
     }
   }, [cutSegments, playerName, resetState, clearSegments]);
 
-  // 📱 "שלח לטלפון" — open the QR-share dialog for the most recent exported file.
+  // "Send to phone" opens the QR-share dialog for the most recent exported file.
   const handleSendToPhone = useCallback(() => {
     if (!lastExportedFile) {
-      window.alert('עוד אין קובץ מיוצא לשתף. צא ייצוא קודם ואז לחץ שוב.');
+      window.alert('There is no exported file to share yet. Export first, then try again.');
       return;
     }
     setQrShareFilePath(lastExportedFile);
@@ -2379,19 +2379,19 @@ function App() {
       let userMsg = errMsg;
       const sportsPattern = /pixellot|veo\.co|hudl|trace\.video|playsight/i;
       if (sportsPattern.test(url)) {
-        userMsg = `${url.match(sportsPattern)?.[0] ?? 'הפלטפורמה'} לא נתמכת ישירות. הורד מהאתר הרשמי או מצא קישור .m3u8 ישיר.`;
+        userMsg = `${url.match(sportsPattern)?.[0] ?? 'This platform'} is not supported directly. Download from the official site or paste a direct .m3u8 link.`;
       } else if (errMsg.includes('Unsupported URL')) {
-        userMsg = 'האתר הזה לא נתמך. נסה YouTube, Vimeo, Facebook או קישור ישיר.';
+        userMsg = 'This site is not supported. Try YouTube, Vimeo, Facebook, or a direct video link.';
       } else if (errMsg.includes('Sign in') || errMsg.includes('private')) {
-        userMsg = 'הסרטון פרטי או דורש התחברות. לא ניתן להוריד.';
+        userMsg = 'This video is private or requires sign-in. It cannot be downloaded.';
       } else if (errMsg.includes('downloadFromGithub')) {
-        userMsg = 'כשל בהתקנת yt-dlp. בדוק חיבור אינטרנט ו-Antivirus.';
+        userMsg = 'Failed to install yt-dlp. Check your internet connection and antivirus software.';
       }
-      await getSwal().fire({
+      await getSwal().Swal.fire({
         icon: 'error',
-        title: 'לא ניתן לקרוא את הסרטון',
+        title: 'Cannot read this video',
         text: userMsg,
-        confirmButtonText: 'הבנתי',
+        confirmButtonText: 'Got it',
         confirmButtonColor: '#14b8a6',
       });
     } finally {
@@ -2421,47 +2421,47 @@ function App() {
       const outDir = outputDir || (window.require('@electron/remote').app.getPath('downloads') as string);
       const outFile: string = await ipcRenderer.invoke('ytdlpDownload', url, outDir, formatSelector);
       if (!outFile) {
-        throw new Error('ההורדה הסתיימה אך לא נמצא קובץ פלט');
+        throw new Error('The download finished, but no output file was found');
       }
       userOpenFilesRef.current?.([outFile]);
-      getSwal().toast.fire({ icon: 'success', title: 'הסרטון ירד והועלה בהצלחה', timer: 3000 });
+      getSwal().toast.fire({ icon: 'success', title: 'Video downloaded and opened successfully', timer: 3000 });
     } catch (err) {
       console.error('ytdlp error', err);
       // Surface the actual error message to the user — no more silent failures
       const errMsg = err instanceof Error ? err.message : String(err);
-      let title = 'הורדה נכשלה';
+      let title = 'Download failed';
       let userMsg = errMsg;
       let html: string | undefined;
 
       // Detect sports/private platforms specifically — they often need special handling
       const sportsPattern = /pixellot|veo\.co|hudl|trace\.video|playsight/i;
       if (sportsPattern.test(url)) {
-        title = 'פלטפורמת ספורט לא נתמכת ישירות';
+        title = 'Sports platform not supported directly';
         html = `
-          <div style="text-align:right; direction:rtl; line-height:1.6; font-size:14px;">
-            <p><b>${url.match(sportsPattern)?.[0] ?? 'הפלטפורמה הזו'}</b> דורשת אימות מיוחד והקישור הוא לדף הצופה, לא לסרטון עצמו.</p>
-            <p style="margin-top:12px;"><b>אפשרויות:</b></p>
-            <ul style="text-align:right; padding-right:20px;">
-              <li>הורד את הסרטון מהאתר הרשמי של הפלטפורמה (כפתור Download שלהם)</li>
-              <li>מצא את כתובת ה-<code>.m3u8</code> הישירה בכלי מפתחים של הדפדפן (F12 → Network) והדבק אותה כאן</li>
+          <div style="text-align:left; direction:ltr; line-height:1.6; font-size:14px;">
+            <p><b>${url.match(sportsPattern)?.[0] ?? 'This platform'}</b> requires special authentication, and this link points to the viewer page rather than the video itself.</p>
+            <p style="margin-top:12px;"><b>Options:</b></p>
+            <ul style="text-align:left; padding-left:20px;">
+              <li>Download the video from the platform's official site using its Download button.</li>
+              <li>Find the direct <code>.m3u8</code> URL in the browser developer tools (F12 -> Network) and paste it here.</li>
             </ul>
           </div>
         `;
       } else if (errMsg.includes('Unsupported URL')) {
-        userMsg = 'האתר הזה לא נתמך. נסה לינק ישיר לסרטון, YouTube, Vimeo או Facebook.';
+        userMsg = 'This site is not supported. Try a direct video link, YouTube, Vimeo, or Facebook.';
       } else if (errMsg.includes('Sign in') || errMsg.includes('login') || errMsg.includes('private')) {
-        userMsg = 'הסרטון דורש התחברות / פרטי / DRM. לא ניתן להוריד.';
+        userMsg = 'This video requires sign-in, is private, or uses DRM. It cannot be downloaded.';
       } else if (errMsg.includes('ENOTFOUND') || errMsg.includes('network')) {
-        userMsg = 'בעיית רשת — בדוק חיבור אינטרנט ונסה שוב.';
+        userMsg = 'Network problem. Check your internet connection and try again.';
       } else if (errMsg.includes('downloadFromGithub') || errMsg.includes('ENOENT')) {
-        userMsg = 'כשל בהתקנת כלי ההורדה (yt-dlp). בדוק חיבור אינטרנט ו-Antivirus, ונסה שוב.';
+        userMsg = 'Failed to install the download tool (yt-dlp). Check your internet connection and antivirus software, then try again.';
       }
 
-      await getSwal().fire({
+      await getSwal().Swal.fire({
         icon: 'error',
         title,
         ...(html ? { html } : { text: userMsg }),
-        confirmButtonText: 'הבנתי',
+        confirmButtonText: 'Got it',
         confirmButtonColor: '#14b8a6',
       });
     } finally {
@@ -3107,15 +3107,15 @@ function App() {
                       gap: 14,
                       background: 'rgba(10,15,25,0.85)',
                       backdropFilter: 'blur(6px)',
-                      direction: 'rtl',
+                      direction: 'ltr',
                     }}
                     >
                       <div style={{ fontSize: 30 }}>🔍</div>
                       <div style={{ fontSize: 14, fontWeight: 700, color: '#f1f5f9' }}>
-                        בודק איכויות זמינות...
+                        Checking available qualities...
                       </div>
                       <div style={{ fontSize: 11, color: 'rgba(148,163,184,0.7)' }}>
-                        קריאה אחת לאתר — בלי הורדה
+                        One site request - no download yet
                       </div>
                     </div>
                   )}
@@ -3133,18 +3133,18 @@ function App() {
                       gap: 14,
                       background: 'rgba(10,15,25,0.88)',
                       backdropFilter: 'blur(8px)',
-                      direction: 'rtl',
+                      direction: 'ltr',
                       padding: 24,
                     }}
                     >
                       <div style={{ fontSize: 36 }}>{ytdlpBootstrap ? '🔧' : '⬇️'}</div>
                       <div style={{ fontSize: 15, fontWeight: 700, color: '#f1f5f9', textAlign: 'center' }}>
-                        {ytdlpBootstrap ? 'מתקין כלי הורדה (פעם ראשונה)...' : 'מוריד את הסרטון...'}
+                        {ytdlpBootstrap ? 'Installing download tool for the first time...' : 'Downloading video...'}
                       </div>
                       <div style={{ fontSize: 11, color: 'rgba(148,163,184,0.7)', maxWidth: 340, textAlign: 'center', lineHeight: 1.5 }}>
                         {ytdlpBootstrap
-                          ? 'הורדה חד-פעמית של ~12MB מ-GitHub. זה לוקח עד דקה ויקרה רק בפעם הזו.'
-                          : 'אל תסגור את האפליקציה. סרטון של 90 דקות יכול לקחת 10-30 דקות תלוי במהירות.'}
+                          ? 'One-time download of about 12MB from GitHub. This can take up to a minute and only happens once.'
+                          : 'Do not close the app. A 90-minute video can take 10-30 minutes depending on connection speed.'}
                       </div>
                       <div style={{ width: 280, height: 6, background: 'rgba(255,255,255,0.1)', borderRadius: 99, overflow: 'hidden' }}>
                         <div style={{
@@ -3363,7 +3363,7 @@ function App() {
                   background: 'rgba(0,0,0,0.15)',
                 }}
                 >
-                  {/* ── Current file + 🧹 נקה פרוייקט — pinned at very top, most visible spot ── */}
+                  {/* ── Current file + Clean project — pinned at very top, most visible spot ── */}
                   {filePath != null && (
                     <div style={{
                       padding: '10px 14px',
@@ -3373,7 +3373,7 @@ function App() {
                     }}
                     >
                       <div style={{ fontSize: 10, color: 'rgba(148,163,184,0.55)', letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 5 }}>
-                        📼 הסרטון הנוכחי
+                        📼 Current video
                       </div>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                         <span
@@ -3386,7 +3386,7 @@ function App() {
                             overflow: 'hidden',
                             textOverflow: 'ellipsis',
                             direction: 'ltr',
-                            textAlign: 'right',
+                            textAlign: 'left',
                           }}
                           title={filePath}
                         >
@@ -3395,7 +3395,7 @@ function App() {
                         <button
                           type="button"
                           onClick={handleFinishedWithVideo}
-                          title="נקה פרוייקט — סוגר את הסרטון, מוחק את כל הקליפים ומאפס את ההגדרות"
+                          title="Clean project - closes the video, deletes all clips, and resets settings"
                           style={{
                             background: 'rgba(239,68,68,0.12)',
                             border: '1px solid rgba(239,68,68,0.28)',
@@ -3412,7 +3412,7 @@ function App() {
                           onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(239,68,68,0.24)'; e.currentTarget.style.borderColor = 'rgba(239,68,68,0.55)'; }}
                           onMouseLeave={(e) => { e.currentTarget.style.background = 'rgba(239,68,68,0.12)'; e.currentTarget.style.borderColor = 'rgba(239,68,68,0.28)'; }}
                         >
-                          🧹 נקה פרוייקט
+                          Clean project
                         </button>
                       </div>
                     </div>
@@ -3421,13 +3421,13 @@ function App() {
                   {/* ── Player name ── */}
                   <div style={{ padding: '10px 14px 8px', borderBottom: '1px solid rgba(255,255,255,0.07)', flexShrink: 0 }}>
                     <div style={{ fontSize: 10, color: 'rgba(148,163,184,0.55)', letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 5 }}>
-                      ⚽ שם שחקן
+                      ⚽ Player name
                     </div>
                     <input
                       type="text"
                       value={playerName}
                       onChange={(e) => setPlayerName(e.target.value)}
-                      placeholder="למשל: לביא"
+                      placeholder="Example: Lavi"
                       maxLength={30}
                       style={{
                         width: '100%',
@@ -3440,13 +3440,13 @@ function App() {
                         fontWeight: 600,
                         padding: '6px 10px',
                         outline: 'none',
-                        direction: 'rtl',
+                        direction: 'ltr',
                         transition: 'border-color 0.15s',
                       }}
                     />
                     {!playerName && isFileOpened && (
-                      <div style={{ fontSize: 10, color: 'rgba(251,191,36,0.7)', marginTop: 4, direction: 'rtl' }}>
-                        כדאי להוסיף שם שחקן לסדר בקבצים
+                      <div style={{ fontSize: 10, color: 'rgba(251,191,36,0.7)', marginTop: 4, direction: 'ltr' }}>
+                        Add a player name to keep exported files organized
                       </div>
                     )}
                   </div>
@@ -3509,20 +3509,20 @@ function App() {
                       padding: '10px 14px 12px',
                       flexShrink: 0,
                       background: 'rgba(0,0,0,0.18)',
-                      direction: 'rtl',
+                      direction: 'ltr',
                     }}
                     >
                       <div style={{ fontSize: 10, color: 'rgba(148,163,184,0.55)', letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 6 }}>
-                        ⚙️ ייצוא
+                        ⚙️ Export
                       </div>
 
                       {/* Export mode selector — separate / merged / both */}
-                      <div style={{ fontSize: 10, color: 'rgba(148,163,184,0.7)', marginBottom: 3 }}>מצב</div>
+                      <div style={{ fontSize: 10, color: 'rgba(148,163,184,0.7)', marginBottom: 3 }}>Mode</div>
                       <div style={{ display: 'flex', gap: 4, marginBottom: 8 }}>
                         {([
-                          { v: 'separate' as const, label: 'נפרדים', title: 'כל קליפ כקובץ נפרד' },
-                          { v: 'merge' as const, label: 'מחובר', title: 'קליפ אחד שמחבר את הכל' },
-                          { v: 'both' as const, label: 'שניהם', title: 'גם קליפים נפרדים וגם קליפ מחובר' },
+                          { v: 'separate' as const, label: 'Separate', title: 'Each clip as a separate file' },
+                          { v: 'merge' as const, label: 'Merged', title: 'One clip that combines everything' },
+                          { v: 'both' as const, label: 'Both', title: 'Separate clips plus one merged clip' },
                         ]).map(({ v, label, title }) => {
                           const active = (v === 'separate' && !autoMerge)
                             || (v === 'merge' && autoMerge && autoDeleteMergedSegments)
@@ -3555,13 +3555,13 @@ function App() {
                       </div>
 
                       {/* Quality preset selector */}
-                      <div style={{ fontSize: 10, color: 'rgba(148,163,184,0.7)', marginBottom: 3 }}>איכות</div>
+                      <div style={{ fontSize: 10, color: 'rgba(148,163,184,0.7)', marginBottom: 3 }}>Quality</div>
                       <div style={{ display: 'flex', gap: 4, marginBottom: 8 }}>
                         {([
-                          { v: 'lossless' as const, label: 'מקורי' },
-                          { v: 'high' as const, label: 'גבוה' },
-                          { v: 'balanced' as const, label: 'מאוזן' },
-                          { v: 'small' as const, label: 'קטן' },
+                          { v: 'lossless' as const, label: 'Original' },
+                          { v: 'high' as const, label: 'High' },
+                          { v: 'balanced' as const, label: 'Balanced' },
+                          { v: 'small' as const, label: 'Small' },
                         ]).map(({ v, label }) => {
                           const active = qualityPreset === v;
                           return (
@@ -3569,7 +3569,7 @@ function App() {
                               key={v}
                               type="button"
                               onClick={() => setQualityPreset(v)}
-                              title={v !== 'lossless' ? QUALITY_PRESETS[v].descriptionHe : 'ללא קידוד מחדש, מהיר'}
+                              title={v !== 'lossless' ? QUALITY_PRESETS[v].description : 'No re-encoding, fast'}
                               style={{
                                 flex: 1,
                                 background: active ? 'rgba(20,184,166,0.18)' : 'rgba(255,255,255,0.04)',
@@ -3590,13 +3590,13 @@ function App() {
                       </div>
 
                       {/* Aspect ratio selector */}
-                      <div style={{ fontSize: 10, color: 'rgba(148,163,184,0.7)', marginBottom: 3 }}>פורמט</div>
+                      <div style={{ fontSize: 10, color: 'rgba(148,163,184,0.7)', marginBottom: 3 }}>Format</div>
                       <div style={{ display: 'flex', gap: 4, marginBottom: 8 }}>
                         {([
-                          { v: 'original' as const, label: 'מקורי', title: 'ללא שינוי גיאומטריה' },
-                          { v: '16:9' as const, label: '16:9', title: 'אופקי — טלוויזיה / YouTube (1920×1080)' },
-                          { v: '9:16' as const, label: '9:16', title: 'אנכי — Reels / TikTok / Shorts (1080×1920)' },
-                          { v: '1:1' as const, label: '1:1', title: 'ריבועי — Instagram Feed (1080×1080)' },
+                          { v: 'original' as const, label: 'Original', title: 'No geometry changes' },
+                          { v: '16:9' as const, label: '16:9', title: 'Landscape - TV / YouTube (1920x1080)' },
+                          { v: '9:16' as const, label: '9:16', title: 'Vertical - Reels / TikTok / Shorts (1080x1920)' },
+                          { v: '1:1' as const, label: '1:1', title: 'Square - Instagram Feed (1080x1080)' },
                         ]).map(({ v, label, title }) => {
                           const active = exportAspectRatio === v;
                           return (
@@ -3627,11 +3627,11 @@ function App() {
                       {/* Fit mode — only relevant when aspect ratio ≠ original */}
                       {exportAspectRatio !== 'original' && (
                         <>
-                          <div style={{ fontSize: 10, color: 'rgba(148,163,184,0.7)', marginBottom: 3 }}>התאמה</div>
+                          <div style={{ fontSize: 10, color: 'rgba(148,163,184,0.7)', marginBottom: 3 }}>Fit</div>
                           <div style={{ display: 'flex', gap: 4, marginBottom: 8 }}>
                             {([
-                              { v: 'crop' as const, label: '✂️ חיתוך מרכז', title: 'חותך מהמרכז — אין שחור, אבל ייתכן איבוד תוכן בקצוות' },
-                              { v: 'pad' as const, label: '⬛ שחור בצדדים', title: 'משאיר את כל התוכן — מוסיף פסים שחורים בצדדים' },
+                              { v: 'crop' as const, label: 'Center crop', title: 'Crops from the center - no black bars, but edges may be lost' },
+                              { v: 'pad' as const, label: 'Black bars', title: 'Keeps all content and adds black bars where needed' },
                             ]).map(({ v, label, title }) => {
                               const active = exportFitMode === v;
                               return (
@@ -3661,7 +3661,7 @@ function App() {
                           {/* Helper note when user picked aspect != original but quality is lossless */}
                           {qualityPreset === 'lossless' && (
                             <div style={{ fontSize: 10, color: 'rgba(251,191,36,0.7)', marginBottom: 8, lineHeight: 1.4 }}>
-                              ⚠ שינוי פורמט דורש קידוד מחדש — האיכות תעבור ל&quot;מאוזן&quot; אוטומטית
+                              Format changes require re-encoding. Quality will switch to &quot;Balanced&quot; automatically.
                             </div>
                           )}
                         </>
@@ -3678,10 +3678,10 @@ function App() {
                               lineHeight: 1.2,
                             }}
                             >
-                              תיקייה לכל ייצוא
+                              Folder per export
                             </span>
                             <span style={{ fontSize: 9.5, color: 'rgba(100,116,139,0.65)', marginTop: 2 }}>
-                              {createExportPackage ? 'כל ייצוא בתיקייה משלו' : 'כל הקבצים בתיקיית היעד'}
+                              {createExportPackage ? 'Each export gets its own folder' : 'All files go to the destination folder'}
                             </span>
                           </div>
                           <button
@@ -3723,7 +3723,7 @@ function App() {
                         <button
                           type="button"
                           onClick={handleSendToPhone}
-                          title={`שלח ${basename(lastExportedFile)} לטלפון דרך QR מקומי`}
+                          title={`Send ${basename(lastExportedFile)} to phone with a local QR code`}
                           style={{
                             width: '100%',
                             marginTop: 10,
@@ -3744,7 +3744,7 @@ function App() {
                           onMouseEnter={(e) => { e.currentTarget.style.background = 'linear-gradient(135deg, rgba(20,184,166,0.3), rgba(56,189,248,0.3))'; }}
                           onMouseLeave={(e) => { e.currentTarget.style.background = 'linear-gradient(135deg, rgba(20,184,166,0.18), rgba(56,189,248,0.18))'; }}
                         >
-                          📱 שלח לטלפון (QR)
+                          📱 Send to phone (QR)
                         </button>
                       )}
 
@@ -3763,7 +3763,7 @@ function App() {
                             textDecoration: 'underline',
                           }}
                         >
-                          תנאי שימוש · פרטיות
+                          Terms · Privacy
                         </button>
                         <span style={{ fontSize: 10, color: 'rgba(100,116,139,0.4)' }}>v1.1.1</span>
                       </div>

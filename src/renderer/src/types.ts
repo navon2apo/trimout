@@ -1,5 +1,5 @@
 import type { MenuItem, MenuItemConstructorOptions } from 'electron';
-import { z } from 'zod';
+import { z } from '../../common/zod';
 import type { FFprobeChapter, FFprobeFormat, FFprobeStream } from '../../common/ffprobe';
 import type { FileStream } from './ffmpeg';
 

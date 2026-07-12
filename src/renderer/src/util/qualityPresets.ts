@@ -8,10 +8,10 @@ import { runFfmpeg, getFfCommandLine } from '../ffmpeg';
 
 export type QualityPreset = 'lossless' | 'high' | 'balanced' | 'small';
 
-export const QUALITY_PRESETS: Record<Exclude<QualityPreset, 'lossless'>, { crf: number; preset: string; label: string; descriptionHe: string }> = {
-  high: { crf: 18, preset: 'slow', label: 'איכות גבוהה', descriptionHe: 'איכות מקסימלית, קובץ גדול יותר' },
-  balanced: { crf: 23, preset: 'medium', label: 'מאוזן', descriptionHe: 'איזון בין איכות לגודל (מומלץ)' },
-  small: { crf: 28, preset: 'medium', label: 'קובץ קטן', descriptionHe: 'מהיר ל-WhatsApp ומובייל' },
+export const QUALITY_PRESETS: Record<Exclude<QualityPreset, 'lossless'>, { crf: number; preset: string; label: string; description: string }> = {
+  high: { crf: 18, preset: 'slow', label: 'High quality', description: 'Maximum quality, larger file' },
+  balanced: { crf: 23, preset: 'medium', label: 'Balanced', description: 'Balanced quality and file size (recommended)' },
+  small: { crf: 28, preset: 'medium', label: 'Small file', description: 'Faster sharing for WhatsApp and mobile' },
 };
 
 // ── Aspect ratio output ───────────────────────────────────────────────────────

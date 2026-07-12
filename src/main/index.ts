@@ -12,7 +12,7 @@ import remote from '@electron/remote/main/index.js';
 import { stat } from 'node:fs/promises';
 import assert from 'node:assert';
 import timers from 'node:timers/promises';
-import { z } from 'zod';
+import { z } from '../common/zod.js';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import electronUnhandled from 'electron-unhandled';
 import { fileTypeFromFile } from 'file-type/node';

@@ -115,13 +115,13 @@ async function listenOnFreePort(server: http.Server): Promise<number> {
 
 function buildDownloadPage(fileName: string, fileSize: number, token: string): string {
   const sizeMB = (fileSize / (1024 * 1024)).toFixed(1);
-  // Tiny, RTL-friendly download page. No external assets — works fully offline.
+  // Tiny download page. No external assets — works fully offline.
   return `<!DOCTYPE html>
-<html lang="he" dir="rtl">
+<html lang="en" dir="ltr">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
-<title>TrimOut · הורד קובץ</title>
+<title>TrimOut · Download file</title>
 <style>
   * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
   html, body { margin: 0; padding: 0; background: #0a0f19; color: #e2e8f0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", sans-serif; min-height: 100vh; }
@@ -143,8 +143,8 @@ function buildDownloadPage(fileName: string, fileSize: number, token: string): s
     <div class="icon">📥</div>
     <div class="name">${fileName.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;').replaceAll('"', '&quot;')}</div>
     <div class="size">${sizeMB} MB</div>
-    <a class="btn" href="/${token}/file" download="${fileName.replaceAll('"', '&quot;')}">⬇ הורד עכשיו</a>
-    <div class="hint">לחיצה תפתח את שמירת הקובץ במכשיר. אם זה לא קורה, פתח את האפליקציה ולחץ הורד מהדף.</div>
+    <a class="btn" href="/${token}/file" download="${fileName.replaceAll('"', '&quot;')}">⬇ Download now</a>
+    <div class="hint">Tap to save the file on your device. If nothing happens, open the link in your browser and tap Download again.</div>
   </div>
 </div>
 </body>

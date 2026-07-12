@@ -53,13 +53,13 @@ function formatTimeLeft(ms: number): string {
   return `${m}:${String(sec).padStart(2, '0')}`;
 }
 
-const STATUS_TEXT_HE: Record<ShareStatus, string> = {
-  ready: 'מוכן — סרוק את הקוד מהטלפון',
-  downloading: 'הטלפון מוריד...',
-  completed: 'ההורדה הושלמה ✓',
-  expired: 'הקישור פג תוקף',
-  stopped: 'השיתוף נעצר',
-  error: 'אירעה שגיאה',
+const STATUS_TEXT: Record<ShareStatus, string> = {
+  ready: 'Ready - scan the code with your phone',
+  downloading: 'Phone is downloading...',
+  completed: 'Download complete',
+  expired: 'Link expired',
+  stopped: 'Sharing stopped',
+  error: 'An error occurred',
 };
 
 const STATUS_COLOR: Record<ShareStatus, string> = {
@@ -202,20 +202,20 @@ function QrShareDialog({ visible, filePath, onClose }: Props) {
               border: '1px solid rgba(255,255,255,0.08)',
               borderRadius: 16,
               boxShadow: '0 32px 80px rgba(0,0,0,0.6)',
-              direction: 'rtl',
+              direction: 'ltr',
               overflow: 'hidden',
             }}
           >
             {/* Header */}
             <div style={{ padding: '18px 22px 14px', borderBottom: '1px solid rgba(255,255,255,0.06)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
               <div>
-                <div style={{ fontSize: 15, fontWeight: 700, color: '#e2e8f0', marginBottom: 2 }}>📱 שלח לטלפון</div>
-                <div style={{ fontSize: 11, color: 'rgba(148,163,184,0.6)' }}>סרוק את הקוד עם מצלמת הטלפון</div>
+                <div style={{ fontSize: 15, fontWeight: 700, color: '#e2e8f0', marginBottom: 2 }}>📱 Send to phone</div>
+                <div style={{ fontSize: 11, color: 'rgba(148,163,184,0.6)' }}>Scan the code with your phone camera</div>
               </div>
               <button
                 type="button"
                 onClick={onClose}
-                aria-label="סגור"
+                aria-label="Close"
                 style={{
                   background: 'none',
                   border: 'none',
@@ -238,7 +238,7 @@ function QrShareDialog({ visible, filePath, onClose }: Props) {
                 </div>
               ) : (
                 <div style={{ width: 268, height: 268, display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'rgba(255,255,255,0.04)', borderRadius: 12, color: 'rgba(148,163,184,0.6)', fontSize: 13 }}>
-                  {effectiveStatus === 'error' ? '⚠ שגיאה' : 'מכין QR...'}
+                  {effectiveStatus === 'error' ? 'Error' : 'Preparing QR...'}
                 </div>
               )}
 
@@ -260,7 +260,7 @@ function QrShareDialog({ visible, filePath, onClose }: Props) {
                     {session.fileName}
                   </div>
                   <div style={{ fontSize: 11.5, color: 'rgba(148,163,184,0.6)', marginTop: 2 }}>
-                    {formatBytes(session.fileSize)} · פג תוקף בעוד {formatTimeLeft(timeLeftMs)}
+                    {formatBytes(session.fileSize)} · expires in {formatTimeLeft(timeLeftMs)}
                   </div>
                 </div>
               )}
@@ -286,7 +286,7 @@ function QrShareDialog({ visible, filePath, onClose }: Props) {
                 }}
                 />
                 <div style={{ fontSize: 12.5, fontWeight: 600, color: STATUS_COLOR[effectiveStatus], flex: 1 }}>
-                  {STATUS_TEXT_HE[effectiveStatus]}
+                  {STATUS_TEXT[effectiveStatus]}
                 </div>
                 {effectiveStatus === 'downloading' && (
                   <div style={{ fontSize: 11, color: 'rgba(148,163,184,0.8)', fontVariantNumeric: 'tabular-nums' }}>
@@ -306,7 +306,7 @@ function QrShareDialog({ visible, filePath, onClose }: Props) {
 
             {/* Help text */}
             <div style={{ padding: '12px 22px', fontSize: 11, color: 'rgba(148,163,184,0.6)', lineHeight: 1.6 }}>
-              💡 הטלפון והמחשב חייבים להיות באותה רשת (WiFi או חיבור קווי). אם הסריקה לא עובדת — בדוק את חומת האש של Windows.
+              The phone and computer must be on the same network. If scanning does not work, check Windows Firewall.
             </div>
 
             {/* Footer actions */}
@@ -322,7 +322,7 @@ function QrShareDialog({ visible, filePath, onClose }: Props) {
                 type="button"
                 onClick={handleCopyUrl}
                 disabled={!session}
-                title="העתק קישור (לשלוח דרך WhatsApp / Telegram)"
+                title="Copy link to send via WhatsApp or Telegram"
                 style={{
                   background: 'rgba(255,255,255,0.05)',
                   border: '1px solid rgba(255,255,255,0.1)',
@@ -334,7 +334,7 @@ function QrShareDialog({ visible, filePath, onClose }: Props) {
                   opacity: session ? 1 : 0.5,
                 }}
               >
-                📋 העתק קישור
+                📋 Copy link
               </button>
               <button
                 type="button"
@@ -351,7 +351,7 @@ function QrShareDialog({ visible, filePath, onClose }: Props) {
                   boxShadow: '0 2px 8px rgba(239,68,68,0.3)',
                 }}
               >
-                🛑 עצור שיתוף
+                Stop sharing
               </button>
             </div>
 

@@ -12,30 +12,30 @@ export interface SoccerAction {
 }
 
 export const PRIMARY_ACTIONS: SoccerAction[] = [
-  { label: 'גול' },
-  { label: 'בישול' },
-  { label: 'בעיטה' },
-  { label: 'הגנה' },
-  { label: 'חטיפה' },
-  { label: 'ראשון לכדור' },
-  { label: 'מסירת עומק' },
-  { label: 'פס מדויק' },
-  { label: 'תנועה בלי כדור' },
-  { label: "סוויץ'" },
-  { label: 'תיקון טעות' },
+  { label: 'Goal' },
+  { label: 'Assist' },
+  { label: 'Shot' },
+  { label: 'Defense' },
+  { label: 'Interception' },
+  { label: 'First to ball' },
+  { label: 'Through ball' },
+  { label: 'Accurate pass' },
+  { label: 'Off-ball movement' },
+  { label: 'Switch' },
+  { label: 'Recovery' },
   { label: 'WOW' },
-  { label: 'לא בטוח', isUncertain: true },
+  { label: 'Not sure', isUncertain: true },
 ];
 
 export const SECONDARY_ACTIONS: SoccerAction[] = [
-  { label: 'איבוד כדור', isNegative: true },
-  { label: 'מסירה לא טובה', isNegative: true },
-  { label: 'איחור לכדור', isNegative: true },
-  { label: 'טעות הגנתית', isNegative: true },
-  { label: 'מיקום לא נכון', isNegative: true },
-  { label: 'החלטה לא טובה', isNegative: true },
-  { label: 'עבירה מיותרת', isNegative: true },
-  { label: 'לא רלוונטי', isNegative: true },
+  { label: 'Turnover', isNegative: true },
+  { label: 'Poor pass', isNegative: true },
+  { label: 'Late to ball', isNegative: true },
+  { label: 'Defensive mistake', isNegative: true },
+  { label: 'Wrong position', isNegative: true },
+  { label: 'Poor decision', isNegative: true },
+  { label: 'Unnecessary foul', isNegative: true },
+  { label: 'Not relevant', isNegative: true },
 ];
 
 interface Props {
@@ -59,7 +59,7 @@ function ActionBtn({
   let border = hovered ? 'rgba(255,255,255,0.18)' : 'rgba(255,255,255,0.08)';
   let color = hovered ? '#f1f5f9' : 'rgba(203,213,225,0.85)';
 
-  if (action.label === 'גול') {
+  if (action.label === 'Goal') {
     bg = hovered ? 'rgba(34,197,94,0.22)' : 'rgba(34,197,94,0.1)';
     border = hovered ? 'rgba(34,197,94,0.5)' : 'rgba(34,197,94,0.25)';
     color = hovered ? '#86efac' : 'rgba(134,239,172,0.85)';
@@ -97,7 +97,7 @@ function ActionBtn({
         userSelect: 'none',
         whiteSpace: 'nowrap',
         letterSpacing: '0.01em',
-        direction: 'rtl',
+        direction: 'ltr',
       }}
     >
       {action.label}
@@ -146,7 +146,7 @@ function ActionPickerModal({ visible, playerName, clipDurationSec, onConfirm, on
               border: '1px solid rgba(255,255,255,0.08)',
               borderRadius: 16,
               boxShadow: '0 32px 80px rgba(0,0,0,0.6), 0 0 0 1px rgba(255,255,255,0.04)',
-              direction: 'rtl',
+              direction: 'ltr',
               overflow: 'hidden',
             }}
           >
@@ -164,7 +164,7 @@ function ActionPickerModal({ visible, playerName, clipDurationSec, onConfirm, on
                 letterSpacing: '-0.01em',
               }}
               >
-                מה קרה כאן?
+                What happened here?
               </div>
               {meta && (
                 <div style={{ fontSize: 11.5, color: 'rgba(148,163,184,0.55)', letterSpacing: '0.02em' }}>
@@ -218,7 +218,7 @@ function ActionPickerModal({ visible, playerName, clipDurationSec, onConfirm, on
                 }}
                 >▲
                 </span>
-                {showSecondary ? 'הסתר פעולות נוספות' : 'הצג פעולות נוספות'}
+                {showSecondary ? 'Hide extra actions' : 'Show extra actions'}
               </button>
 
               <AnimatePresence>
@@ -270,7 +270,7 @@ function ActionPickerModal({ visible, playerName, clipDurationSec, onConfirm, on
                 onMouseEnter={(e) => { e.currentTarget.style.borderColor = 'rgba(255,255,255,0.18)'; e.currentTarget.style.color = 'rgba(148,163,184,0.9)'; }}
                 onMouseLeave={(e) => { e.currentTarget.style.borderColor = 'rgba(255,255,255,0.08)'; e.currentTarget.style.color = 'rgba(100,116,139,0.7)'; }}
               >
-                ביטול
+                Cancel
               </button>
             </div>
           </motion.div>

@@ -47,7 +47,7 @@ async function getWrap(onBootstrap?: () => void): Promise<any> {
       logger.info('yt-dlp downloaded successfully');
     } catch (err) {
       logger.error('Failed to download yt-dlp from GitHub:', err);
-      throw new Error(`כשל בהורדת yt-dlp מ-GitHub. אפשר ש-Antivirus או חומת אש חוסמים. ${err instanceof Error ? err.message : String(err)}`);
+      throw new Error(`Failed to download yt-dlp from GitHub. Antivirus or firewall software may be blocking it. ${err instanceof Error ? err.message : String(err)}`);
     }
   }
   _wrap = new YTDlpWrap(binPath);
