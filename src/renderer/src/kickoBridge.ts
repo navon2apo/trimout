@@ -2,7 +2,8 @@
 /* eslint-disable no-use-before-define */
 import type { ProjectPlay, TrimoutProject } from './projectModel';
 import { getOrderedSelectedPlays } from './projectModel';
-import { SCOUT_ROLE_BY_ID } from './scoutCatalog';
+import { SCOUT_CATALOG_VERSION, SCOUT_ROLE_BY_ID } from './scoutCatalog';
+import { getOpeningCandidateIds } from './scoutLogic';
 
 export const DEFAULT_KICKO_BASE_URL = 'https://soccer-web-edit-production.up.railway.app';
 
@@ -74,6 +75,7 @@ export async function sendProjectToKicko({ connection, project, destinationProje
 }): Promise<{ projectId: string; openUrl: string }> {
   const selected = getOrderedSelectedPlays(project);
   if (selected.length === 0) throw new Error('Select at least one play before sending.');
+  const openingCandidateIds = getOpeningCandidateIds(project);
 
   let projectId = destinationProjectId;
   let existingProject: KickoProjectRecord | null = null;
@@ -99,7 +101,9 @@ export async function sendProjectToKicko({ connection, project, destinationProje
 
   const existingClips = Array.isArray(existingProject?.['clips']) ? existingProject['clips'] : [];
   const positionOffset = existingClips.length;
-  const importedClips = staged.map(({ play, staged: stagedClip }, index) => buildDraftClip(play, stagedClip, positionOffset + index));
+  const importedClips = staged.map(({ play, staged: stagedClip }, index) => (
+    buildDraftClip(play, stagedClip, positionOffset + index, openingCandidateIds.has(play.id))
+  ));
   await bridgeRequest(connection, `/api/mvp/projects/${encodeURIComponent(projectId)}`, {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json' },
@@ -119,9 +123,10 @@ export function buildProjectIdentity(project: TrimoutProject) {
     },
     settings: {
       appMode: 'professional',
-      ...(project.scoutRole ? { scoutMode: { enabled: true, position: project.scoutRole } } : {}),
+      ...(project.scoutRole ? { scoutMode: { enabled: true, position: project.scoutRole, catalogVersion: SCOUT_CATALOG_VERSION } } : {}),
       source: 'kicko-trimout',
       trimoutProjectId: project.id,
+      scoutCatalogVersion: SCOUT_CATALOG_VERSION,
     },
   };
 }
@@ -175,7 +180,7 @@ async function uploadPlay(connection: KickoConnection, play: ProjectPlay): Promi
   return { clipKey: String(staged.clipKey), manifest: staged.manifest || {}, metadata: staged.metadata || {} };
 }
 
-function buildDraftClip(play: ProjectPlay, staged: StagedClip, position: number) {
+function buildDraftClip(play: ProjectPlay, staged: StagedClip, position: number, isOpeningCandidate: boolean) {
   const { manifest } = staged;
   const source = manifest.source || {};
   return {
@@ -202,7 +207,8 @@ function buildDraftClip(play: ProjectPlay, staged: StagedClip, position: number)
         actionTypeSource: 'trimout',
         rating: play.rating,
         saveToSeasonHighlight: true,
-        isOpeningCandidate: play.rating === 'must_include' || play.rating === 'strong',
+        isOpeningCandidate,
+        iqGuidanceVersion: SCOUT_CATALOG_VERSION,
       },
     },
   };

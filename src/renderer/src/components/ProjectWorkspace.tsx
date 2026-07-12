@@ -2,10 +2,11 @@ import { FiFolder, FiFolderPlus, FiGrid, FiPlus, FiX } from 'react-icons/fi';
 
 import type { TrimoutProject } from '../projectModel';
 import { getProjectActionCounts } from '../projectModel';
-import { SCOUT_ROLE_BY_ID, getActionLabel } from '../scoutCatalog';
+import { SCOUT_ROLE_BY_ID, getActionLabel, getScoutPhaseContext } from '../scoutCatalog';
 
 interface Props {
   project: TrimoutProject | null;
+  actionCounts?: Record<string, number> | undefined;
   canAddAnotherVideo: boolean;
   onNewProject: () => void;
   onOpenProject: () => void;
@@ -14,7 +15,7 @@ interface Props {
   onCloseProject: () => void;
 }
 
-export default function ProjectWorkspace({ project, canAddAnotherVideo, onNewProject, onOpenProject, onReview, onAddAnotherVideo, onCloseProject }: Props) {
+export default function ProjectWorkspace({ project, actionCounts, canAddAnotherVideo, onNewProject, onOpenProject, onReview, onAddAnotherVideo, onCloseProject }: Props) {
   if (!project) {
     return (
       <section className="project-workspace project-workspace-empty" aria-label="Projects">
@@ -30,9 +31,10 @@ export default function ProjectWorkspace({ project, canAddAnotherVideo, onNewPro
     );
   }
 
-  const counts = getProjectActionCounts(project);
+  const counts = actionCounts ?? getProjectActionCounts(project);
   const role = project.scoutRole ? SCOUT_ROLE_BY_ID.get(project.scoutRole) : null;
-  const recommendations = role?.recommended.slice(0, 4) ?? [];
+  const scoutContext = role ? getScoutPhaseContext(role, counts) : null;
+  const recommendations = scoutContext?.recommendedActionTypes.slice(0, 4) ?? [];
 
   return (
     <section className="project-workspace" aria-label={`Project ${project.name}`}>
@@ -45,17 +47,25 @@ export default function ProjectWorkspace({ project, canAddAnotherVideo, onNewPro
         <button type="button" className="icon-button subtle" title="Close project" aria-label="Close project" onClick={onCloseProject}><FiX /></button>
       </div>
 
-      {recommendations.length > 0 && (
+      {role && scoutContext && recommendations.length > 0 && (
         <div className="scout-progress" aria-label="Scout recommendations">
-          {recommendations.map(({ actionType, target }) => {
+          <div className="scout-phase-copy">
+            <strong>{scoutContext.title}</strong>
+            <span>{scoutContext.description}</span>
+          </div>
+          {recommendations.map((actionType) => {
             const count = counts[actionType] ?? 0;
+            const target = scoutContext.phase === 'opening' ? 1 : role.consistencyTargets[actionType] ?? 1;
+            const missing = scoutContext.missingActionTypes.includes(actionType);
             return (
               <div className="scout-progress-row" key={actionType}>
-                <span>{getActionLabel(actionType)}</span>
+                <span>{missing ? 'Next · ' : ''}{getActionLabel(actionType)}</span>
                 <strong className={count >= target ? 'complete' : undefined}>{count}/{target}</strong>
               </div>
             );
           })}
+          {scoutContext.phase === 'consistency' && role.consistencyTips[0] && <div className="scout-consistency-tip">{role.consistencyTips[0]}</div>}
+          {scoutContext.overuseWarning && <div className="scout-overuse-warning">{scoutContext.overuseWarning}</div>}
         </div>
       )}
 

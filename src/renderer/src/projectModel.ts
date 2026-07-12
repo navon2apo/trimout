@@ -3,7 +3,7 @@ import { nanoid } from 'nanoid';
 export const TRIMOUT_PROJECT_VERSION = 1 as const;
 export const TRIMOUT_PROJECT_EXTENSION = 'trimout';
 
-export type ScoutRoleId = 'gk' | 'cb' | 'fb' | 'dm6' | 'cm8' | 'am10' | 'winger' | 'striker';
+export type ScoutRoleId = 'gk' | 'cb' | 'fb' | 'cm6' | 'cm8' | 'am10' | 'winger' | 'st';
 export type ProjectPlayRating = 'normal' | 'good' | 'strong' | 'must_include';
 
 export interface ProjectPlay {
@@ -58,6 +58,14 @@ export interface ExportedPlayInput {
   duration?: number | null | undefined;
   favorite?: boolean | undefined;
   uncertain?: boolean | undefined;
+}
+
+export function normalizeScoutRoleId(value: unknown): ScoutRoleId | null {
+  if (value === 'dm6') return 'cm6';
+  if (value === 'striker') return 'st';
+  return ['gk', 'cb', 'fb', 'cm6', 'cm8', 'am10', 'winger', 'st'].includes(String(value))
+    ? value as ScoutRoleId
+    : null;
 }
 
 function finiteOrNull(value: number | null | undefined): number | null {

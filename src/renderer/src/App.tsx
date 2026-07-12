@@ -134,7 +134,8 @@ import { appName } from '../../main/common.js';
 import type { ExportedPlayInput, ProjectPlayRating, ScoutRoleId, TrimoutProject } from './projectModel';
 import { addExportBatch, createTrimoutProject, reorderProjectPlays, updateProjectPlay } from './projectModel';
 import { loadTrimoutProject, saveTrimoutProject } from './projectStore';
-import { SCOUT_ROLE_BY_ID } from './scoutCatalog';
+import { SCOUT_ROLE_BY_ID, getScoutPhaseContext } from './scoutCatalog';
+import { getSuggestedScoutPlayIds } from './scoutLogic';
 import createClipFileLabel from './clipNaming';
 
 const electron = window.require('electron');
@@ -252,6 +253,11 @@ function App() {
     const ids = ordered.map((play) => play.id);
     [ids[currentIndex], ids[targetIndex]] = [ids[targetIndex]!, ids[currentIndex]!];
     await persistActiveProject(reorderProjectPlays(activeProject, ids));
+  }, [activeProject, persistActiveProject]);
+
+  const handleApplyScoutOrder = useCallback(async () => {
+    if (!activeProject?.scoutRole) return;
+    await persistActiveProject(reorderProjectPlays(activeProject, getSuggestedScoutPlayIds(activeProject)));
   }, [activeProject, persistActiveProject]);
 
   // ─── Export quality & package ──────────────────────────────────────────────
@@ -495,6 +501,23 @@ function App() {
   const {
     cutSegments, cutSegmentsHistory, createSegmentsFromKeyframes, shuffleSegments, detectBlackScenes, detectSilentScenes, detectSceneChanges, removeSegment, invertAllSegments, fillSegmentsGaps, combineOverlappingSegments, combineSelectedSegments, shiftAllSegmentTimes, alignSegmentTimesToKeyframes, reorderSegsByStartTime, addSegment, addClip, setCutStart, setCutEnd, labelSegment, splitCurrentSegment, focusSegmentAtCursor, selectSegmentsAtCursor, createNumSegments, createFixedDurationSegments, createFixedByteSizedSegments, createRandomSegments, haveInvalidSegs, currentSegIndexSafe, currentCutSeg, inverseCutSegments, clearSegments, clearSegColorCounter, loadCutSegments, setCutTime, setCurrentSegIndex, labelSelectedSegments, deselectAllSegments, selectAllSegments, selectOnlyCurrentSegment, toggleCurrentSegmentSelected, invertSelectedSegments, removeSelectedSegments, selectSegmentsByLabel, selectSegmentsByExpr, selectAllMarkers, mutateSegmentsByExpr, selectedSegments, segmentsOrInverse, segmentsToExport, duplicateCurrentSegment, updateSegAtIndex, findSegmentsAtCursor, maybeCreateFullLengthSegment, currentCutSegOrWholeTimeline, segColorCounter,
   } = useSegments({ filePath, workingRef, setWorking, setProgress, videoStream: activeVideoStream, fileDuration, getRelevantTime, maxLabelLength, checkFileOpened, invertCutSegments, segmentsToChaptersOnly, timecodePlaceholder, parseTimecode, appendFfmpegCommandLog, fileDurationNonZero, mainFileMeta: mainFileMeta?.ffprobeMeta, seekAbs, activeVideoStreamIndex, activeAudioStreamIndexes, handleError, showGenericDialog, simpleMode, ffmpegHwaccel });
+
+  const scoutActionCounts = useMemo(() => {
+    const counts: Record<string, number> = {};
+    for (const collectedPlay of activeProject?.plays ?? []) {
+      if (!filePath || collectedPlay.sourcePath !== filePath) {
+        counts[collectedPlay.actionType] = (counts[collectedPlay.actionType] ?? 0) + 1;
+      }
+    }
+    for (const segment of cutSegments) {
+      if (!segment.initial && segment.actionType) {
+        counts[segment.actionType] = (counts[segment.actionType] ?? 0) + 1;
+      }
+    }
+    return counts;
+  }, [activeProject, cutSegments, filePath]);
+  const activeScoutRole = activeProject?.scoutRole ? SCOUT_ROLE_BY_ID.get(activeProject.scoutRole) : null;
+  const activeScoutContext = activeScoutRole ? getScoutPhaseContext(activeScoutRole, scoutActionCounts) : null;
 
   // In simple mode, marking start also auto-sets end to start + 20s (clip window)
   const handleSimpleMarkStart = useCallback(() => {
@@ -3503,6 +3526,7 @@ function App() {
                 >
                   <ProjectWorkspace
                     project={activeProject}
+                    actionCounts={scoutActionCounts}
                     canAddAnotherVideo={activeProject != null && (!isFileOpened || currentFileExportCount > 0)}
                     onNewProject={() => setProjectSetupOpen(true)}
                     onOpenProject={handleOpenProject}
@@ -4037,7 +4061,8 @@ function App() {
                 visible={actionPickerOpen}
                 playerName={playerName}
                 clipDurationSec={quickCutDuration}
-                recommendedActionTypes={activeProject?.scoutRole ? SCOUT_ROLE_BY_ID.get(activeProject.scoutRole)?.recommended.map(({ actionType }) => actionType) : undefined}
+                scoutRole={activeScoutRole}
+                scoutContext={activeScoutContext}
                 onConfirm={handleActionPicked}
                 onCancel={() => { setActionPickerOpen(false); pendingClipRef.current = null; }}
               />
@@ -4056,6 +4081,7 @@ function App() {
                 onToggleSelected={(playId, selected) => { void handleToggleProjectPlay(playId, selected); }}
                 onRatingChange={(playId, rating) => { void handleProjectRatingChange(playId, rating); }}
                 onMove={(playId, direction) => { void handleMoveProjectPlay(playId, direction); }}
+                onApplyScoutOrder={handleApplyScoutOrder}
                 onContinueInKicko={handleContinueInKicko}
                 getFileUrl={(path) => pathToFileURL(path).href}
               />

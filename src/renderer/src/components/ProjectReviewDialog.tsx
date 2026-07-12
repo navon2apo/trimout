@@ -1,9 +1,10 @@
 import { useMemo, useState } from 'react';
-import { FiCheck, FiChevronDown, FiChevronUp, FiPlay, FiUploadCloud, FiX } from 'react-icons/fi';
+import { FiCheck, FiChevronDown, FiChevronUp, FiList, FiPlay, FiUploadCloud, FiX } from 'react-icons/fi';
 
 import type { ProjectPlay, ProjectPlayRating, TrimoutProject } from '../projectModel';
 import { getOrderedSelectedPlays } from '../projectModel';
 import { getActionLabel, SCOUT_ACTION_BY_ID } from '../scoutCatalog';
+import { getOpeningCandidateIds } from '../scoutLogic';
 
 interface Props {
   visible: boolean;
@@ -12,11 +13,12 @@ interface Props {
   onToggleSelected: (playId: string, selected: boolean) => void;
   onRatingChange: (playId: string, rating: ProjectPlayRating) => void;
   onMove: (playId: string, direction: -1 | 1) => void;
+  onApplyScoutOrder: () => void;
   onContinueInKicko: () => void;
   getFileUrl: (path: string) => string;
 }
 
-export default function ProjectReviewDialog({ visible, project, onClose, onToggleSelected, onRatingChange, onMove, onContinueInKicko, getFileUrl }: Props) {
+export default function ProjectReviewDialog({ visible, project, onClose, onToggleSelected, onRatingChange, onMove, onApplyScoutOrder, onContinueInKicko, getFileUrl }: Props) {
   const [filter, setFilter] = useState('all');
   const [selectedOnly, setSelectedOnly] = useState(false);
   const [previewPlay, setPreviewPlay] = useState<ProjectPlay | null>(null);
@@ -32,6 +34,7 @@ export default function ProjectReviewDialog({ visible, project, onClose, onToggl
 
   if (!visible || !project) return null;
   const selected = getOrderedSelectedPlays(project);
+  const openingCandidateIds = getOpeningCandidateIds(project);
 
   return (
     <div className="kicko-dialog-backdrop" role="presentation">
@@ -51,6 +54,7 @@ export default function ProjectReviewDialog({ visible, project, onClose, onToggl
             {actionTypes.map((actionType) => <option value={actionType} key={actionType}>{getActionLabel(actionType)}</option>)}
           </select>
           <label className="checkbox-control" htmlFor="project-selected-only"><input id="project-selected-only" type="checkbox" checked={selectedOnly} onChange={(event) => setSelectedOnly(event.target.checked)} /> Selected only</label>
+          {project.scoutRole && <button type="button" className="secondary-button compact scout-order-button" onClick={onApplyScoutOrder}><FiList /> Use Scout order</button>}
           <span className="review-guidance">Order here becomes the KICKO project order.</span>
         </div>
 
@@ -63,7 +67,11 @@ export default function ProjectReviewDialog({ visible, project, onClose, onToggl
                 <article className={`review-play ${play.selected ? 'selected' : ''}`} key={play.id}>
                   <button type="button" className="review-preview" title={`Preview ${play.fileName}`} onClick={() => setPreviewPlay(play)}><FiPlay /></button>
                   <div className="review-play-copy">
-                    <div className="review-play-title"><span style={{ color: action?.color }}>{play.actionLabel || getActionLabel(play.actionType)}</span><small>{play.sourceName}</small></div>
+                    <div className="review-play-title">
+                      <span style={{ color: action?.color }}>{play.actionLabel || getActionLabel(play.actionType)}</span>
+                      {openingCandidateIds.has(play.id) && <b className="opening-candidate-tag">OPENING ~30S</b>}
+                      <small>{play.sourceName}</small>
+                    </div>
                     <div className="review-play-meta">{play.duration == null ? 'Duration unavailable' : `${play.duration.toFixed(1)} sec`}</div>
                   </div>
                   <select aria-label={`Rating for ${play.fileName}`} value={play.rating} onChange={(event) => onRatingChange(play.id, event.target.value as ProjectPlayRating)}>

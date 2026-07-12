@@ -6,6 +6,7 @@ import {
   getOrderedSelectedPlays,
   getProjectActionCounts,
   isTrimoutProject,
+  normalizeScoutRoleId,
   reorderProjectPlays,
   updateProjectPlay,
 } from './projectModel';
@@ -16,6 +17,12 @@ describe('projectModel', () => {
     expect(project.name).toBe('Season 2026');
     expect(project.playerName).toBe('Alex');
     expect(isTrimoutProject(project)).toBe(true);
+  });
+
+  it('migrates legacy Scout role ids to KICKO canonical ids', () => {
+    expect(normalizeScoutRoleId('dm6')).toBe('cm6');
+    expect(normalizeScoutRoleId('striker')).toBe('st');
+    expect(normalizeScoutRoleId('winger')).toBe('winger');
   });
 
   it('adds exported plays as an independent batch', () => {

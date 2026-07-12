@@ -1,5 +1,5 @@
 import type { TrimoutProject } from './projectModel';
-import { isTrimoutProject } from './projectModel';
+import { isTrimoutProject, normalizeScoutRoleId } from './projectModel';
 
 const fs = window.require('fs/promises') as {
   readFile: (path: string, encoding: 'utf8') => Promise<string>;
@@ -11,7 +11,7 @@ const fs = window.require('fs/promises') as {
 export async function loadTrimoutProject(projectPath: string): Promise<TrimoutProject> {
   const parsed: unknown = JSON.parse(await fs.readFile(projectPath, 'utf8'));
   if (!isTrimoutProject(parsed)) throw new Error('This is not a valid KICKO TrimOut project file.');
-  return parsed;
+  return { ...parsed, scoutRole: normalizeScoutRoleId(parsed.scoutRole) };
 }
 
 export async function saveTrimoutProject(projectPath: string, project: TrimoutProject): Promise<void> {
