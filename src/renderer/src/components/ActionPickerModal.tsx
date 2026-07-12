@@ -2,46 +2,36 @@
  * ActionPickerModal — appears after the ✂️ button is pressed.
  * Clean, professional design. No emoji overload.
  */
-import { memo, useState } from 'react';
+import { memo, useMemo, useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
+import { FiChevronDown } from 'react-icons/fi';
+import { SCOUT_ACTIONS } from '../scoutCatalog';
 
 export interface SoccerAction {
+  id: string;
   label: string;
   isUncertain?: true;
   isNegative?: true;
 }
 
-export const PRIMARY_ACTIONS: SoccerAction[] = [
-  { label: 'Goal' },
-  { label: 'Assist' },
-  { label: 'Shot' },
-  { label: 'Defense' },
-  { label: 'Interception' },
-  { label: 'First to ball' },
-  { label: 'Through ball' },
-  { label: 'Accurate pass' },
-  { label: 'Off-ball movement' },
-  { label: 'Switch' },
-  { label: 'Recovery' },
-  { label: 'WOW' },
-  { label: 'Not sure', isUncertain: true },
-];
+export const PRIMARY_ACTIONS: SoccerAction[] = SCOUT_ACTIONS.map(({ id, label }) => ({ id, label }));
 
 export const SECONDARY_ACTIONS: SoccerAction[] = [
-  { label: 'Turnover', isNegative: true },
-  { label: 'Poor pass', isNegative: true },
-  { label: 'Late to ball', isNegative: true },
-  { label: 'Defensive mistake', isNegative: true },
-  { label: 'Wrong position', isNegative: true },
-  { label: 'Poor decision', isNegative: true },
-  { label: 'Unnecessary foul', isNegative: true },
-  { label: 'Not relevant', isNegative: true },
+  { id: 'turnover', label: 'Turnover', isNegative: true },
+  { id: 'poor_pass', label: 'Poor pass', isNegative: true },
+  { id: 'late_to_ball', label: 'Late to ball', isNegative: true },
+  { id: 'defensive_mistake', label: 'Defensive mistake', isNegative: true },
+  { id: 'wrong_position', label: 'Wrong position', isNegative: true },
+  { id: 'poor_decision', label: 'Poor decision', isNegative: true },
+  { id: 'unnecessary_foul', label: 'Unnecessary foul', isNegative: true },
+  { id: 'not_relevant', label: 'Not relevant', isNegative: true },
 ];
 
 interface Props {
   visible: boolean;
   playerName: string;
   clipDurationSec: number;
+  recommendedActionTypes?: string[] | undefined;
   onConfirm: (action: SoccerAction) => void;
   onCancel: () => void;
 }
@@ -59,14 +49,10 @@ function ActionBtn({
   let border = hovered ? 'rgba(255,255,255,0.18)' : 'rgba(255,255,255,0.08)';
   let color = hovered ? '#f1f5f9' : 'rgba(203,213,225,0.85)';
 
-  if (action.label === 'Goal') {
+  if (action.id === 'goal') {
     bg = hovered ? 'rgba(34,197,94,0.22)' : 'rgba(34,197,94,0.1)';
     border = hovered ? 'rgba(34,197,94,0.5)' : 'rgba(34,197,94,0.25)';
     color = hovered ? '#86efac' : 'rgba(134,239,172,0.85)';
-  } else if (action.label === 'WOW') {
-    bg = hovered ? 'rgba(168,85,247,0.22)' : 'rgba(168,85,247,0.1)';
-    border = hovered ? 'rgba(168,85,247,0.5)' : 'rgba(168,85,247,0.25)';
-    color = hovered ? '#d8b4fe' : 'rgba(216,180,254,0.85)';
   } else if (action.isUncertain) {
     bg = hovered ? 'rgba(234,179,8,0.18)' : 'rgba(234,179,8,0.08)';
     border = hovered ? 'rgba(234,179,8,0.45)' : 'rgba(234,179,8,0.2)';
@@ -105,8 +91,12 @@ function ActionBtn({
   );
 }
 
-function ActionPickerModal({ visible, playerName, clipDurationSec, onConfirm, onCancel }: Props) {
+function ActionPickerModal({ visible, playerName, clipDurationSec, recommendedActionTypes = [], onConfirm, onCancel }: Props) {
   const [showSecondary, setShowSecondary] = useState(false);
+  const orderedActions = useMemo(() => {
+    const priority = new Map(recommendedActionTypes.map((id, index) => [id, index]));
+    return PRIMARY_ACTIONS.toSorted((a, b) => (priority.get(a.id) ?? 999) - (priority.get(b.id) ?? 999));
+  }, [recommendedActionTypes]);
 
   const meta = [
     playerName.trim(),
@@ -140,14 +130,15 @@ function ActionPickerModal({ visible, playerName, clipDurationSec, onConfirm, on
             transition={{ duration: 0.18, ease: [0.16, 1, 0.3, 1] }}
             onClick={(e) => e.stopPropagation()}
             style={{
-              width: 400,
+              width: 560,
               maxWidth: '92vw',
+              maxHeight: '88vh',
               background: 'rgba(13,17,27,0.96)',
               border: '1px solid rgba(255,255,255,0.08)',
               borderRadius: 16,
               boxShadow: '0 32px 80px rgba(0,0,0,0.6), 0 0 0 1px rgba(255,255,255,0.04)',
               direction: 'ltr',
-              overflow: 'hidden',
+              overflowY: 'auto',
             }}
           >
             {/* Header strip */}
@@ -181,8 +172,8 @@ function ActionPickerModal({ visible, playerName, clipDurationSec, onConfirm, on
                 gap: 6,
               }}
               >
-                {PRIMARY_ACTIONS.map((action) => (
-                  <ActionBtn key={action.label} action={action} onClick={() => onConfirm(action)} />
+                {orderedActions.map((action) => (
+                  <ActionBtn key={action.id} action={action} onClick={() => onConfirm(action)} />
                 ))}
               </div>
             </div>
@@ -210,14 +201,11 @@ function ActionPickerModal({ visible, playerName, clipDurationSec, onConfirm, on
                   gap: 5,
                 }}
               >
-                <span style={{
-                  fontSize: 8,
+                <FiChevronDown style={{
                   transition: 'transform 0.15s',
-                  display: 'inline-block',
                   transform: showSecondary ? 'rotate(180deg)' : 'rotate(0deg)',
                 }}
-                >▲
-                </span>
+                />
                 {showSecondary ? 'Hide extra actions' : 'Show extra actions'}
               </button>
 

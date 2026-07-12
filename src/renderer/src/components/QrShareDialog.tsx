@@ -10,6 +10,7 @@
  */
 import { memo, useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
+import { FiCopy, FiSmartphone, FiSquare } from 'react-icons/fi';
 import QRCode from 'qrcode';
 
 export type ShareStatus = 'ready' | 'downloading' | 'completed' | 'expired' | 'stopped' | 'error';
@@ -63,7 +64,7 @@ const STATUS_TEXT: Record<ShareStatus, string> = {
 };
 
 const STATUS_COLOR: Record<ShareStatus, string> = {
-  ready: '#14b8a6',
+  ready: '#d2ff00',
   downloading: '#38bdf8',
   completed: '#22c55e',
   expired: '#94a3b8',
@@ -209,7 +210,7 @@ function QrShareDialog({ visible, filePath, onClose }: Props) {
             {/* Header */}
             <div style={{ padding: '18px 22px 14px', borderBottom: '1px solid rgba(255,255,255,0.06)', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
               <div>
-                <div style={{ fontSize: 15, fontWeight: 700, color: '#e2e8f0', marginBottom: 2 }}>📱 Send to phone</div>
+                <div style={{ fontSize: 15, fontWeight: 700, color: '#e2e8f0', marginBottom: 2, display: 'flex', alignItems: 'center', gap: 7 }}><FiSmartphone /> Send to phone</div>
                 <div style={{ fontSize: 11, color: 'rgba(148,163,184,0.6)' }}>Scan the code with your phone camera</div>
               </div>
               <button
@@ -334,7 +335,7 @@ function QrShareDialog({ visible, filePath, onClose }: Props) {
                   opacity: session ? 1 : 0.5,
                 }}
               >
-                📋 Copy link
+                <FiCopy /> Copy link
               </button>
               <button
                 type="button"
@@ -351,7 +352,7 @@ function QrShareDialog({ visible, filePath, onClose }: Props) {
                   boxShadow: '0 2px 8px rgba(239,68,68,0.3)',
                 }}
               >
-                Stop sharing
+                <FiSquare /> Stop sharing
               </button>
             </div>
 

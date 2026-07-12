@@ -32,12 +32,12 @@ function TermsContent() {
   return (
     <div style={{ direction: 'ltr' }}>
       <p style={SECTION_STYLE}>
-        Welcome to TrimOut. By using the app, you agree to the following terms.
+        Welcome to KICKO TrimOut. By using the app, you agree to the following terms.
       </p>
 
       <h3 style={H_STYLE}>1. License</h3>
       <p style={SECTION_STYLE}>
-        Purchasing TrimOut grants you a personal, non-exclusive license to install
+        Purchasing KICKO TrimOut grants you a personal, non-exclusive license to install
         and use the app on your computers. You may not distribute, sell, or transfer
         your license key to others.
       </p>
@@ -51,14 +51,14 @@ function TermsContent() {
 
       <h3 style={H_STYLE}>3. Limitation of Liability</h3>
       <p style={SECTION_STYLE}>
-        TrimOut is provided &quot;as is&quot;. We are not responsible for data loss,
+        KICKO TrimOut is provided &quot;as is&quot;. We are not responsible for data loss,
         damaged files, or indirect damage caused by using the software. Keep backup
         copies of your original files before editing.
       </p>
 
       <h3 style={H_STYLE}>4. Third-Party Components</h3>
       <p style={SECTION_STYLE}>
-        TrimOut is based on LosslessCut by Mikael Finstad (GPL-2.0 license) and
+        KICKO TrimOut is based on LosslessCut by Mikael Finstad (GPL-2.0 license) and
         uses FFmpeg. Third-party components are governed by their own licenses.
       </p>
 
@@ -85,7 +85,7 @@ function PrivacyContent() {
   return (
     <div style={{ direction: 'ltr' }}>
       <p style={SECTION_STYLE}>
-        TrimOut respects your privacy. This document explains what data is collected
+        KICKO TrimOut respects your privacy. This document explains what data is collected
         and what is not.
       </p>
 
@@ -105,7 +105,7 @@ function PrivacyContent() {
 
       <h3 style={H_STYLE}>3. License Check</h3>
       <p style={SECTION_STYLE}>
-        On first launch, TrimOut may verify your license with the distribution
+        On first launch, KICKO TrimOut may verify your license with the distribution
         server. Only the license key, device identifier hash, and app version are
         sent. No additional personal information is collected.
       </p>
@@ -124,7 +124,7 @@ function PrivacyContent() {
 
       <h3 style={H_STYLE}>6. Children</h3>
       <p style={SECTION_STYLE}>
-        TrimOut is intended for users aged 13 and older. When editing videos of
+        KICKO TrimOut is intended for users aged 13 and older. When editing videos of
         children, make sure you have the appropriate parental authority to share
         the resulting files.
       </p>
@@ -205,7 +205,7 @@ function LegalDialog({ visible, onClose }: Props) {
                     fontSize: 13,
                     fontWeight: 600,
                     padding: '14px 16px',
-                    borderBottom: `2px solid ${tab === t ? '#14b8a6' : 'transparent'}`,
+                    borderBottom: `2px solid ${tab === t ? '#d2ff00' : 'transparent'}`,
                     transition: 'color 0.12s, border-color 0.12s',
                   }}
                 >

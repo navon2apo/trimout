@@ -5,6 +5,7 @@
  */
 import { memo, useRef, useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
+import { FiPlay, FiScissors, FiTrash2 } from 'react-icons/fi';
 
 interface Seg {
   segId?: string | undefined;
@@ -13,6 +14,7 @@ interface Seg {
   name?: string | undefined;
   segColorIndex?: number | undefined;
   actionType?: string | undefined;
+  actionLabel?: string | undefined;
   playerName?: string | undefined;
   isFavorite?: boolean | undefined;
   isUncertain?: boolean | undefined;
@@ -26,7 +28,6 @@ interface Props {
   onPlayClip?: (i: number) => void;
   onDeleteSegment: (i: number) => void;
   onToggleFavorite?: (i: number) => void;
-  onUploadClip?: (i: number) => void;
 }
 
 const PALETTE = [
@@ -61,7 +62,7 @@ function actionBadgeStyle(actionType: string | undefined, isUncertain: boolean |
   return { background: 'rgba(20,184,166,0.15)', color: 'rgba(94,234,212,0.95)', border: '1px solid rgba(20,184,166,0.3)' };
 }
 
-function ClipsPanel({ segments, currentSegIndex, formatTimecode, onSegClick, onPlayClip, onDeleteSegment, onToggleFavorite, onUploadClip }: Props) {
+function ClipsPanel({ segments, currentSegIndex, formatTimecode, onSegClick, onPlayClip, onDeleteSegment, onToggleFavorite }: Props) {
   const listRef = useRef<HTMLDivElement>(null);
   const activeRef = useRef<HTMLDivElement>(null);
   const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
@@ -74,7 +75,7 @@ function ClipsPanel({ segments, currentSegIndex, formatTimecode, onSegClick, onP
     return (
       <div style={{ padding: '10px 14px' }}>
         <div style={{ fontSize: 11, color: 'rgba(100,116,139,0.55)', textAlign: 'center', padding: '14px 0', lineHeight: 1.5 }}>
-          <div style={{ fontSize: 22, marginBottom: 6 }}>✂️</div>
+          <FiScissors style={{ fontSize: 22, marginBottom: 6 }} />
           Press the button below<br />to mark an important moment
         </div>
       </div>
@@ -86,7 +87,7 @@ function ClipsPanel({ segments, currentSegIndex, formatTimecode, onSegClick, onP
       {/* Header — no duplicate add button; the main ✂️ on the video is the only way to add */}
       <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '10px 14px 6px' }}>
         <span style={{ fontSize: 11, color: 'rgba(148,163,184,0.6)', letterSpacing: '0.08em', textTransform: 'uppercase', flex: 1 }}>
-          ✂️ {segments.length} clip{segments.length !== 1 ? 's' : ''}
+          {segments.length} clip{segments.length !== 1 ? 's' : ''}
         </span>
       </div>
 
@@ -97,7 +98,8 @@ function ClipsPanel({ segments, currentSegIndex, formatTimecode, onSegClick, onP
             const isActive = i === currentSegIndex;
             const color = segColor(seg.segColorIndex);
             // Display name: use actionType if available, else fallback to seg.name or generic
-            const displayName = seg.name || (seg.actionType ? `${seg.playerName ? `${seg.playerName} ` : ''}${seg.actionType} ${i + 1}` : `Clip ${i + 1}`);
+            const actionDisplay = seg.actionLabel || seg.actionType;
+            const displayName = seg.name || (actionDisplay ? `${seg.playerName ? `${seg.playerName} ` : ''}${actionDisplay} ${i + 1}` : `Clip ${i + 1}`);
 
             return (
               <motion.div
@@ -184,7 +186,7 @@ function ClipsPanel({ segments, currentSegIndex, formatTimecode, onSegClick, onP
                         ...actionBadgeStyle(seg.actionType, seg.isUncertain),
                       }}
                       >
-                        {seg.actionType}
+                        {seg.actionLabel || seg.actionType}
                       </span>
                       {seg.isUncertain && (
                         <span style={{ fontSize: 10, color: 'rgba(251,191,36,0.7)', alignSelf: 'center' }}>❓</span>
@@ -260,43 +262,10 @@ function ClipsPanel({ segments, currentSegIndex, formatTimecode, onSegClick, onP
                     }}
                     onMouseEnter={(e) => { e.currentTarget.style.background = `${color}45`; e.currentTarget.style.color = color; }}
                     onMouseLeave={(e) => { e.currentTarget.style.background = isActive ? `${color}30` : 'rgba(255,255,255,0.07)'; e.currentTarget.style.color = isActive ? color : 'rgba(203,213,225,0.6)'; }}
-                  >▶
+                  ><FiPlay />
                   </motion.button>
 
-                  {/* Cloud / delete — appear on hover */}
-                  {hoveredIndex !== i && (
-                    <div style={{ fontSize: 11, color: 'rgba(148,163,184,0.22)', lineHeight: 1, userSelect: 'none', width: 18, textAlign: 'center' }}>
-                      ☁
-                    </div>
-                  )}
-
                   {hoveredIndex === i && (
-                    <>
-                      <motion.button
-                        type="button"
-                        initial={{ opacity: 0, scale: 0.8 }}
-                        animate={{ opacity: 1, scale: 1 }}
-                        transition={{ duration: 0.1 }}
-                        onClick={(e) => { e.stopPropagation(); onUploadClip?.(i); }}
-                        title={onUploadClip ? 'Upload to cloud' : 'Cloud upload coming soon'}
-                        style={{
-                          background: onUploadClip ? 'rgba(56,189,248,0.15)' : 'rgba(100,116,139,0.08)',
-                          border: `1px solid ${onUploadClip ? 'rgba(56,189,248,0.35)' : 'rgba(100,116,139,0.18)'}`,
-                          borderRadius: 5,
-                          color: onUploadClip ? 'rgba(56,189,248,0.9)' : 'rgba(100,116,139,0.45)',
-                          fontSize: 12,
-                          width: 18,
-                          height: 18,
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          cursor: onUploadClip ? 'pointer' : 'default',
-                          padding: 0,
-                          lineHeight: 1,
-                        }}
-                      >☁
-                      </motion.button>
-
                       <motion.button
                         type="button"
                         initial={{ opacity: 0, scale: 0.8 }}
@@ -319,9 +288,8 @@ function ClipsPanel({ segments, currentSegIndex, formatTimecode, onSegClick, onP
                           padding: 0,
                           lineHeight: 1,
                         }}
-                      >✕
+                      ><FiTrash2 />
                       </motion.button>
-                    </>
                   )}
                 </div>
               </motion.div>

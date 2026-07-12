@@ -4,6 +4,7 @@
  * then accepts a license key and calls the activation API.
  */
 import { useState } from 'react';
+import { FiAlertTriangle, FiKey, FiLoader, FiMonitor, FiScissors } from 'react-icons/fi';
 
 interface Props {
   machineId: string;
@@ -55,7 +56,7 @@ export default function LicenseGate({ machineId, onActivated }: Props) {
     <div style={{
       position: 'fixed',
       inset: 0,
-      background: 'linear-gradient(145deg, #0c1220 0%, #0f172a 50%, #111827 100%)',
+      background: '#071018',
       display: 'flex',
       alignItems: 'center',
       justifyContent: 'center',
@@ -66,8 +67,8 @@ export default function LicenseGate({ machineId, onActivated }: Props) {
     }}>
       <div style={{
         background: 'rgba(255,255,255,0.03)',
-        border: '1px solid rgba(255,255,255,0.09)',
-        borderRadius: 24,
+        border: '1px solid rgba(210,255,0,0.18)',
+        borderRadius: 8,
         padding: '52px 44px',
         maxWidth: 500,
         width: '92%',
@@ -79,7 +80,8 @@ export default function LicenseGate({ machineId, onActivated }: Props) {
 
         {/* Logo & title */}
         <div style={{ textAlign: 'center' }}>
-          <div style={{ fontSize: 48, lineHeight: 1, marginBottom: 12 }}>✂️</div>
+          <FiScissors style={{ fontSize: 42, color: '#d2ff00', marginBottom: 12 }} />
+          <div style={{ color: '#d2ff00', fontSize: 10, fontWeight: 800, marginBottom: 5 }}>KICKO</div>
           <div style={{ fontSize: 28, fontWeight: 700, letterSpacing: '-0.5px', color: '#f8fafc' }}>
             TrimOut
           </div>
@@ -90,25 +92,25 @@ export default function LicenseGate({ machineId, onActivated }: Props) {
 
         {/* Machine ID display */}
         <div style={{
-          background: 'rgba(56,189,248,0.06)',
-          border: '1px solid rgba(56,189,248,0.18)',
-          borderRadius: 14,
+          background: 'rgba(210,255,0,0.045)',
+          border: '1px solid rgba(210,255,0,0.18)',
+          borderRadius: 8,
           padding: '18px 22px',
         }}>
           <div style={{
             fontSize: 11.5,
-            color: 'rgba(56,189,248,0.7)',
+            color: 'rgba(210,255,0,0.78)',
             letterSpacing: '0.1em',
             textTransform: 'uppercase',
             marginBottom: 8,
             fontWeight: 600,
           }}>
-            🖥️ Your machine ID
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}><FiMonitor /> Your machine ID</span>
           </div>
           <div style={{
             fontFamily: 'ui-monospace, "Cascadia Code", "Fira Code", monospace',
             fontSize: 13,
-            color: '#7dd3fc',
+            color: '#d2ff00',
             wordBreak: 'break-all',
             letterSpacing: '0.06em',
             lineHeight: 1.6,
@@ -166,7 +168,7 @@ export default function LicenseGate({ machineId, onActivated }: Props) {
               gap: 6,
               lineHeight: 1.5,
             }}>
-              <span>⚠️</span>
+              <FiAlertTriangle />
               <span>{error}</span>
             </div>
           )}
@@ -181,21 +183,21 @@ export default function LicenseGate({ machineId, onActivated }: Props) {
             background: isLoading
               ? 'rgba(14,165,233,0.25)'
               : isReady
-                ? 'linear-gradient(135deg, #0ea5e9 0%, #2563eb 100%)'
+                ? '#d2ff00'
                 : 'rgba(255,255,255,0.06)',
             border: 'none',
-            borderRadius: 14,
+            borderRadius: 6,
             padding: '15px',
             fontSize: 15.5,
             fontWeight: 650,
-            color: isReady ? '#fff' : 'rgba(148,163,184,0.4)',
+            color: isReady ? '#071018' : 'rgba(148,163,184,0.4)',
             cursor: isReady ? 'pointer' : 'not-allowed',
             transition: 'all 0.15s',
-            boxShadow: isReady && !isLoading ? '0 4px 20px rgba(14,165,233,0.3)' : 'none',
+            boxShadow: isReady && !isLoading ? '0 4px 20px rgba(163,204,0,0.24)' : 'none',
             letterSpacing: '0.01em',
           }}
         >
-          {isLoading ? '⏳  Activating...' : '🔑  Activate TrimOut'}
+          <span style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', gap: 8 }}>{isLoading ? <FiLoader className="spinner-animation" /> : <FiKey />}{isLoading ? 'Activating...' : 'Activate KICKO TrimOut'}</span>
         </button>
 
         {/* Purchase link */}
@@ -205,7 +207,7 @@ export default function LicenseGate({ machineId, onActivated }: Props) {
             href="https://trimout.gumroad.com/l/trimout"
             target="_blank"
             rel="noreferrer"
-            style={{ color: '#38bdf8', textDecoration: 'none', fontWeight: 500 }}
+            style={{ color: '#d2ff00', textDecoration: 'none', fontWeight: 500 }}
             onClick={(e) => {
               e.preventDefault();
               // eslint-disable-next-line @typescript-eslint/no-require-imports

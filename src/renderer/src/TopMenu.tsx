@@ -2,12 +2,12 @@ import type { CSSProperties, ReactNode } from 'react';
 import { memo, useCallback, useEffect, useRef } from 'react';
 import { IoIosSettings } from 'react-icons/io';
 import { FaLock, FaMoon, FaSun, FaUnlock } from 'react-icons/fa';
+import { FaScissors } from 'react-icons/fa6';
 import { useTranslation } from 'react-i18next';
 import Button from './components/Button';
 
 import ExportModeButton from './components/ExportModeButton';
 
-import { withBlur } from './util';
 import { primaryTextColor, controlsBackground, darkModeTransition } from './colors';
 import useUserSettings from './hooks/useUserSettings';
 import styles from './TopMenu.module.css';
@@ -23,13 +23,7 @@ const exportModeStyle = { flexGrow: 0, flexBasis: 140 };
 function TopMenu({
   filePath,
   fileFormat,
-  changeEnabledStreamsFilter,
-  applyEnabledStreamsFilter,
-  enabledStreamsFilter,
   renderOutFmt,
-  numStreamsToCopy,
-  numStreamsTotal,
-  setStreamsSelectorShown,
   toggleSettings,
   selectedSegments,
   isCustomFormatSelected,
@@ -37,13 +31,7 @@ function TopMenu({
 }: {
   filePath: string | undefined,
   fileFormat: string | undefined,
-  changeEnabledStreamsFilter: () => void,
-  applyEnabledStreamsFilter: () => void,
-  enabledStreamsFilter: string | undefined,
   renderOutFmt: (style: CSSProperties) => ReactNode,
-  numStreamsToCopy: number,
-  numStreamsTotal: number,
-  setStreamsSelectorShown: (v: boolean) => void,
   toggleSettings: () => void,
   selectedSegments: unknown[],
   isCustomFormatSelected: boolean,
@@ -90,8 +78,8 @@ function TopMenu({
       style={{ background: controlsBackground, transition: darkModeTransition, display: 'flex', alignItems: 'center', padding: '.3em .3em', gap: '.3em', justifyContent: 'space-between', flexWrap: 'wrap' }}
     >
       {filePath && (
-        <span style={{ fontWeight: 600, color: 'var(--gray-11)', fontSize: '.95em', paddingLeft: '.3em' }}>
-          ✂️ TrimOut
+        <span style={{ fontWeight: 600, color: 'var(--gray-11)', fontSize: '.95em', paddingLeft: '.3em', display: 'inline-flex', alignItems: 'center', gap: '.45em' }}>
+          <FaScissors aria-hidden /> TrimOut
         </span>
       )}
 

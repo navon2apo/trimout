@@ -746,7 +746,7 @@ const KeyboardShortcuts = memo(({
         category: otherCategory,
       },
       quit: {
-        name: t('Quit TrimOut'),
+        name: t('Quit KICKO TrimOut'),
         category: otherCategory,
       },
     };

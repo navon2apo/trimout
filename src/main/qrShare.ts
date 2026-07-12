@@ -121,7 +121,7 @@ function buildDownloadPage(fileName: string, fileSize: number, token: string): s
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
-<title>TrimOut · Download file</title>
+<title>KICKO TrimOut · Download file</title>
 <style>
   * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
   html, body { margin: 0; padding: 0; background: #0a0f19; color: #e2e8f0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", sans-serif; min-height: 100vh; }
@@ -131,14 +131,14 @@ function buildDownloadPage(fileName: string, fileSize: number, token: string): s
   .icon { font-size: 48px; text-align: center; margin-bottom: 12px; }
   .name { font-size: 15px; font-weight: 600; color: #f1f5f9; text-align: center; word-break: break-word; line-height: 1.4; margin-bottom: 4px; }
   .size { font-size: 13px; color: #64748b; text-align: center; margin-bottom: 24px; }
-  .btn { display: block; width: 100%; padding: 16px; background: linear-gradient(135deg, #10b981, #14b8a6); color: #fff; border: none; border-radius: 12px; font-size: 16px; font-weight: 700; text-decoration: none; text-align: center; cursor: pointer; box-shadow: 0 4px 16px rgba(20,184,166,0.35); transition: transform 0.1s; }
+  .btn { display: block; width: 100%; padding: 16px; background: #d2ff00; color: #071018; border: none; border-radius: 8px; font-size: 16px; font-weight: 700; text-decoration: none; text-align: center; cursor: pointer; box-shadow: 0 4px 16px rgba(163,204,0,0.28); transition: transform 0.1s; }
   .btn:active { transform: scale(0.98); }
   .hint { font-size: 11.5px; color: #64748b; text-align: center; margin-top: 18px; line-height: 1.6; }
 </style>
 </head>
 <body>
 <div class="wrap">
-  <div class="brand">✂️ TrimOut</div>
+  <div class="brand">KICKO TrimOut</div>
   <div class="card">
     <div class="icon">📥</div>
     <div class="name">${fileName.replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;').replaceAll('"', '&quot;')}</div>

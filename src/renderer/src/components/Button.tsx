@@ -17,5 +17,5 @@ export default Button;
 // eslint-disable-next-line react/display-name
 export const DialogButton = forwardRef<HTMLButtonElement, { primary?: boolean } & ButtonProps>(({ primary, ...props }, ref) => (
   // eslint-disable-next-line react/jsx-props-no-spreading
-  <Button ref={ref} style={{ padding: '.5em 2em', ...(primary && { color: 'white', backgroundColor: primaryColor, borderColor: primaryTextColor }) }} {...props} />
+  <Button ref={ref} style={{ padding: '.5em 2em', ...(primary && { color: '#071018', backgroundColor: primaryColor, borderColor: primaryTextColor }) }} {...props} />
 ));

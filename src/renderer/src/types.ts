@@ -75,6 +75,7 @@ export interface StateSegment extends SegmentBase, SegmentColorIndex {
   selected: boolean,
   // Soccer clip metadata
   actionType?: string | undefined;
+  actionLabel?: string | undefined;
   playerName?: string | undefined;
   isFavorite?: boolean | undefined;
   isUncertain?: boolean | undefined;

@@ -1,5 +1,6 @@
 import { memo, useState, useRef, useCallback } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
+import { FiLink, FiPlus } from 'react-icons/fi';
 import type { StateSegment } from './types';
 import type { KeyBinding } from '../../common/types';
 
@@ -22,8 +23,8 @@ function TrimIcon() {
       {/* Gradient defs */}
       <defs>
         <linearGradient id="g1" x1="0" y1="0" x2="54" y2="54" gradientUnits="userSpaceOnUse">
-          <stop offset="0%" stopColor="#38bdf8" />
-          <stop offset="100%" stopColor="#818cf8" />
+          <stop offset="0%" stopColor="#d2ff00" />
+          <stop offset="100%" stopColor="#82b300" />
         </linearGradient>
         <filter id="glow">
           <feGaussianBlur stdDeviation="2.5" result="blur" />
@@ -50,7 +51,7 @@ function TrimIcon() {
   );
 }
 
-function NoFileLoaded({ mifiLink, currentCutSeg, onClick, darkMode, keyBindingByAction, onUrlDownload }: {
+function NoFileLoaded({ onClick, onUrlDownload }: {
   mifiLink: unknown,
   currentCutSeg: StateSegment | undefined,
   onClick: () => void,
@@ -88,23 +89,9 @@ function NoFileLoaded({ mifiLink, currentCutSeg, onClick, darkMode, keyBindingBy
       onDragOver={() => setDragging(true)}
       onDragLeave={() => setDragging(false)}
     >
-      {/* Ambient glow blobs */}
-      <div style={{
-        position: 'absolute', width: 340, height: 340, borderRadius: '50%',
-        background: 'radial-gradient(circle, rgba(56,189,248,0.07) 0%, transparent 70%)',
-        top: '10%', left: '50%', transform: 'translateX(-50%)',
-        pointerEvents: 'none',
-      }} />
-      <div style={{
-        position: 'absolute', width: 260, height: 260, borderRadius: '50%',
-        background: 'radial-gradient(circle, rgba(129,140,248,0.06) 0%, transparent 70%)',
-        bottom: '15%', left: '50%', transform: 'translateX(-50%)',
-        pointerEvents: 'none',
-      }} />
-
       {/* Dashed border */}
       <motion.div
-        animate={{ borderColor: dragging ? 'rgba(56,189,248,0.5)' : 'rgba(255,255,255,0.07)' }}
+        animate={{ borderColor: dragging ? 'rgba(210,255,0,0.55)' : 'rgba(255,255,255,0.08)' }}
         transition={{ duration: 0.2 }}
         style={{
           position: 'absolute', inset: 16, borderRadius: 14,
@@ -122,18 +109,17 @@ function NoFileLoaded({ mifiLink, currentCutSeg, onClick, darkMode, keyBindingBy
       >
         {/* Icon */}
         <motion.div
-          animate={{ filter: dragging ? 'drop-shadow(0 0 18px rgba(56,189,248,0.6))' : 'drop-shadow(0 0 8px rgba(56,189,248,0.25))' }}
+          animate={{ filter: dragging ? 'drop-shadow(0 0 18px rgba(210,255,0,0.5))' : 'drop-shadow(0 0 8px rgba(210,255,0,0.2))' }}
           transition={{ duration: 0.3 }}
           style={{ marginBottom: 20 }}
         >
           <TrimIcon />
         </motion.div>
 
-        {/* Logo text */}
+        <div className="kicko-kicker" style={{ marginBottom: 7 }}>KICKO</div>
         <div style={{
-          fontSize: 36, fontWeight: 800, letterSpacing: '-0.02em', marginBottom: 10,
-          background: 'linear-gradient(135deg, #f8fafc 30%, #94a3b8 100%)',
-          WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent',
+          fontSize: 36, fontWeight: 800, marginBottom: 10,
+          color: '#edf5f7',
           lineHeight: 1,
         }}>
           TrimOut
@@ -144,7 +130,7 @@ function NoFileLoaded({ mifiLink, currentCutSeg, onClick, darkMode, keyBindingBy
           fontSize: 13.5, color: 'rgba(148,163,184,0.85)', marginBottom: 6,
           letterSpacing: '0.01em', textAlign: 'center',
         }}>
-          Any video. Any moment. Any use.
+          Find the moments that matter.
         </div>
 
         {/* Sub tagline */}
@@ -152,7 +138,7 @@ function NoFileLoaded({ mifiLink, currentCutSeg, onClick, darkMode, keyBindingBy
           fontSize: 11.5, color: 'rgba(100,116,139,0.8)', marginBottom: 36,
           textAlign: 'center', lineHeight: 1.7,
         }}>
-          Instant lossless cuts — no rendering, no waiting, original quality.
+          Cut and organize plays locally. Continue in KICKO when you are ready.
         </div>
 
         {/* CTA button */}
@@ -161,15 +147,15 @@ function NoFileLoaded({ mifiLink, currentCutSeg, onClick, darkMode, keyBindingBy
           whileTap={{ scale: 0.97 }}
           style={{
             width: 68, height: 68, borderRadius: '50%', marginBottom: 18,
-            background: 'linear-gradient(135deg, rgba(56,189,248,0.15), rgba(129,140,248,0.15))',
-            border: '1.5px solid rgba(56,189,248,0.3)',
+            background: 'rgba(210,255,0,0.12)',
+            border: '1.5px solid rgba(210,255,0,0.38)',
             display: 'flex', alignItems: 'center', justifyContent: 'center',
-            fontSize: 30, color: 'rgba(56,189,248,0.9)',
-            boxShadow: '0 0 24px rgba(56,189,248,0.1), inset 0 1px 0 rgba(255,255,255,0.06)',
+            fontSize: 30, color: '#d2ff00',
+            boxShadow: '0 0 24px rgba(210,255,0,0.1), inset 0 1px 0 rgba(255,255,255,0.06)',
             cursor: 'pointer',
           }}
         >
-          +
+          <FiPlus />
         </motion.div>
 
         {/* Action label */}
@@ -182,11 +168,11 @@ function NoFileLoaded({ mifiLink, currentCutSeg, onClick, darkMode, keyBindingBy
           <div style={{
             display: 'flex', gap: 6, alignItems: 'center',
             background: 'rgba(255,255,255,0.05)',
-            border: `1px solid ${urlFocused ? 'rgba(56,189,248,0.5)' : 'rgba(255,255,255,0.1)'}`,
+            border: `1px solid ${urlFocused ? 'rgba(210,255,0,0.5)' : 'rgba(255,255,255,0.1)'}`,
             borderRadius: 10, padding: '6px 8px',
             transition: 'border-color 0.2s',
           }}>
-            <span style={{ fontSize: 14 }}>🔗</span>
+            <FiLink style={{ color: 'rgba(210,255,0,0.72)' }} />
             <input
               ref={inputRef}
               value={urlValue}
@@ -198,7 +184,7 @@ function NoFileLoaded({ mifiLink, currentCutSeg, onClick, darkMode, keyBindingBy
               placeholder="Paste a YouTube / video URL…"
               style={{
                 flex: 1, background: 'none', border: 'none', outline: 'none',
-                color: '#e2e8f0', fontSize: 12.5, caretColor: '#38bdf8',
+                color: '#e2e8f0', fontSize: 12.5, caretColor: '#d2ff00',
               }}
             />
             <AnimatePresence>
@@ -212,8 +198,8 @@ function NoFileLoaded({ mifiLink, currentCutSeg, onClick, darkMode, keyBindingBy
                   onClick={handleUrlSubmit}
                   style={{
                     padding: '3px 12px', borderRadius: 7,
-                    background: 'linear-gradient(135deg,rgba(56,189,248,0.25),rgba(129,140,248,0.25))',
-                    border: '1px solid rgba(56,189,248,0.4)', color: '#38bdf8',
+                    background: '#d2ff00',
+                    border: '1px solid #d2ff00', color: '#071018',
                     fontSize: 11.5, fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap',
                   }}
                 >
@@ -224,25 +210,6 @@ function NoFileLoaded({ mifiLink, currentCutSeg, onClick, darkMode, keyBindingBy
           </div>
         </div>
 
-        {/* Info chips */}
-        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', justifyContent: 'center' }}>
-          {[
-            '← → Frame step',
-            'Drag handles to resize',
-            'Add clips with +',
-            'Export all at once',
-          ].map((tip) => (
-            <div key={tip} style={{
-              fontSize: 10.5, color: 'rgba(100,116,139,0.75)',
-              background: 'rgba(255,255,255,0.04)',
-              border: '1px solid rgba(255,255,255,0.06)',
-              borderRadius: 20, padding: '3px 10px',
-              letterSpacing: '0.01em',
-            }}>
-              {tip}
-            </div>
-          ))}
-        </div>
       </motion.div>
     </div>
   );

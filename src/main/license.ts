@@ -156,7 +156,7 @@ export async function checkLicense(): Promise<{ ok: boolean; error?: string; gra
     }
     return {
       ok: false,
-      error: `Cannot verify license and offline grace period has expired. Connect to the internet to continue using TrimOut.`,
+      error: `Cannot verify license and offline grace period has expired. Connect to the internet to continue using KICKO TrimOut.`,
     };
   }
 }

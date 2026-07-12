@@ -595,7 +595,7 @@ function useSegments({ filePath, workingRef, setWorking, setProgress, videoStrea
   }, [getRelevantTime, fileDuration, cutSegments, simpleMode, createIndexedSegment, safeSetCutSegments]);
 
   // QuickCut: create a segment with explicit start+end (bypasses the +10s hardcode in addSegment)
-  const addClip = useCallback((start: number, end: number, meta?: { name?: string, actionType?: string, playerName?: string, isFavorite?: boolean, isUncertain?: boolean }) => {
+  const addClip = useCallback((start: number, end: number, meta?: { name?: string, actionType?: string, actionLabel?: string, playerName?: string, isFavorite?: boolean, isUncertain?: boolean }) => {
     try {
       if (fileDuration == null || start >= fileDuration) return;
       const clampedEnd = Math.min(end, fileDuration);
@@ -604,6 +604,7 @@ function useSegments({ filePath, workingRef, setWorking, setProgress, videoStrea
       const newSegment: typeof base = {
         ...base,
         ...(meta?.actionType != null && { actionType: meta.actionType }),
+        ...(meta?.actionLabel != null && { actionLabel: meta.actionLabel }),
         ...(meta?.playerName != null && { playerName: meta.playerName }),
         ...(meta?.isFavorite != null && { isFavorite: meta.isFavorite }),
         ...(meta?.isUncertain != null && { isUncertain: meta.isUncertain }),

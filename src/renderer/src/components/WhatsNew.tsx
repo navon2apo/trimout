@@ -42,7 +42,7 @@ export default function WhatsNew() {
         <Dialog.Overlay />
         <Dialog.Content style={{ width: '60em' }} aria-describedby={undefined}>
           <Dialog.Title>
-            {t('What\'s new in TrimOut?')}
+            {t('What\'s new in KICKO TrimOut?')}
           </Dialog.Title>
 
           <div>

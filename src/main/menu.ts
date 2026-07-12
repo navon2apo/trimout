@@ -234,7 +234,7 @@ export default ({ app, mainWindow, newVersion, isStoreBuild }: {
           label: esc(t('Licenses (GPL)')),
           click() { electron.shell.openExternal(licensesUrl); },
         },
-        ...(process.platform !== 'darwin' ? [{ role: 'about' as const, label: esc(t('About TrimOut')) }] : []),
+        ...(process.platform !== 'darwin' ? [{ role: 'about' as const, label: esc(t('About KICKO TrimOut')) }] : []),
       ],
     },
   ];

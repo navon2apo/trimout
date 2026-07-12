@@ -2,6 +2,7 @@ import type { CSSProperties, ReactEventHandler, FocusEventHandler, DragEventHand
 import { memo, useEffect, useState, useCallback, useRef, useMemo } from 'react';
 import { FaRegTimesCircle } from 'react-icons/fa';
 import { MdRotate90DegreesCcw } from 'react-icons/md';
+import { FiFilm, FiScissors, FiSettings, FiSmartphone, FiUser } from 'react-icons/fi';
 import { AnimatePresence, MotionConfig } from 'motion/react';
 import i18n from 'i18next';
 import { useTranslation } from 'react-i18next';
@@ -36,6 +37,10 @@ import ActionPickerModal, { type SoccerAction } from './components/ActionPickerM
 import LegalDialog from './components/LegalDialog';
 import FormatPickerDialog, { type VideoInfo } from './components/FormatPickerDialog';
 import QrShareDialog from './components/QrShareDialog';
+import ProjectSetupDialog from './components/ProjectSetupDialog';
+import ProjectWorkspace from './components/ProjectWorkspace';
+import ProjectReviewDialog from './components/ProjectReviewDialog';
+import KickoBridgeDialog from './components/KickoBridgeDialog';
 import { compressClip, QUALITY_PRESETS, type QualityPreset, type AspectRatio, type FitMode } from './util/qualityPresets';
 import FEATURES from './util/features';
 import MediaSourcePlayer from './MediaSourcePlayer';
@@ -126,6 +131,11 @@ import WhatsNew from './components/WhatsNew';
 import mainApi from './mainApi.js';
 import type { AppEvent } from '../../main/index.js';
 import { appName } from '../../main/common.js';
+import type { ExportedPlayInput, ProjectPlayRating, ScoutRoleId, TrimoutProject } from './projectModel';
+import { addExportBatch, createTrimoutProject, reorderProjectPlays, updateProjectPlay } from './projectModel';
+import { loadTrimoutProject, saveTrimoutProject } from './projectStore';
+import { SCOUT_ROLE_BY_ID } from './scoutCatalog';
+import createClipFileLabel from './clipNaming';
 
 const electron = window.require('electron');
 const { lstat } = window.require('fs/promises');
@@ -167,9 +177,82 @@ function App() {
 
   // ─── Soccer player & action ────────────────────────────────────────────────
   const [playerName, setPlayerName] = useState('');
+  const [activeProject, setActiveProject] = useState<TrimoutProject | null>(null);
+  const [activeProjectPath, setActiveProjectPath] = useState<string | null>(null);
+  const [projectSetupOpen, setProjectSetupOpen] = useState(false);
+  const [projectReviewOpen, setProjectReviewOpen] = useState(false);
+  const [kickoBridgeOpen, setKickoBridgeOpen] = useState(false);
   // Pending clip range — set when ✂️ is pressed, consumed when action is picked
   const pendingClipRef = useRef<{ start: number; end: number } | null>(null);
   const [actionPickerOpen, setActionPickerOpen] = useState(false);
+
+  const persistActiveProject = useCallback(async (project: TrimoutProject) => {
+    if (!activeProjectPath) throw new Error('Project file path is missing.');
+    await saveTrimoutProject(activeProjectPath, project);
+    setActiveProject(project);
+  }, [activeProjectPath]);
+
+  const handleCreateProject = useCallback(async ({ name, playerName: projectPlayerName, scoutRole }: {
+    name: string;
+    playerName: string;
+    scoutRole: ScoutRoleId | null;
+  }) => {
+    const safeName = name.trim().replaceAll(/[<>:"|?*\\/]/g, '').slice(0, 80) || 'KICKO TrimOut Project';
+    const remote = window.require('@electron/remote') as typeof import('@electron/remote');
+    const result = await remote.dialog.showSaveDialog({
+      title: 'Create KICKO TrimOut project',
+      defaultPath: pathJoin(remote.app.getPath('documents'), `${safeName}.trimout`),
+      filters: [{ name: 'KICKO TrimOut project', extensions: ['trimout'] }],
+    });
+    if (result.canceled || !result.filePath) return;
+    const project = createTrimoutProject({ name, playerName: projectPlayerName, scoutRole });
+    await saveTrimoutProject(result.filePath, project);
+    setActiveProjectPath(result.filePath);
+    setActiveProject(project);
+    setPlayerName(project.playerName);
+    setProjectSetupOpen(false);
+  }, []);
+
+  const handleOpenProject = useCallback(async () => {
+    const remote = window.require('@electron/remote') as typeof import('@electron/remote');
+    const result = await remote.dialog.showOpenDialog({
+      title: 'Open KICKO TrimOut project',
+      properties: ['openFile'],
+      filters: [{ name: 'KICKO TrimOut project', extensions: ['trimout'] }],
+    });
+    const [projectPath] = result.filePaths;
+    if (result.canceled || !projectPath) return;
+    try {
+      const project = await loadTrimoutProject(projectPath);
+      setActiveProjectPath(projectPath);
+      setActiveProject(project);
+      setPlayerName(project.playerName);
+    } catch (err) {
+      errorToast(err instanceof Error ? err.message : 'The project could not be opened.');
+    }
+  }, []);
+
+  const handleToggleProjectPlay = useCallback(async (playId: string, selected: boolean) => {
+    if (!activeProject) return;
+    await persistActiveProject(updateProjectPlay(activeProject, playId, { selected }));
+  }, [activeProject, persistActiveProject]);
+
+  const handleProjectRatingChange = useCallback(async (playId: string, rating: ProjectPlayRating) => {
+    if (!activeProject) return;
+    const selected = rating === 'must_include' ? true : undefined;
+    await persistActiveProject(updateProjectPlay(activeProject, playId, { rating, ...(selected == null ? {} : { selected }) }));
+  }, [activeProject, persistActiveProject]);
+
+  const handleMoveProjectPlay = useCallback(async (playId: string, direction: -1 | 1) => {
+    if (!activeProject) return;
+    const ordered = activeProject.plays.toSorted((a, b) => a.order - b.order);
+    const currentIndex = ordered.findIndex((play) => play.id === playId);
+    const targetIndex = currentIndex + direction;
+    if (currentIndex < 0 || targetIndex < 0 || targetIndex >= ordered.length) return;
+    const ids = ordered.map((play) => play.id);
+    [ids[currentIndex], ids[targetIndex]] = [ids[targetIndex]!, ids[currentIndex]!];
+    await persistActiveProject(reorderProjectPlays(activeProject, ids));
+  }, [activeProject, persistActiveProject]);
 
   // ─── Export quality & package ──────────────────────────────────────────────
   const [qualityPreset, setQualityPreset] = useState<QualityPreset>('lossless');
@@ -438,11 +521,12 @@ function App() {
 
     // Build clip index for auto-naming (total clips so far + 1)
     const clipNumber = cutSegments.filter((s) => !s.initial).length + 1;
-    const nameBase = [playerName.trim(), action.label, clipNumber].filter(Boolean).join(' ');
+    const nameBase = createClipFileLabel([playerName.trim(), action.label, clipNumber]);
 
     addClip(range.start, range.end, {
       name: nameBase,
-      actionType: action.label,
+      actionType: action.id,
+      actionLabel: action.label,
       ...(playerName.trim() ? { playerName: playerName.trim() } : {}),
       isUncertain: action.isUncertain ?? false,
     });
@@ -481,7 +565,7 @@ function App() {
 
   const { getEdlFilePath, projectFileSavePath, getProjectFileSavePath } = useSegmentsAutoSave({ autoSaveProjectFile, storeProjectInWorkingDir, filePath, customOutDir, cutSegments });
 
-  const { nonCopiedExtraStreams, exportExtraStreams, mainCopiedThumbnailStreams, numStreamsToCopy, toggleStripVideo, toggleStripAudio, toggleStripSubtitle, toggleStripThumbnail, toggleStripAll, copyStreamIdsByFile, setCopyStreamIdsByFile, copyFileStreams, mainCopiedStreams, setCopyStreamIdsForPath, toggleCopyStreamId, isCopyingStreamId, toggleCopyStreamIds, changeEnabledStreamsFilter, applyEnabledStreamsFilter, enabledStreamsFilter, toggleCopyAllStreamsForPath } = useStreamsMeta({ mainStreams, externalFilesMeta, filePath, autoExportExtraStreams, showGenericDialog });
+  const { nonCopiedExtraStreams, exportExtraStreams, mainCopiedThumbnailStreams, numStreamsToCopy, toggleStripVideo, toggleStripAudio, toggleStripSubtitle, toggleStripThumbnail, toggleStripAll, copyStreamIdsByFile, setCopyStreamIdsByFile, copyFileStreams, mainCopiedStreams, setCopyStreamIdsForPath, toggleCopyStreamId, isCopyingStreamId, toggleCopyStreamIds, changeEnabledStreamsFilter, applyEnabledStreamsFilter, toggleCopyAllStreamsForPath } = useStreamsMeta({ mainStreams, externalFilesMeta, filePath, autoExportExtraStreams, showGenericDialog });
 
   const onDurationChange = useCallback<ReactEventHandler<HTMLVideoElement>>((e) => {
     // Some files report duration infinity first, then proper duration later
@@ -937,21 +1021,19 @@ function App() {
     clearSegments();
   }, [isFileOpened, workingRef, askBeforeClose, confirmDialog, resetState, clearSegments]);
 
-  // "Clean project" wipes the current file + clips + player name + any pending state.
-  // Uses native window.confirm so it CAN'T silently fail (no async / no library bugs).
+  // Closes the current source video. A multi-game project, when active, stays open.
   const handleFinishedWithVideo = useCallback(() => {
     console.log('[CleanProject] click — cutSegments:', cutSegments.length, 'playerName:', playerName);
     const realClips = cutSegments.filter((s) => s.end != null && !s.initial);
-    const hasContent = realClips.length > 0 || playerName.trim().length > 0;
+    const hasContent = realClips.length > 0 || (!activeProject && playerName.trim().length > 0);
 
     const parts: string[] = [];
     if (realClips.length > 0) parts.push(`${realClips.length} clip${realClips.length !== 1 ? 's' : ''}`);
-    if (playerName.trim()) parts.push(`player name "${playerName.trim()}"`);
     parts.push('the open video');
 
     const message = hasContent
-      ? `Clean this project?\n\nThis will remove:\n- ${parts.join('\n- ')}\n\nThis action cannot be undone.`
-      : 'Clean this project?';
+      ? `Close the current video?\n\nThis will remove the current, unexported work:\n- ${parts.join('\n- ')}\n\n${activeProject ? 'Plays already saved to the project will stay there.' : 'This action cannot be undone.'}`
+      : 'Close the current video?';
 
     // Native confirm — bulletproof, no library dependency, can't hang
     const confirmed = window.confirm(message);
@@ -962,20 +1044,20 @@ function App() {
       console.log('[CleanProject] wiping…');
       resetState();
       clearSegments();
-      setPlayerName('');
+      if (!activeProject) setPlayerName('');
       pendingClipRef.current = null;
       setActionPickerOpen(false);
       setExportConfirmOpen(false);
       console.log('[CleanProject] done');
       // Non-blocking toast (if it fails, the clean still happened)
       try {
-        getSwal().toast.fire({ icon: 'success', title: 'Project cleaned', timer: 2000 });
+        getSwal().toast.fire({ icon: 'success', title: 'Video closed', timer: 2000 });
       } catch { /* ignore toast failure */ }
     } catch (err) {
       console.error('[CleanProject] FAILED:', err);
       window.alert(`Cleanup failed: ${err instanceof Error ? err.message : String(err)}`);
     }
-  }, [cutSegments, playerName, resetState, clearSegments]);
+  }, [activeProject, cutSegments, playerName, resetState, clearSegments]);
 
   // "Send to phone" opens the QR-share dialog for the most recent exported file.
   const handleSendToPhone = useCallback(() => {
@@ -1339,7 +1421,7 @@ function App() {
 
         // don't delete existing files that were not created by losslesscut now (due to overwrite disabled) https://github.com/mifi/lossless-cut/issues/2436
         const createdOutFiles = outFiles.flatMap((f) => (f.created ? [f.path] : []));
-        if (autoDeleteMergedSegments) await tryDeleteFiles(createdOutFiles);
+        if (autoDeleteMergedSegments && activeProject == null) await tryDeleteFiles(createdOutFiles);
       }
 
       if (!enableOverwriteOutput) warnings.add(i18n.t('Overwrite output setting is disabled and some files might have been skipped.'));
@@ -1394,6 +1476,8 @@ function App() {
       setCurrentFileExportCount((c) => c + 1);
       // Track final reveal path — updated by the post-export pipeline if files were moved.
       let finalRevealPath: string = revealPath;
+      let projectExportedPlays: ExportedPlayInput[] = [];
+      let projectCombinedFilePath: string | null = null;
 
       // ── Post-export pipeline: H.264 compression + export package + metadata.json ──
       try {
@@ -1491,6 +1575,7 @@ function App() {
               fileName: basename(f.path),
               playerName: seg?.playerName ?? (playerName.trim() || null),
               actionType: seg?.actionType ?? null,
+              actionLabel: seg?.actionLabel ?? null,
               startTime: seg?.start ?? null,
               endTime: seg?.end ?? null,
               duration: seg?.end != null && seg?.start != null ? seg.end - seg.start : null,
@@ -1536,6 +1621,20 @@ function App() {
                 const dest = pathJoin(pkgClips, basename(f.path));
                 await fsCopyFile(f.path, dest);
                 if (firstClipInPkg == null) firstClipInPkg = dest;
+                const outIndex = outFiles.findIndex((candidate) => candidate.path === f.path);
+                const exportedSegment = outIndex >= 0 ? segmentsToExport[outIndex] : undefined;
+                const segment = exportedSegment ? cutSegments[exportedSegment.originalIndex] : undefined;
+                projectExportedPlays.push({
+                  filePath: dest,
+                  actionType: segment?.actionType,
+                  actionLabel: segment?.actionLabel,
+                  playerName: segment?.playerName ?? playerName,
+                  startTime: segment?.start,
+                  endTime: segment?.end,
+                  duration: segment?.end != null && segment?.start != null ? segment.end - segment.start : null,
+                  favorite: segment?.isFavorite,
+                  uncertain: segment?.isUncertain,
+                });
               }
             }
             // combined/ — only if merged file exists
@@ -1546,6 +1645,7 @@ function App() {
               const dest = pathJoin(pkgCombined, basename(mergedOutFilePath));
               await fsCopyFile(mergedOutFilePath, dest);
               mergedInPkg = dest;
+              projectCombinedFilePath = dest;
             }
             // Remember the final path of the most useful file for QR-share:
             // prefer the merged clip (single file to phone) over individual clips.
@@ -1579,6 +1679,7 @@ function App() {
                 start: s.start,
                 end: s.end ?? null,
                 actionType: s.actionType ?? null,
+                actionLabel: s.actionLabel ?? null,
                 playerName: s.playerName ?? null,
                 isFavorite: s.isFavorite ?? false,
                 isUncertain: s.isUncertain ?? false,
@@ -1594,11 +1695,37 @@ function App() {
           } else if (existingOutFiles[0]?.path) {
             setLastExportedFile(existingOutFiles[0].path);
           }
+          projectExportedPlays = existingOutFiles.map((f) => {
+            const outIndex = outFiles.findIndex((candidate) => candidate.path === f.path);
+            const exportedSegment = outIndex >= 0 ? segmentsToExport[outIndex] : undefined;
+            const segment = exportedSegment ? cutSegments[exportedSegment.originalIndex] : undefined;
+            return {
+              filePath: f.path,
+              actionType: segment?.actionType,
+              actionLabel: segment?.actionLabel,
+              playerName: segment?.playerName ?? playerName,
+              startTime: segment?.start,
+              endTime: segment?.end,
+              duration: segment?.end != null && segment?.start != null ? segment.end - segment.start : null,
+              favorite: segment?.isFavorite,
+              uncertain: segment?.isUncertain,
+            };
+          });
+          projectCombinedFilePath = mergedOutFilePath != null && await fileExists(mergedOutFilePath) ? mergedOutFilePath : null;
         }
       } catch (metaErr) {
         console.warn('Failed to finalize export package / metadata', metaErr);
       } finally {
         setWorking(undefined);
+      }
+
+      if (activeProject && projectExportedPlays.length > 0) {
+        const nextProject = addExportBatch(activeProject, {
+          sourcePath: filePath,
+          exportedPlays: projectExportedPlays,
+          combinedFilePath: projectCombinedFilePath,
+        });
+        await persistActiveProject(nextProject);
       }
 
       // NOW open the cut-finished dialog with the final reveal path — by this point
@@ -1644,7 +1771,7 @@ function App() {
       setWorking(undefined);
       setProgress(undefined);
     }
-  }, [filePath, numStreamsToCopy, haveInvalidSegs, workingRef, setWorking, segmentsToChaptersOnly, cutFileTemplateOrDefault, generateCutFileNames, cutMultiple, outputDir, customOutDir, fileFormat, fileDuration, isRotationSet, effectiveRotation, copyFileStreams, allFilesMeta, keyframeCut, segmentsToExport, shortestFlag, ffmpegExperimental, preserveMetadata, preserveMetadataOnMerge, preserveMovData, preserveChapters, movFastStart, avoidNegativeTs, customTagsByFile, paramsByStreamId, detectedFps, willMerge, enableOverwriteOutput, exportConfirmEnabled, mainFileFormat, mainStreams, exportExtraStreams, areWeCutting, simpleMode, prefersReducedMotion, cleanupChoices, hideAllNotifications, segmentsOrInverse.selected, t, cutMergedFileTemplateOrDefault, segmentsToChapters, invertCutSegments, generateCutMergedFileNames, concatCutSegments, autoDeleteMergedSegments, tryDeleteFiles, nonCopiedExtraStreams, extractStreams, askForCleanupChoices, cleanupFiles, showOsNotification, openCutFinishedDialog, handleExportFailed, setExportedRanges, qualityPreset, createExportPackage, playerName, cutSegments, quickCutDuration, appendFfmpegCommandLog, exportAspectRatio, exportFitMode]);
+  }, [filePath, numStreamsToCopy, haveInvalidSegs, workingRef, setWorking, segmentsToChaptersOnly, cutFileTemplateOrDefault, generateCutFileNames, cutMultiple, outputDir, customOutDir, fileFormat, fileDuration, isRotationSet, effectiveRotation, copyFileStreams, allFilesMeta, keyframeCut, segmentsToExport, shortestFlag, ffmpegExperimental, preserveMetadata, preserveMetadataOnMerge, preserveMovData, preserveChapters, movFastStart, avoidNegativeTs, customTagsByFile, paramsByStreamId, detectedFps, willMerge, enableOverwriteOutput, exportConfirmEnabled, mainFileFormat, mainStreams, exportExtraStreams, areWeCutting, simpleMode, prefersReducedMotion, cleanupChoices, hideAllNotifications, segmentsOrInverse.selected, t, cutMergedFileTemplateOrDefault, segmentsToChapters, invertCutSegments, generateCutMergedFileNames, concatCutSegments, autoDeleteMergedSegments, tryDeleteFiles, nonCopiedExtraStreams, extractStreams, askForCleanupChoices, cleanupFiles, showOsNotification, openCutFinishedDialog, handleExportFailed, setExportedRanges, qualityPreset, createExportPackage, playerName, cutSegments, quickCutDuration, appendFfmpegCommandLog, exportAspectRatio, exportFitMode, activeProject, persistActiveProject]);
 
   const onExportPress = useCallback(async () => {
     if (!filePath) return;
@@ -1680,6 +1807,23 @@ function App() {
   const pendingDownloadUrlRef = useRef<string | null>(null);
   // ref so handleUrlDownload can call userOpenFiles even before it's declared
   const userOpenFilesRef = useRef<((paths: string[]) => void) | null>(null);
+
+  const handleAddAnotherVideo = useCallback(async () => {
+    if (!activeProject) return;
+    const remote = window.require('@electron/remote') as typeof import('@electron/remote');
+    const result = await remote.dialog.showOpenDialog({
+      title: 'Add another game video',
+      properties: ['openFile'],
+      filters: [{ name: 'Video files', extensions: ['mp4', 'mov', 'mkv', 'avi', 'm4v', 'webm'] }],
+    });
+    const [nextVideo] = result.filePaths;
+    if (!result.canceled && nextVideo) userOpenFilesRef.current?.([nextVideo]);
+  }, [activeProject]);
+
+  const handleContinueInKicko = useCallback(() => {
+    setProjectReviewOpen(false);
+    setKickoBridgeOpen(true);
+  }, []);
 
   // ---- AI analysis → replace segments ----
   // Click a segment in the list → select it AND jump the playhead to its start
@@ -2392,7 +2536,7 @@ function App() {
         title: 'Cannot read this video',
         text: userMsg,
         confirmButtonText: 'Got it',
-        confirmButtonColor: '#14b8a6',
+        confirmButtonColor: '#82b300',
       });
     } finally {
       setFormatPickerLoading(false);
@@ -2462,7 +2606,7 @@ function App() {
         title,
         ...(html ? { html } : { text: userMsg }),
         confirmButtonText: 'Got it',
-        confirmButtonColor: '#14b8a6',
+        confirmButtonColor: '#82b300',
       });
     } finally {
       ipcRenderer.removeListener('ytdlpProgress', onProgress);
@@ -3050,15 +3194,9 @@ function App() {
               <TopMenu
                 filePath={filePath}
                 fileFormat={fileFormat}
-                changeEnabledStreamsFilter={changeEnabledStreamsFilter}
-                applyEnabledStreamsFilter={applyEnabledStreamsFilter}
-                enabledStreamsFilter={enabledStreamsFilter}
                 isCustomFormatSelected={isCustomFormatSelected}
                 renderOutFmt={renderOutFmt}
                 toggleSettings={toggleSettings}
-                numStreamsToCopy={numStreamsToCopy}
-                numStreamsTotal={numStreamsTotal}
-                setStreamsSelectorShown={setStreamsSelectorShown}
                 selectedSegments={segmentsOrInverse.selected}
                 toggleDarkMode={toggleDarkMode}
               />
@@ -3258,10 +3396,10 @@ function App() {
                               type="button"
                               onClick={() => setQuickCutDuration(d)}
                               style={{
-                                background: quickCutDuration === d ? 'rgba(20,184,166,0.9)' : 'transparent',
-                                border: `1px solid ${quickCutDuration === d ? 'rgba(20,184,166,1)' : 'rgba(255,255,255,0.15)'}`,
+                                background: quickCutDuration === d ? '#d2ff00' : 'transparent',
+                                border: `1px solid ${quickCutDuration === d ? '#d2ff00' : 'rgba(255,255,255,0.15)'}`,
                                 borderRadius: 20,
-                                color: quickCutDuration === d ? '#fff' : 'rgba(255,255,255,0.6)',
+                                color: quickCutDuration === d ? '#071018' : 'rgba(255,255,255,0.6)',
                                 fontSize: 11,
                                 fontWeight: 600,
                                 padding: '2px 9px',
@@ -3275,10 +3413,10 @@ function App() {
                           {/* Custom input */}
                           {![10, 15, 20, 30].includes(quickCutDuration) && (
                             <span style={{
-                              background: 'rgba(20,184,166,0.9)',
-                              border: '1px solid rgba(20,184,166,1)',
+                              background: '#d2ff00',
+                              border: '1px solid #d2ff00',
                               borderRadius: 20,
-                              color: '#fff',
+                              color: '#071018',
                               fontSize: 11,
                               fontWeight: 600,
                               padding: '2px 9px',
@@ -3314,8 +3452,8 @@ function App() {
                           onClick={handleQuickCut}
                           title={`Add ${quickCutDuration}s clip from here`}
                           style={{
-                            background: 'linear-gradient(135deg, rgba(20,184,166,0.9), rgba(14,165,233,0.9))',
-                            border: '2px solid rgba(255,255,255,0.25)',
+                            background: '#d2ff00',
+                            border: '2px solid rgba(255,255,255,0.2)',
                             borderRadius: '50%',
                             width: 52,
                             height: 52,
@@ -3324,14 +3462,14 @@ function App() {
                             display: 'flex',
                             alignItems: 'center',
                             justifyContent: 'center',
-                            boxShadow: '0 4px 20px rgba(20,184,166,0.4)',
+                            boxShadow: '0 4px 20px rgba(163,204,0,0.28)',
                             backdropFilter: 'blur(6px)',
                             transition: 'transform 0.1s, box-shadow 0.1s',
                           }}
                           onMouseEnter={(e) => { e.currentTarget.style.transform = 'scale(1.1)'; }}
                           onMouseLeave={(e) => { e.currentTarget.style.transform = 'scale(1)'; }}
                         >
-                          ✂️
+                          <FiScissors />
                         </button>
                         <span style={{
                           fontSize: 10,
@@ -3363,17 +3501,31 @@ function App() {
                   background: 'rgba(0,0,0,0.15)',
                 }}
                 >
+                  <ProjectWorkspace
+                    project={activeProject}
+                    canAddAnotherVideo={activeProject != null && (!isFileOpened || currentFileExportCount > 0)}
+                    onNewProject={() => setProjectSetupOpen(true)}
+                    onOpenProject={handleOpenProject}
+                    onReview={() => setProjectReviewOpen(true)}
+                    onAddAnotherVideo={handleAddAnotherVideo}
+                    onCloseProject={() => {
+                      setActiveProject(null);
+                      setActiveProjectPath(null);
+                      setProjectReviewOpen(false);
+                    }}
+                  />
+
                   {/* ── Current file + Clean project — pinned at very top, most visible spot ── */}
                   {filePath != null && (
                     <div style={{
                       padding: '10px 14px',
                       borderBottom: '1px solid rgba(255,255,255,0.07)',
-                      background: 'rgba(20,184,166,0.04)',
+                      background: 'rgba(210,255,0,0.035)',
                       flexShrink: 0,
                     }}
                     >
                       <div style={{ fontSize: 10, color: 'rgba(148,163,184,0.55)', letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 5 }}>
-                        📼 Current video
+                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}><FiFilm /> Current video</span>
                       </div>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
                         <span
@@ -3395,7 +3547,7 @@ function App() {
                         <button
                           type="button"
                           onClick={handleFinishedWithVideo}
-                          title="Clean project - closes the video, deletes all clips, and resets settings"
+                          title="Close the current video and discard unexported cuts"
                           style={{
                             background: 'rgba(239,68,68,0.12)',
                             border: '1px solid rgba(239,68,68,0.28)',
@@ -3412,16 +3564,17 @@ function App() {
                           onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(239,68,68,0.24)'; e.currentTarget.style.borderColor = 'rgba(239,68,68,0.55)'; }}
                           onMouseLeave={(e) => { e.currentTarget.style.background = 'rgba(239,68,68,0.12)'; e.currentTarget.style.borderColor = 'rgba(239,68,68,0.28)'; }}
                         >
-                          Clean project
+                          Close video
                         </button>
                       </div>
                     </div>
                   )}
 
-                  {/* ── Player name ── */}
+                  {/* The project owns the global player name, so do not ask for it twice. */}
+                  {activeProject == null && (
                   <div style={{ padding: '10px 14px 8px', borderBottom: '1px solid rgba(255,255,255,0.07)', flexShrink: 0 }}>
                     <div style={{ fontSize: 10, color: 'rgba(148,163,184,0.55)', letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 5 }}>
-                      ⚽ Player name
+                      <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}><FiUser /> Player name</span>
                     </div>
                     <input
                       type="text"
@@ -3433,7 +3586,7 @@ function App() {
                         width: '100%',
                         boxSizing: 'border-box',
                         background: 'rgba(255,255,255,0.06)',
-                        border: `1px solid ${playerName ? 'rgba(20,184,166,0.4)' : 'rgba(255,255,255,0.12)'}`,
+                        border: `1px solid ${playerName ? 'rgba(210,255,0,0.42)' : 'rgba(255,255,255,0.12)'}`,
                         borderRadius: 8,
                         color: '#f1f5f9',
                         fontSize: 13,
@@ -3450,6 +3603,7 @@ function App() {
                       </div>
                     )}
                   </div>
+                  )}
 
                   {/* ── Transcript toggle — gated by FEATURES.transcript flag ── */}
                   {FEATURES.transcript && (
@@ -3513,7 +3667,7 @@ function App() {
                     }}
                     >
                       <div style={{ fontSize: 10, color: 'rgba(148,163,184,0.55)', letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 6 }}>
-                        ⚙️ Export
+                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}><FiSettings /> Export</span>
                       </div>
 
                       {/* Export mode selector — separate / merged / both */}
@@ -3572,10 +3726,10 @@ function App() {
                               title={v !== 'lossless' ? QUALITY_PRESETS[v].description : 'No re-encoding, fast'}
                               style={{
                                 flex: 1,
-                                background: active ? 'rgba(20,184,166,0.18)' : 'rgba(255,255,255,0.04)',
-                                border: `1px solid ${active ? 'rgba(20,184,166,0.5)' : 'rgba(255,255,255,0.08)'}`,
+                                background: active ? 'rgba(210,255,0,0.14)' : 'rgba(255,255,255,0.04)',
+                                border: `1px solid ${active ? 'rgba(210,255,0,0.45)' : 'rgba(255,255,255,0.08)'}`,
                                 borderRadius: 6,
-                                color: active ? 'rgba(94,234,212,0.95)' : 'rgba(148,163,184,0.75)',
+                                color: active ? '#d2ff00' : 'rgba(148,163,184,0.75)',
                                 fontSize: 11,
                                 fontWeight: 600,
                                 padding: '5px 0',
@@ -3694,8 +3848,8 @@ function App() {
                               width: 36,
                               height: 20,
                               borderRadius: 10,
-                              background: createExportPackage ? '#14b8a6' : 'rgba(255,255,255,0.12)',
-                              border: `1px solid ${createExportPackage ? 'rgba(20,184,166,0.6)' : 'rgba(255,255,255,0.15)'}`,
+                              background: createExportPackage ? '#d2ff00' : 'rgba(255,255,255,0.12)',
+                              border: `1px solid ${createExportPackage ? '#d2ff00' : 'rgba(255,255,255,0.15)'}`,
                               position: 'relative',
                               cursor: 'pointer',
                               transition: 'background 0.18s, border-color 0.18s',
@@ -3727,10 +3881,10 @@ function App() {
                           style={{
                             width: '100%',
                             marginTop: 10,
-                            background: 'linear-gradient(135deg, rgba(20,184,166,0.18), rgba(56,189,248,0.18))',
-                            border: '1px solid rgba(56,189,248,0.45)',
+                            background: 'rgba(210,255,0,0.1)',
+                            border: '1px solid rgba(210,255,0,0.36)',
                             borderRadius: 8,
-                            color: '#7dd3fc',
+                            color: '#d2ff00',
                             fontSize: 12,
                             fontWeight: 700,
                             padding: '8px 10px',
@@ -3741,10 +3895,10 @@ function App() {
                             gap: 6,
                             transition: 'background 0.12s, border-color 0.12s',
                           }}
-                          onMouseEnter={(e) => { e.currentTarget.style.background = 'linear-gradient(135deg, rgba(20,184,166,0.3), rgba(56,189,248,0.3))'; }}
-                          onMouseLeave={(e) => { e.currentTarget.style.background = 'linear-gradient(135deg, rgba(20,184,166,0.18), rgba(56,189,248,0.18))'; }}
+                          onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(210,255,0,0.18)'; }}
+                          onMouseLeave={(e) => { e.currentTarget.style.background = 'rgba(210,255,0,0.1)'; }}
                         >
-                          📱 Send to phone (QR)
+                          <FiSmartphone /> Send to phone
                         </button>
                       )}
 
@@ -3883,8 +4037,33 @@ function App() {
                 visible={actionPickerOpen}
                 playerName={playerName}
                 clipDurationSec={quickCutDuration}
+                recommendedActionTypes={activeProject?.scoutRole ? SCOUT_ROLE_BY_ID.get(activeProject.scoutRole)?.recommended.map(({ actionType }) => actionType) : undefined}
                 onConfirm={handleActionPicked}
                 onCancel={() => { setActionPickerOpen(false); pendingClipRef.current = null; }}
+              />
+
+              <ProjectSetupDialog
+                visible={projectSetupOpen}
+                defaultPlayerName={playerName}
+                onCancel={() => setProjectSetupOpen(false)}
+                onCreate={(value) => { void handleCreateProject(value); }}
+              />
+
+              <ProjectReviewDialog
+                visible={projectReviewOpen}
+                project={activeProject}
+                onClose={() => setProjectReviewOpen(false)}
+                onToggleSelected={(playId, selected) => { void handleToggleProjectPlay(playId, selected); }}
+                onRatingChange={(playId, rating) => { void handleProjectRatingChange(playId, rating); }}
+                onMove={(playId, direction) => { void handleMoveProjectPlay(playId, direction); }}
+                onContinueInKicko={handleContinueInKicko}
+                getFileUrl={(path) => pathToFileURL(path).href}
+              />
+
+              <KickoBridgeDialog
+                visible={kickoBridgeOpen}
+                project={activeProject}
+                onClose={() => setKickoBridgeOpen(false)}
               />
 
               <LegalDialog
