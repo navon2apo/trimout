@@ -9,6 +9,32 @@ const RATING_RANK = {
   normal: 3,
 } as const;
 
+export interface ReelLengthGuidance {
+  tone: 'building' | 'focused' | 'extended' | 'long';
+  durationLabel: string;
+  message: string;
+}
+
+function formatDuration(seconds: number): string {
+  const safeSeconds = Math.max(0, Math.round(seconds));
+  const minutes = Math.floor(safeSeconds / 60);
+  return `${minutes}:${String(safeSeconds % 60).padStart(2, '0')}`;
+}
+
+export function getReelLengthGuidance(durationSeconds: number): ReelLengthGuidance {
+  const durationLabel = formatDuration(durationSeconds);
+  if (durationSeconds < 150) {
+    return { tone: 'building', durationLabel, message: '2:30-3:00 is a strong target. Up to 5:00 can still work.' };
+  }
+  if (durationSeconds <= 180) {
+    return { tone: 'focused', durationLabel, message: 'Strong focused length. Add more only when it improves the story.' };
+  }
+  if (durationSeconds <= 300) {
+    return { tone: 'extended', durationLabel, message: 'Still within the extended 5:00 range. Shorter is often stronger.' };
+  }
+  return { tone: 'long', durationLabel, message: 'Over 5:00. A tighter selection may be stronger, but you can still continue.' };
+}
+
 function compareStrength(a: ProjectPlay, b: ProjectPlay) {
   return RATING_RANK[a.rating] - RATING_RANK[b.rating] || a.order - b.order;
 }

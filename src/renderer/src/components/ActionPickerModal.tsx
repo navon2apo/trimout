@@ -93,10 +93,10 @@ function ActionBtn({
   );
 }
 
-function ScoutActionCard({ action, role, missing, onClick }: {
+function ScoutActionCard({ action, role, badge, onClick }: {
   action: SoccerAction;
   role: ScoutRole;
-  missing: boolean;
+  badge?: string | undefined;
   onClick: () => void;
 }) {
   const catalogAction = SCOUT_ACTION_BY_ID.get(action.id);
@@ -105,7 +105,7 @@ function ScoutActionCard({ action, role, missing, onClick }: {
     <button type="button" className="scout-action-card" onClick={onClick}>
       <span className="scout-action-card-top">
         <strong style={{ color: catalogAction?.color }}>{action.label}</strong>
-        {missing && <small>COLLECT NEXT</small>}
+        {badge && <small>{badge}</small>}
       </span>
       <span>{catalogAction?.helper}</span>
       <em>{guidance.hint}</em>
@@ -115,13 +115,14 @@ function ScoutActionCard({ action, role, missing, onClick }: {
 
 function ActionPickerModal({ visible, playerName, clipDurationSec, scoutRole, scoutContext, onConfirm, onCancel }: Props) {
   const [showSecondary, setShowSecondary] = useState(false);
-  const spotlightIds = scoutRole && scoutContext
-    ? (scoutContext.phase === 'opening' ? scoutRole.openingPriority : scoutContext.recommendedActionTypes.slice(0, 6))
+  const openingActions = scoutRole
+    ? scoutRole.openingPriority
+      .map((id) => PRIMARY_ACTIONS.find((action) => action.id === id))
+      .filter((action): action is SoccerAction => action != null)
     : [];
-  const spotlightActions = spotlightIds.map((id) => PRIMARY_ACTIONS.find((action) => action.id === id)).filter((action): action is SoccerAction => action != null);
-  const additionalRoleActions = scoutRole
+  const consistencyActions = scoutRole
     ? scoutRole.recommendedActions
-      .filter((id) => !spotlightIds.includes(id))
+      .filter((id) => !scoutRole.openingPriority.includes(id))
       .map((id) => PRIMARY_ACTIONS.find((action) => action.id === id))
       .filter((action): action is SoccerAction => action != null)
     : [];
@@ -201,17 +202,40 @@ function ActionPickerModal({ visible, playerName, clipDurationSec, scoutRole, sc
                     <strong>{scoutContext.title}</strong>
                     <span>{scoutContext.description}</span>
                   </div>
+                  <div className="scout-picker-section-title">
+                    <strong>Opening ideas</strong>
+                    <span>Strong options for the first ~30 seconds. Pick any that fit.</span>
+                  </div>
                   <div className="scout-action-card-grid">
-                    {spotlightActions.map((action) => (
+                    {openingActions.map((action) => (
                       <ScoutActionCard
                         key={action.id}
                         action={action}
                         role={scoutRole}
-                        missing={scoutContext.missingActionTypes.includes(action.id)}
+                        badge={scoutContext.missingActionTypes.includes(action.id) ? 'SUGGESTED NEXT' : 'OPENING IDEA'}
                         onClick={() => onConfirm(action)}
                       />
                     ))}
                   </div>
+                  {consistencyActions.length > 0 && (
+                    <>
+                      <div className="scout-picker-section-title consistency">
+                        <strong>Consistency & Soccer IQ ideas</strong>
+                        <span>Use any that add variety or repeated evidence across games.</span>
+                      </div>
+                      <div className="scout-action-card-grid">
+                        {consistencyActions.map((action) => (
+                          <ScoutActionCard
+                            key={action.id}
+                            action={action}
+                            role={scoutRole}
+                            badge={scoutContext.phase === 'consistency' && scoutContext.missingActionTypes.includes(action.id) ? 'SUGGESTED NEXT' : undefined}
+                            onClick={() => onConfirm(action)}
+                          />
+                        ))}
+                      </div>
+                    </>
+                  )}
                 </>
               ) : (
                 <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
@@ -248,7 +272,7 @@ function ActionPickerModal({ visible, playerName, clipDurationSec, scoutRole, sc
                   transform: showSecondary ? 'rotate(180deg)' : 'rotate(0deg)',
                 }}
                 />
-                {showSecondary ? 'Hide extra actions' : (scoutRole ? `More actions for ${scoutRole.label}` : 'Show extra actions')}
+                {showSecondary ? 'Hide other actions' : 'All other actions'}
               </button>
 
               <AnimatePresence>
@@ -267,7 +291,7 @@ function ActionPickerModal({ visible, playerName, clipDurationSec, scoutRole, sc
                       paddingTop: 10,
                     }}
                     >
-                      {[...additionalRoleActions, ...otherActions, ...SECONDARY_ACTIONS].map((action) => (
+                      {[...otherActions, ...SECONDARY_ACTIONS].map((action) => (
                         <ActionBtn key={action.label} action={action} onClick={() => onConfirm(action)} />
                       ))}
                     </div>

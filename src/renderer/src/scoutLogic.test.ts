@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { addExportBatch, createTrimoutProject, updateProjectPlay } from './projectModel';
-import { getOpeningCandidateIds, getSuggestedScoutPlayIds } from './scoutLogic';
+import { getOpeningCandidateIds, getReelLengthGuidance, getSuggestedScoutPlayIds } from './scoutLogic';
 
 function makeWingerProject() {
   let project = createTrimoutProject({ name: 'Season', playerName: 'Alex', scoutRole: 'winger', now: '2026-01-01T00:00:00.000Z' });
@@ -31,5 +31,22 @@ describe('Scout ordering', () => {
     project = { ...project, plays: project.plays.map((play) => ({ ...play, order: orderedIds.indexOf(play.id) })) };
     const candidateIds = getOpeningCandidateIds(project);
     expect([...candidateIds]).toEqual([orderedIds[0], orderedIds[1], orderedIds[2]]);
+  });
+});
+
+describe('Reel length guidance', () => {
+  it.each([
+    [149, 'building'],
+    [150, 'focused'],
+    [180, 'focused'],
+    [181, 'extended'],
+    [300, 'extended'],
+    [301, 'long'],
+  ] as const)('keeps %i seconds advisory with the %s tone', (duration, tone) => {
+    expect(getReelLengthGuidance(duration).tone).toBe(tone);
+  });
+
+  it('never describes a long reel as blocked', () => {
+    expect(getReelLengthGuidance(360).message).toContain('you can still continue');
   });
 });

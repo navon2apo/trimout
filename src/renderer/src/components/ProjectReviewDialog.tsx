@@ -4,7 +4,7 @@ import { FiCheck, FiChevronDown, FiChevronUp, FiList, FiPlay, FiUploadCloud, FiX
 import type { ProjectPlay, ProjectPlayRating, TrimoutProject } from '../projectModel';
 import { getOrderedSelectedPlays } from '../projectModel';
 import { getActionLabel, SCOUT_ACTION_BY_ID } from '../scoutCatalog';
-import { getOpeningCandidateIds } from '../scoutLogic';
+import { getOpeningCandidateIds, getReelLengthGuidance } from '../scoutLogic';
 
 interface Props {
   visible: boolean;
@@ -35,6 +35,8 @@ export default function ProjectReviewDialog({ visible, project, onClose, onToggl
   if (!visible || !project) return null;
   const selected = getOrderedSelectedPlays(project);
   const openingCandidateIds = getOpeningCandidateIds(project);
+  const selectedDuration = selected.reduce((total, play) => total + (play.duration ?? 0), 0);
+  const lengthGuidance = getReelLengthGuidance(selectedDuration);
 
   return (
     <div className="kicko-dialog-backdrop" role="presentation">
@@ -55,7 +57,10 @@ export default function ProjectReviewDialog({ visible, project, onClose, onToggl
           </select>
           <label className="checkbox-control" htmlFor="project-selected-only"><input id="project-selected-only" type="checkbox" checked={selectedOnly} onChange={(event) => setSelectedOnly(event.target.checked)} /> Selected only</label>
           {project.scoutRole && <button type="button" className="secondary-button compact scout-order-button" onClick={onApplyScoutOrder}><FiList /> Use Scout order</button>}
-          <span className="review-guidance">Order here becomes the KICKO project order.</span>
+          <span className={`review-length-guidance ${lengthGuidance.tone}`}>
+            <strong>{lengthGuidance.durationLabel} selected</strong>
+            <small>{lengthGuidance.message}</small>
+          </span>
         </div>
 
         <div className="project-review-content">

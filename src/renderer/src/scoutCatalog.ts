@@ -72,7 +72,7 @@ function getOveruseWarning(role: ScoutRole, counts: Record<string, number>): str
   if (total < 3) return null;
   const overused = role.avoidOveruse.find((actionType) => (counts[actionType] ?? 0) / total >= 0.5);
   if (!overused) return null;
-  return `Most collected plays are ${getActionLabel(overused)}. Add another side of the player's game.`;
+  return `The reel currently leans heavily on ${getActionLabel(overused)}. Another side of the player's game may make it stronger.`;
 }
 
 export function getScoutPhaseContext(role: ScoutRole, counts: Record<string, number>): ScoutPhaseContext {
@@ -88,10 +88,10 @@ export function getScoutPhaseContext(role: ScoutRole, counts: Record<string, num
 
   return {
     phase,
-    title: phase === 'opening' ? 'Build the strongest opening' : 'Now prove consistency & Soccer IQ',
+    title: phase === 'opening' ? 'Suggested focus: strongest opening' : 'Suggested focus: consistency & Soccer IQ',
     description: phase === 'opening'
-      ? 'Collect each opening type once. Together, these become the first ~30 seconds.'
-      : 'Add repeated evidence and keep the decision before and after each action.',
+      ? 'Strong options for the first ~30 seconds. Use the ones that fit this player.'
+      : 'Repeated evidence across games can strengthen the story. Choose what fits.',
     recommendedActionTypes,
     missingActionTypes: phase === 'opening' ? missingOpening : missingConsistency,
     overuseWarning: getOveruseWarning(role, counts),

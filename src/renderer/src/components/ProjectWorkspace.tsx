@@ -59,8 +59,8 @@ export default function ProjectWorkspace({ project, actionCounts, canAddAnotherV
             const missing = scoutContext.missingActionTypes.includes(actionType);
             return (
               <div className="scout-progress-row" key={actionType}>
-                <span>{missing ? 'Next · ' : ''}{getActionLabel(actionType)}</span>
-                <strong className={count >= target ? 'complete' : undefined}>{count}/{target}</strong>
+                <span>{missing ? 'Suggested · ' : ''}{getActionLabel(actionType)}</span>
+                <strong className={count >= target ? 'complete' : undefined}>x{count} <small>idea ~{target}</small></strong>
               </div>
             );
           })}
