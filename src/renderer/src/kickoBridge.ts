@@ -10,6 +10,9 @@ const MAX_HANDOFF_BYTES = 2_147_483_648;
 const MAX_CLIP_BYTES = 536_870_912;
 const MAX_HANDOFF_DURATION_SECONDS = 300;
 const MAX_CLIP_DURATION_SECONDS = 90;
+const HANDOFF_ID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+const DEVICE_SECRET_RE = /^[A-Za-z0-9_-]{32,128}$/;
+const USER_CODE_RE = /^[A-Z2-9]{4}-[A-Z2-9]{4}$/;
 
 export interface KickoProjectSummary {
   id: string;
@@ -39,13 +42,17 @@ interface PreparedKickoPlay extends FileInspection {
 }
 
 export interface KickoConnection {
+  projectId: string;
   handoffId: string;
   deviceSecret: string;
   baseUrl: string;
   expiresAt: string;
+  userCode: string;
+  verificationUrl: string;
   snapshotHash: string;
   selectionSignature: string;
   preparedPlays: PreparedKickoPlay[];
+  state: string;
 }
 
 export interface KickoTransferProgress {
@@ -53,6 +60,18 @@ export interface KickoTransferProgress {
   current: number;
   total: number;
   fileName: string;
+  operationId?: string;
+}
+
+interface KickoHandoffSessionRecord {
+  projectId: string;
+  handoffId: string;
+  baseUrl: string;
+  expiresAt: string;
+  snapshotHash: string;
+  userCode: string;
+  verificationUrl: string;
+  deviceSecret: string;
 }
 
 export class KickoBridgeError extends Error {
@@ -86,6 +105,9 @@ export interface KickoBridgeDependencies {
   randomId: () => string;
   getAppVersion: () => string;
   digestText: (value: string) => Promise<string>;
+  saveSession: (session: KickoHandoffSessionRecord) => Promise<{ saved: boolean; reason?: string }>;
+  loadSession: (projectId: string) => Promise<KickoHandoffSessionRecord | null>;
+  deleteSession: (projectId: string) => Promise<boolean>;
 }
 
 function asObject(value: unknown): Record<string, unknown> {
@@ -123,6 +145,9 @@ function getDependencies(overrides: Partial<KickoBridgeDependencies> = {}): Kick
     randomId: () => globalThis.crypto.randomUUID(),
     getAppVersion: () => window.require('@electron/remote').app.getVersion(),
     digestText: defaultDigestText,
+    saveSession: (session) => window.electron.saveKickoHandoffSession(session),
+    loadSession: (projectId) => window.electron.loadKickoHandoffSession(projectId),
+    deleteSession: (projectId) => window.electron.deleteKickoHandoffSession(projectId),
     ...overrides,
   };
 }
@@ -137,10 +162,13 @@ function normalizeBaseUrl(value: string) {
   return url.toString().replace(/\/+$/, '');
 }
 
-function normalizeVerificationUrl(value: unknown) {
+function normalizeVerificationUrl(value: unknown, baseUrl: string) {
   const url = new URL(String(value || ''));
   const loopback = ['127.0.0.1', 'localhost', '[::1]'].includes(url.hostname);
   if (url.protocol !== 'https:' && !(url.protocol === 'http:' && loopback)) {
+    throw new KickoBridgeError('KICKO returned an invalid connection page.', { code: 'invalid_verification_url' });
+  }
+  if (url.username || url.password || url.origin !== new URL(baseUrl).origin) {
     throw new KickoBridgeError('KICKO returned an invalid connection page.', { code: 'invalid_verification_url' });
   }
   return url.toString();
@@ -269,6 +297,64 @@ function deviceHeaders(connection: KickoConnection, headers: HeadersInit = {}) {
   return { ...headers, Authorization: `TrimOut ${connection.deviceSecret}` };
 }
 
+function resumableSession(connection: KickoConnection): KickoHandoffSessionRecord {
+  return {
+    projectId: connection.projectId,
+    handoffId: connection.handoffId,
+    baseUrl: connection.baseUrl,
+    expiresAt: connection.expiresAt,
+    snapshotHash: connection.snapshotHash,
+    userCode: connection.userCode,
+    verificationUrl: connection.verificationUrl,
+    deviceSecret: connection.deviceSecret,
+  };
+}
+
+const TERMINAL_HANDOFF_STATES = new Set(['cancelled', 'failed', 'rolled_back', 'expired']);
+const WAITING_HANDOFF_STATES = new Set([
+  'created',
+  'awaiting_auth',
+  'validating',
+  'finalizing',
+  'rolling_back',
+]);
+
+async function waitForKickoReadiness(
+  connection: KickoConnection,
+  deps: KickoBridgeDependencies,
+  { openApprovalPage = false }: { openApprovalPage?: boolean } = {},
+): Promise<KickoConnection | null> {
+  const expiryTime = new Date(connection.expiresAt).getTime();
+  let approvalPageOpened = false;
+  while (deps.now() < expiryTime) {
+    const status = await deps.requestJson(`${connection.baseUrl}/api/trimout/handoffs/status`, {
+      headers: deviceHeaders(connection),
+    });
+    const state = String(status.status || '');
+    if (['ready_for_upload', 'uploading', 'completed'].includes(state)) return { ...connection, state };
+    if (state === 'subscription_required' || ['awaiting_subscription', 'awaiting_payment_confirmation'].includes(state)) {
+      throw new KickoBridgeError('An active paid KICKO subscription is required. No files were uploaded.', { code: 'subscription_required', status: 402 });
+    }
+    if (state === 'temporarily_unavailable') {
+      throw new KickoBridgeError('KICKO could not verify the subscription right now. No files were uploaded.', { code: 'entitlement_unavailable', status: 503 });
+    }
+    if (TERMINAL_HANDOFF_STATES.has(state)) {
+      await deps.deleteSession(connection.projectId);
+      return null;
+    }
+    if (!WAITING_HANDOFF_STATES.has(state)) {
+      throw new KickoBridgeError('KICKO returned an unknown connection state.', { code: 'invalid_handoff_state' });
+    }
+    if (openApprovalPage && !approvalPageOpened && ['created', 'awaiting_auth'].includes(state)) {
+      approvalPageOpened = true;
+      await deps.openExternal(connection.verificationUrl);
+    }
+    await deps.sleep(1500);
+  }
+  await deps.deleteSession(connection.projectId);
+  throw new KickoBridgeError('The KICKO connection code expired. No files were uploaded.', { code: 'handoff_expired', status: 410 });
+}
+
 export async function connectToKicko({
   project,
   baseUrl = DEFAULT_KICKO_BASE_URL,
@@ -302,42 +388,70 @@ export async function connectToKicko({
   const deviceSecret = String(started.deviceSecret || '');
   const userCode = String(started.userCode || '');
   const expiresAt = String(started.expiresAt || '');
-  const verificationUrl = normalizeVerificationUrl(started.verificationUrl);
+  const verificationUrl = normalizeVerificationUrl(started.verificationUrl, normalizedBaseUrl);
   const expiryTime = new Date(expiresAt).getTime();
-  if (!handoffId || !deviceSecret || !userCode || !Number.isFinite(expiryTime) || expiryTime <= deps.now()) {
+  if (!HANDOFF_ID_RE.test(handoffId) || !DEVICE_SECRET_RE.test(deviceSecret) || !USER_CODE_RE.test(userCode)
+    || !Number.isFinite(expiryTime) || expiryTime <= deps.now()) {
     throw new KickoBridgeError('KICKO did not return a valid connection code.', { code: 'invalid_handoff_response' });
   }
 
-  onCode?.({ userCode, verificationUrl, expiresAt });
-  await deps.openExternal(verificationUrl);
   const connection: KickoConnection = {
+    projectId: project.id,
     handoffId,
     deviceSecret,
     baseUrl: normalizedBaseUrl,
     expiresAt,
+    userCode,
+    verificationUrl,
     snapshotHash: prepared.snapshotHash,
     selectionSignature: prepared.selectionSignature,
     preparedPlays: prepared.preparedPlays,
+    state: 'awaiting_auth',
   };
+  await deps.saveSession(resumableSession(connection));
+  onCode?.({ userCode, verificationUrl, expiresAt });
+  const ready = await waitForKickoReadiness(connection, deps, { openApprovalPage: true });
+  if (!ready) throw new KickoBridgeError('The KICKO connection stopped before upload.', { code: 'handoff_stopped' });
+  return ready;
+}
 
-  while (deps.now() < expiryTime) {
-    await deps.sleep(1500);
-    const status = await deps.requestJson(`${normalizedBaseUrl}/api/trimout/handoffs/status`, {
-      headers: deviceHeaders(connection),
-    });
-    const state = String(status.status || '');
-    if (state === 'ready_for_upload') return connection;
-    if (state === 'subscription_required') {
-      throw new KickoBridgeError('An active paid KICKO subscription is required. No files were uploaded.', { code: 'subscription_required', status: 402 });
-    }
-    if (state === 'temporarily_unavailable') {
-      throw new KickoBridgeError('KICKO could not verify the subscription right now. No files were uploaded.', { code: 'entitlement_unavailable', status: 503 });
-    }
-    if (['cancelled', 'failed', 'rolled_back', 'rolling_back', 'expired'].includes(state)) {
-      throw new KickoBridgeError('The KICKO connection stopped before upload.', { code: state || 'handoff_stopped' });
-    }
+export async function resumeKickoHandoff({ project, onCode, onProgress, dependencies }: {
+  project: TrimoutProject;
+  onCode?: (value: { userCode: string; verificationUrl: string; expiresAt: string }) => void;
+  onProgress?: (value: KickoTransferProgress) => void;
+  dependencies?: Partial<KickoBridgeDependencies>;
+}): Promise<KickoConnection | null> {
+  const deps = getDependencies(dependencies);
+  const saved = await deps.loadSession(project.id);
+  if (!saved) return null;
+  const prepared = await prepareKickoHandoff(project, deps, onProgress);
+  if (prepared.snapshotHash !== saved.snapshotHash) {
+    await deps.deleteSession(project.id);
+    return null;
   }
-  throw new KickoBridgeError('The KICKO connection code expired. No files were uploaded.', { code: 'handoff_expired', status: 410 });
+  const baseUrl = normalizeBaseUrl(saved.baseUrl);
+  const verificationUrl = normalizeVerificationUrl(saved.verificationUrl, baseUrl);
+  const expiryTime = new Date(saved.expiresAt).getTime();
+  if (!HANDOFF_ID_RE.test(saved.handoffId) || !DEVICE_SECRET_RE.test(saved.deviceSecret)
+    || !USER_CODE_RE.test(saved.userCode) || !Number.isFinite(expiryTime) || expiryTime <= deps.now()) {
+    await deps.deleteSession(project.id);
+    return null;
+  }
+  const connection: KickoConnection = {
+    projectId: project.id,
+    handoffId: saved.handoffId,
+    deviceSecret: saved.deviceSecret,
+    baseUrl,
+    expiresAt: saved.expiresAt,
+    userCode: saved.userCode,
+    verificationUrl,
+    snapshotHash: prepared.snapshotHash,
+    selectionSignature: prepared.selectionSignature,
+    preparedPlays: prepared.preparedPlays,
+    state: 'awaiting_auth',
+  };
+  onCode?.({ userCode: connection.userCode, verificationUrl, expiresAt: connection.expiresAt });
+  return waitForKickoReadiness(connection, deps, { openApprovalPage: true });
 }
 
 export async function listKickoProjects(connection: KickoConnection, dependencies?: Partial<KickoBridgeDependencies>): Promise<KickoProjectSummary[]> {
@@ -370,58 +484,60 @@ export async function sendProjectToKicko({ connection, project, destinationProje
     throw new KickoBridgeError('The selected plays changed after connection. Connect again before uploading.', { code: 'selection_changed' });
   }
 
-  for (const prepared of connection.preparedPlays) {
-    const grant = await deps.requestJson(`${connection.baseUrl}/api/trimout/handoffs/grants`, {
-      method: 'POST',
-      headers: deviceHeaders(connection, { 'Content-Type': 'application/json' }),
-      body: JSON.stringify({
-        clientClipId: prepared.clientClipId,
-        originalName: prepared.fileName,
-        contentType: prepared.contentType,
-        sizeBytes: prepared.sizeBytes,
-        sha256: prepared.sha256,
-        clip: {
-          actionType: prepared.actionType,
-          rating: prepared.rating,
-          order: prepared.order,
-          durationSeconds: prepared.durationSeconds,
-          isOpeningCandidate: prepared.isOpeningCandidate,
-        },
-      }),
-    });
-    const grantId = String(grant.grantId || '');
-    let grantStatus = String(grant.status || '');
-    if (!grantId) throw new KickoBridgeError('KICKO did not return an upload grant.', { code: 'invalid_grant_response' });
-
-    if (grant.uploadRequired === true) {
-      const uploadUrl = String(grant.uploadUrl || '');
-      if (!uploadUrl) throw new KickoBridgeError('KICKO did not return an upload address.', { code: 'invalid_grant_response' });
-      const operationId = deps.randomId();
-      onProgress?.({ phase: 'uploading', current: prepared.order, total: connection.preparedPlays.length, fileName: prepared.fileName });
-      await deps.uploadFile({
-        operationId,
-        filePath: prepared.filePath,
-        uploadUrl,
-        headers: grant.headers as Record<string, string> | undefined,
-        expectedSizeBytes: prepared.sizeBytes,
-        expectedMtimeMs: prepared.mtimeMs,
-      });
-      grantStatus = 'uploaded';
-    }
-
-    if (!['validated', 'consumed'].includes(grantStatus)) {
-      onProgress?.({ phase: 'validating', current: prepared.order, total: connection.preparedPlays.length, fileName: prepared.fileName });
-      const completed = await deps.requestJson(`${connection.baseUrl}/api/trimout/handoffs/grants/${encodeURIComponent(grantId)}/complete`, {
+  if (connection.state !== 'completed') {
+    for (const prepared of connection.preparedPlays) {
+      const grant = await deps.requestJson(`${connection.baseUrl}/api/trimout/handoffs/grants`, {
         method: 'POST',
         headers: deviceHeaders(connection, { 'Content-Type': 'application/json' }),
-        body: '{}',
+        body: JSON.stringify({
+          clientClipId: prepared.clientClipId,
+          originalName: prepared.fileName,
+          contentType: prepared.contentType,
+          sizeBytes: prepared.sizeBytes,
+          sha256: prepared.sha256,
+          clip: {
+            actionType: prepared.actionType,
+            rating: prepared.rating,
+            order: prepared.order,
+            durationSeconds: prepared.durationSeconds,
+            isOpeningCandidate: prepared.isOpeningCandidate,
+          },
+        }),
       });
-      grantStatus = String(completed.status || '');
+      const grantId = String(grant.grantId || '');
+      let grantStatus = String(grant.status || '');
+      if (!grantId) throw new KickoBridgeError('KICKO did not return an upload grant.', { code: 'invalid_grant_response' });
+
+      if (grant.uploadRequired === true) {
+        const uploadUrl = String(grant.uploadUrl || '');
+        if (!uploadUrl) throw new KickoBridgeError('KICKO did not return an upload address.', { code: 'invalid_grant_response' });
+        const operationId = deps.randomId();
+        onProgress?.({ phase: 'uploading', current: prepared.order, total: connection.preparedPlays.length, fileName: prepared.fileName, operationId });
+        await deps.uploadFile({
+          operationId,
+          filePath: prepared.filePath,
+          uploadUrl,
+          headers: grant.headers as Record<string, string> | undefined,
+          expectedSizeBytes: prepared.sizeBytes,
+          expectedMtimeMs: prepared.mtimeMs,
+        });
+        grantStatus = 'uploaded';
+      }
+
+      if (!['validated', 'consumed'].includes(grantStatus)) {
+        onProgress?.({ phase: 'validating', current: prepared.order, total: connection.preparedPlays.length, fileName: prepared.fileName });
+        const completed = await deps.requestJson(`${connection.baseUrl}/api/trimout/handoffs/grants/${encodeURIComponent(grantId)}/complete`, {
+          method: 'POST',
+          headers: deviceHeaders(connection, { 'Content-Type': 'application/json' }),
+          body: '{}',
+        });
+        grantStatus = String(completed.status || '');
+      }
+      if (!['validated', 'consumed'].includes(grantStatus)) {
+        throw new KickoBridgeError(`KICKO could not validate "${prepared.fileName}".`, { code: 'upload_not_validated' });
+      }
+      onProgress?.({ phase: 'validating', current: prepared.order + 1, total: connection.preparedPlays.length, fileName: prepared.fileName });
     }
-    if (!['validated', 'consumed'].includes(grantStatus)) {
-      throw new KickoBridgeError(`KICKO could not validate "${prepared.fileName}".`, { code: 'upload_not_validated' });
-    }
-    onProgress?.({ phase: 'validating', current: prepared.order + 1, total: connection.preparedPlays.length, fileName: prepared.fileName });
   }
 
   onProgress?.({ phase: 'finalizing', current: connection.preparedPlays.length, total: connection.preparedPlays.length, fileName: '' });
@@ -434,20 +550,23 @@ export async function sendProjectToKicko({ connection, project, destinationProje
   if (!projectId || String(finalized.status || '') !== 'completed') {
     throw new KickoBridgeError('KICKO could not finalize the project.', { code: 'finalize_failed' });
   }
+  await deps.deleteSession(project.id).catch(() => false);
   return { projectId, openUrl: `${connection.baseUrl}/mvp/?projectId=${encodeURIComponent(projectId)}` };
 }
 
 export async function rollbackKickoHandoff(connection: KickoConnection, dependencies?: Partial<KickoBridgeDependencies>) {
   const deps = getDependencies(dependencies);
-  return deps.requestJson(`${connection.baseUrl}/api/trimout/handoffs/rollback`, {
+  const result = await deps.requestJson(`${connection.baseUrl}/api/trimout/handoffs/rollback`, {
     method: 'POST',
     headers: deviceHeaders(connection, { 'Content-Type': 'application/json' }),
     body: '{}',
   });
+  await deps.deleteSession(connection.projectId).catch(() => false);
+  return result;
 }
 
 export async function cancelKickoTransfer(connection: KickoConnection, operationId: string | null, dependencies?: Partial<KickoBridgeDependencies>) {
   const deps = getDependencies(dependencies);
-  if (operationId) await deps.cancelUpload(operationId);
+  if (operationId) await deps.cancelUpload(operationId).catch(() => false);
   return rollbackKickoHandoff(connection, deps);
 }

@@ -8,12 +8,15 @@ import {
   connectToKicko,
   getKickoUploadInfo,
   listKickoProjects,
+  resumeKickoHandoff,
+  rollbackKickoHandoff,
   sendProjectToKicko,
   type KickoBridgeDependencies,
 } from './kickoBridge';
 
 const NOW = Date.parse('2026-07-13T12:00:00.000Z');
 const EXPIRES_AT = '2026-07-13T12:10:00.000Z';
+const HANDOFF_ID = '10000000-0000-4000-8000-000000000001';
 
 function makeProject() {
   const project = createTrimoutProject({ name: 'Alex 2026', playerName: 'Alex', scoutRole: 'cm8', now: '2026-07-13T11:00:00.000Z' });
@@ -46,6 +49,9 @@ function dependencies(overrides: Partial<KickoBridgeDependencies> = {}): Partial
     randomId: () => 'upload_operation_1',
     getAppVersion: () => '1.1.1',
     digestText: vi.fn(async () => 'b'.repeat(64)),
+    saveSession: vi.fn(async () => ({ saved: true })),
+    loadSession: vi.fn(async () => null),
+    deleteSession: vi.fn(async () => true),
     ...overrides,
   };
 }
@@ -59,7 +65,7 @@ describe('paid KICKO handoff', () => {
         if (url.endsWith('/api/trimout/handoffs')) {
           return {
             ok: true,
-            handoffId: 'handoff-1',
+            handoffId: HANDOFF_ID,
             deviceSecret: 's'.repeat(43),
             userCode: 'ABCD-2345',
             expiresAt: EXPIRES_AT,
@@ -96,7 +102,7 @@ describe('paid KICKO handoff', () => {
       if (url.endsWith('/api/trimout/handoffs')) {
         return {
           ok: true,
-          handoffId: 'handoff-2',
+          handoffId: HANDOFF_ID,
           deviceSecret: 't'.repeat(43),
           userCode: 'EFGH-6789',
           expiresAt: EXPIRES_AT,
@@ -144,6 +150,80 @@ describe('paid KICKO handoff', () => {
     const finalizeCall = calls.find(({ url }) => url.endsWith('/api/trimout/handoffs/finalize'));
     expect(JSON.parse(String(finalizeCall?.init?.body))).toEqual({ destinationProjectId: null, title: 'Alex 2026' });
     expect(calls.filter(({ init }) => String((init?.headers as Record<string, string> | undefined)?.Authorization || '').startsWith('TrimOut ')).length).toBeGreaterThan(0);
+    expect(deps.deleteSession).toHaveBeenCalledWith(project.id);
+  });
+
+  it('resumes a matching encrypted session without creating another handoff', async () => {
+    const project = makeProject();
+    const requestJson = vi.fn(async (url: string) => {
+      if (url.endsWith('/api/trimout/handoffs/status')) return { ok: true, status: 'ready_for_upload' };
+      throw new Error(`Unexpected request: ${url}`);
+    });
+    const deps = dependencies({
+      requestJson,
+      loadSession: vi.fn(async () => ({
+        projectId: project.id,
+        handoffId: HANDOFF_ID,
+        baseUrl: 'https://kicko.example',
+        expiresAt: EXPIRES_AT,
+        snapshotHash: 'b'.repeat(64),
+        userCode: 'ABCD-2345',
+        verificationUrl: 'https://kicko.example/mvp/trimout-connect.html?code=ABCD-2345',
+        deviceSecret: 's'.repeat(43),
+      })),
+    });
+
+    await expect(resumeKickoHandoff({ project, dependencies: deps })).resolves.toMatchObject({
+      projectId: project.id,
+      handoffId: HANDOFF_ID,
+      state: 'ready_for_upload',
+    });
+    expect(requestJson).toHaveBeenCalledTimes(1);
+    expect(requestJson.mock.calls[0]?.[0]).toMatch(/\/api\/trimout\/handoffs\/status$/);
+    expect(deps.saveSession).not.toHaveBeenCalled();
+    expect(deps.openExternal).not.toHaveBeenCalled();
+  });
+
+  it('deletes a stale resume record without making a cloud request', async () => {
+    const project = makeProject();
+    const requestJson = vi.fn(async () => { throw new Error('Cloud work must not start.'); });
+    const deps = dependencies({
+      requestJson,
+      loadSession: vi.fn(async () => ({
+        projectId: project.id,
+        handoffId: HANDOFF_ID,
+        baseUrl: 'https://kicko.example',
+        expiresAt: EXPIRES_AT,
+        snapshotHash: 'c'.repeat(64),
+        userCode: 'ABCD-2345',
+        verificationUrl: 'https://kicko.example/mvp/trimout-connect.html?code=ABCD-2345',
+        deviceSecret: 's'.repeat(43),
+      })),
+    });
+
+    await expect(resumeKickoHandoff({ project, dependencies: deps })).resolves.toBeNull();
+    expect(deps.deleteSession).toHaveBeenCalledWith(project.id);
+    expect(requestJson).not.toHaveBeenCalled();
+    expect(deps.openExternal).not.toHaveBeenCalled();
+  });
+
+  it('clears the encrypted resume record after rollback', async () => {
+    const project = makeProject();
+    const deps = dependencies({ requestJson: vi.fn(async () => ({ ok: true, status: 'rolling_back' })) });
+    await rollbackKickoHandoff({
+      projectId: project.id,
+      handoffId: HANDOFF_ID,
+      deviceSecret: 's'.repeat(43),
+      baseUrl: 'https://kicko.example',
+      expiresAt: EXPIRES_AT,
+      userCode: 'ABCD-2345',
+      verificationUrl: 'https://kicko.example/mvp/trimout-connect.html?code=ABCD-2345',
+      snapshotHash: 'b'.repeat(64),
+      selectionSignature: '{}',
+      preparedPlays: [],
+      state: 'ready_for_upload',
+    }, deps);
+    expect(deps.deleteSession).toHaveBeenCalledWith(project.id);
   });
 
   it('contains no active legacy device or MVP bridge endpoints', async () => {

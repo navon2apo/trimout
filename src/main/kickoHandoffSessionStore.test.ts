@@ -62,4 +62,11 @@ describe('KICKO handoff session storage', () => {
     expect(store.loadSession('project_12345678')).toBeNull();
     expect(persisted()).toEqual({});
   });
+
+  it('rejects a connection page on a different origin', () => {
+    const { store, persisted } = harness();
+    expect(() => store.saveSession(session({ verificationUrl: 'https://login.example/connect?code=ABCD-2345' })))
+      .toThrow('must match the KICKO server');
+    expect(persisted()).toEqual({});
+  });
 });

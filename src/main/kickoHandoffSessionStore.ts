@@ -58,14 +58,19 @@ function normalizeSession(input: KickoHandoffSession, now: number): KickoHandoff
   if (!Number.isFinite(expiresAtMs) || expiresAtMs <= now || expiresAtMs > now + MAX_FUTURE_SESSION_MS) {
     throw new TypeError('The KICKO handoff expiry is invalid.');
   }
+  const baseUrl = normalizeWebUrl(input.baseUrl, 'KICKO server address');
+  const verificationUrl = normalizeWebUrl(input.verificationUrl, 'KICKO connection page');
+  if (new URL(baseUrl).origin !== new URL(verificationUrl).origin) {
+    throw new TypeError('The KICKO connection page must match the KICKO server.');
+  }
   return {
     projectId,
     handoffId,
-    baseUrl: normalizeWebUrl(input.baseUrl, 'KICKO server address'),
+    baseUrl,
     expiresAt: new Date(expiresAtMs).toISOString(),
     snapshotHash,
     userCode,
-    verificationUrl: normalizeWebUrl(input.verificationUrl, 'KICKO connection page'),
+    verificationUrl,
     deviceSecret,
   };
 }
