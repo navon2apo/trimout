@@ -43,6 +43,7 @@ import { downloadVideo, isSupportedUrl, listVideoFormats } from './ytdlp.js';
 import qrShare from './qrShare.js';
 import { transcribeVideo } from './whisper.js';
 import { activateLicense, checkLicense, deactivateLicense, getMachineFingerprint } from './license.js';
+import { cancelKickoFileUpload, inspectKickoFile, uploadKickoFile } from './kickoHandoffTransport.js';
 
 // Separate untyped store for API keys (not part of Config schema)
 // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -508,6 +509,10 @@ const remoteApi = {
   checkLicense,
   deactivateLicense,
   getMachineFingerprint,
+  // KICKO handoff files stay in the main process so large videos are streamed.
+  inspectKickoFile,
+  uploadKickoFile,
+  cancelKickoFileUpload,
 };
 
 export type RemoteApi = typeof remoteApi;
