@@ -2,7 +2,6 @@ import type { CSSProperties, MouseEventHandler } from 'react';
 import { forwardRef } from 'react';
 import { FiScissors } from 'react-icons/fi';
 import { FaFileExport } from 'react-icons/fa';
-import { useTranslation } from 'react-i18next';
 
 import { primaryColor } from '../colors';
 import useUserSettings from '../hooks/useUserSettings';
@@ -26,18 +25,16 @@ const ExportButton = forwardRef<HTMLButtonElement, Props>(({
 }, ref) => {
   const CutIcon = areWeCutting ? FiScissors : FaFileExport;
 
-  const { t } = useTranslation();
+  const { simpleMode } = useUserSettings();
 
-  const { autoMerge, simpleMode } = useUserSettings();
-
-  let title = t('Export Clips');
+  let title = 'Finish clips';
   if (segmentsToExport.length === 1) {
-    title = t('Export 1 clip');
+    title = 'Finish 1 clip';
   } else if (segmentsToExport.length > 1) {
-    title = t('Export {{ num }} clips', { num: segmentsToExport.length });
+    title = `Finish ${segmentsToExport.length} clips`;
   }
 
-  const text = segmentsToExport.length > 1 ? `Export ${segmentsToExport.length} Clips` : 'Export Clips';
+  const text = segmentsToExport.length > 1 ? `Finish ${segmentsToExport.length} Clips` : 'Finish Clips';
 
   return (
     <button

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { createTrimoutProject } from './projectModel';
-import { buildProjectIdentity, buildProjectSavePayload } from './kickoBridge';
+import { buildProjectIdentity, buildProjectSavePayload, getKickoUploadInfo } from './kickoBridge';
 
 describe('kickoBridge payload', () => {
   it('preserves the global Scout role and player identity', () => {
@@ -28,5 +28,15 @@ describe('kickoBridge payload', () => {
       settings: { source: 'kicko-trimout', musicTrack: 'uplifting' },
       clips: [existingClip, importedClip],
     });
+  });
+
+  it('accepts every video container shared by TrimOut and KICKO, including WMV', () => {
+    expect(getKickoUploadInfo('match clip.WMV')).toEqual({ extension: 'wmv', contentType: 'video/x-ms-wmv' });
+    expect(getKickoUploadInfo('match clip.webm')).toEqual({ extension: 'webm', contentType: 'video/webm' });
+  });
+
+  it('rejects unsupported or extensionless files before creating a KICKO project', () => {
+    expect(() => getKickoUploadInfo('clip.ts')).toThrow('KICKO cannot upload clips .ts');
+    expect(() => getKickoUploadInfo('clip')).toThrow('without a file extension');
   });
 });

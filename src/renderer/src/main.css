@@ -278,6 +278,9 @@ input:focus-visible, select:focus-visible {
 .scout-action-card-top strong { font-size: 12px; }
 .scout-action-card-top small { color: var(--kicko-accent); font-size: 8px; font-weight: 800; }
 .scout-action-card > span:not(.scout-action-card-top) { color: var(--kicko-muted); font-size: 9px; }
+.scout-action-card .scout-action-card-progress { display: flex; align-items: center; gap: 6px; margin-top: 2px; font-variant-numeric: tabular-nums; }
+.scout-action-card-progress b { color: var(--kicko-text); font-size: 9px; }
+.scout-action-card-progress small { color: var(--kicko-muted); font-size: 8px; }
 .scout-action-card em { margin-top: auto; color: #c5d3d8; font-size: 9px; font-style: normal; line-height: 1.35; }
 
 .kicko-dialog-backdrop {
@@ -382,3 +385,32 @@ input:focus-visible, select:focus-visible {
 .bridge-state.error strong, .bridge-state.error > svg { color: var(--kicko-danger); }
 .bridge-project-select { width: 100%; display: grid; gap: 7px; color: var(--kicko-text); font-size: 12px; font-weight: 700; }
 .bridge-project-select select { min-height: 42px; border: 1px solid var(--kicko-line); border-radius: 6px; background: var(--kicko-surface-2); color: var(--kicko-text); padding: 0 10px; }
+
+.finish-destination-dialog { width: min(620px, calc(100vw - 48px)); }
+.finish-destination-options { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.finish-destination-option {
+  min-height: 150px;
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 18px;
+  border: 1px solid var(--kicko-line-strong);
+  border-radius: 6px;
+  background: var(--kicko-surface);
+  color: var(--kicko-text);
+  text-align: left;
+  cursor: pointer;
+}
+.finish-destination-option:hover { border-color: rgba(255, 255, 255, 0.34); background: var(--kicko-surface-2); }
+.finish-destination-option.kicko { border-color: rgba(210, 255, 0, 0.32); }
+.finish-destination-option.kicko:hover { border-color: var(--kicko-accent); background: rgba(210, 255, 0, 0.06); }
+.finish-destination-option > svg { flex: 0 0 auto; color: var(--kicko-accent); font-size: 24px; }
+.finish-destination-option > span { min-width: 0; display: flex; flex-direction: column; gap: 7px; }
+.finish-destination-option strong { font-size: 14px; }
+.finish-destination-option small { color: var(--kicko-muted); font-size: 11px; line-height: 1.5; }
+.finish-destination-note { justify-content: flex-start; color: var(--kicko-muted); font-size: 10px; }
+
+@media (max-width: 620px) {
+  .finish-destination-options { grid-template-columns: 1fr; }
+  .finish-destination-option { min-height: 112px; }
+}

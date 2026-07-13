@@ -41,6 +41,7 @@ import ProjectSetupDialog from './components/ProjectSetupDialog';
 import ProjectWorkspace from './components/ProjectWorkspace';
 import ProjectReviewDialog from './components/ProjectReviewDialog';
 import KickoBridgeDialog from './components/KickoBridgeDialog';
+import FinishDestinationDialog from './components/FinishDestinationDialog';
 import { compressClip, QUALITY_PRESETS, type QualityPreset, type AspectRatio, type FitMode } from './util/qualityPresets';
 import FEATURES from './util/features';
 import MediaSourcePlayer from './MediaSourcePlayer';
@@ -212,6 +213,10 @@ function App() {
     setActiveProject(project);
     setPlayerName(project.playerName);
     setProjectSetupOpen(false);
+    if (resumeFinishAfterProjectSetupRef.current) {
+      resumeFinishAfterProjectSetupRef.current = false;
+      setFinishDestinationOpen(true);
+    }
   }, []);
 
   const handleOpenProject = useCallback(async () => {
@@ -303,6 +308,9 @@ function App() {
   const [activeSubtitleStreamIndex, setActiveSubtitleStreamIndex] = useState<number>();
   const [hideCompatPlayer, setHideCompatPlayer] = useState(false);
   const [exportConfirmOpen, setExportConfirmOpen] = useState(false);
+  const [finishDestinationOpen, setFinishDestinationOpen] = useState(false);
+  const pendingExportDestinationRef = useRef<'local' | 'kicko' | null>(null);
+  const resumeFinishAfterProjectSetupRef = useRef(false);
   const [cacheBuster, setCacheBuster] = useState(0);
   const [currentFileExportCount, setCurrentFileExportCount] = useState(0);
   // Track ranges that have already been exported — shown as "gaps" in the timeline
@@ -1323,12 +1331,17 @@ function App() {
     }
   }, [askForCleanupChoices, cleanupChoices, cleanupFiles, isFileOpened, setWorking, workingRef]);
 
-  const closeExportConfirm = useCallback(() => setExportConfirmOpen(false), []);
+  const closeExportConfirm = useCallback(() => {
+    setExportConfirmOpen(false);
+    pendingExportDestinationRef.current = null;
+  }, []);
 
   const willMerge = segmentsToExport.length > 1 && autoMerge;
 
   const onExportConfirm = useCallback(async () => {
     invariant(filePath != null && outputDir != null);
+    const exportDestination = pendingExportDestinationRef.current ?? 'local';
+    pendingExportDestinationRef.current = null;
     emitEvent({ eventName: 'export-start', path: filePath });
 
     if (numStreamsToCopy === 0) {
@@ -1753,7 +1766,9 @@ function App() {
 
       // NOW open the cut-finished dialog with the final reveal path — by this point
       // any file moves into ExportPackage are done, so "Show in folder" works correctly.
-      if (!hideAllNotifications) {
+      if (exportDestination === 'kicko' && activeProject && projectExportedPlays.length > 0) {
+        setProjectReviewOpen(true);
+      } else if (!hideAllNotifications) {
         openCutFinishedDialog({ filePath: finalRevealPath, warnings: [...warnings], notices: [...notices] });
       }
 
@@ -1817,6 +1832,22 @@ function App() {
     await new Promise<void>((resolve) => setTimeout(resolve, 50));
     await onExportConfirmRef.current();
   }, [simpleTrimStart, simpleTrimEnd, updateSegAtIndex, currentSegIndexSafe]);
+
+  const handleFinishPress = useCallback(() => {
+    if (!filePath || workingRef.current) return;
+    setFinishDestinationOpen(true);
+  }, [filePath, workingRef]);
+
+  const handleFinishDestination = useCallback(async (destination: 'local' | 'kicko') => {
+    setFinishDestinationOpen(false);
+    if (destination === 'kicko' && !activeProject) {
+      resumeFinishAfterProjectSetupRef.current = true;
+      setProjectSetupOpen(true);
+      return;
+    }
+    pendingExportDestinationRef.current = destination;
+    await (simpleMode ? handleSimpleExport() : onExportPress());
+  }, [activeProject, handleSimpleExport, onExportPress, simpleMode]);
 
   // ---- yt-dlp download ----
   const [ytdlpDownloading, setYtdlpDownloading] = useState(false);
@@ -2799,7 +2830,7 @@ function App() {
       addSegment,
       duplicateCurrentSegment,
       toggleLastCommands,
-      export: () => onExportPress(),
+      export: () => handleFinishPress(),
       extractCurrentSegmentFramesAsImages,
       extractSelectedSegmentsFramesAsImages,
       reorderSegsByStartTime,
@@ -2876,7 +2907,7 @@ function App() {
     };
 
     return ret;
-  }, [togglePlaySelectedSegments, toggleLoopSelectedSegments, pause, timelineToggleComfortZoom, captureSnapshot, captureSnapshotAsCoverArt, captureSnapshotToClipboard, setCutStart, setCutEnd, cleanupFilesDialog, splitCurrentSegment, focusSegmentAtCursor, selectSegmentsAtCursor, increaseRotation, jumpCutStart, jumpCutEnd, jumpTimelineStart, jumpTimelineEnd, batchOpenSelectedFile, closeBatch, addSegment, duplicateCurrentSegment, toggleLastCommands, extractCurrentSegmentFramesAsImages, extractSelectedSegmentsFramesAsImages, reorderSegsByStartTime, invertAllSegments, fillSegmentsGaps, combineOverlappingSegments, combineSelectedSegments, createFixedDurationSegments, createNumSegments, createFixedByteSizedSegments, createRandomSegments, alignSegmentTimesToKeyframes, shuffleSegments, clearSegments, toggleSegmentsList, toggleStreamsSelector, extractAllStreams, convertFormatBatch, concatBatch, toggleCaptureFormat, toggleStripAudio, toggleStripVideo, toggleStripSubtitle, toggleStripThumbnail, toggleStripAll, toggleDarkMode, askStartTimeOffset, deselectAllSegments, selectAllSegments, selectOnlyCurrentSegment, editCurrentSegmentTags, toggleCurrentSegmentSelected, invertSelectedSegments, removeSelectedSegments, tryFixInvalidDuration, shiftAllSegmentTimes, toggleMuted, copySegmentsToClipboard, handleShowStreamsSelectorClick, openFilesDialog, openDirDialog, toggleSettings, detectBlackScenes, detectSilentScenes, detectSceneChanges, readAllKeyframes, createSegmentsFromKeyframes, toggleWaveformMode, toggleShowThumbnails, toggleShowKeyframes, showIncludeExternalStreamsDialog, toggleFullscreenVideo, selectAllMarkers, selectSegmentsByLabel, selectSegmentsByExpr, labelSelectedSegments, mutateSegmentsByExpr, toggleKeyboardShortcuts, generateOverviewWaveform, checkFileOpened, cutSegments, seekRel, keyboardSeekAccFactor, togglePlay, play, userChangePlaybackRate, goToTimecode, keyboardNormalSeekSpeed, keyboardSeekSpeed2, keyboardSeekSpeed3, seekRelPercent, seekClosestKeyframe, shortStep, jumpSeg, zoomRel, batchFileJump, removeSegment, currentSegIndexSafe, cutSegmentsHistory, labelSegment, onExportPress, userHtml5ifyCurrentFile, toggleKeyframeCut, applyEnabledStreamsFilter, setPlaybackVolume, commandedTimeRef, closeFileWithConfirm, openSendReportDialogWithState]);
+  }, [togglePlaySelectedSegments, toggleLoopSelectedSegments, pause, timelineToggleComfortZoom, captureSnapshot, captureSnapshotAsCoverArt, captureSnapshotToClipboard, setCutStart, setCutEnd, cleanupFilesDialog, splitCurrentSegment, focusSegmentAtCursor, selectSegmentsAtCursor, increaseRotation, jumpCutStart, jumpCutEnd, jumpTimelineStart, jumpTimelineEnd, batchOpenSelectedFile, closeBatch, addSegment, duplicateCurrentSegment, toggleLastCommands, extractCurrentSegmentFramesAsImages, extractSelectedSegmentsFramesAsImages, reorderSegsByStartTime, invertAllSegments, fillSegmentsGaps, combineOverlappingSegments, combineSelectedSegments, createFixedDurationSegments, createNumSegments, createFixedByteSizedSegments, createRandomSegments, alignSegmentTimesToKeyframes, shuffleSegments, clearSegments, toggleSegmentsList, toggleStreamsSelector, extractAllStreams, convertFormatBatch, concatBatch, toggleCaptureFormat, toggleStripAudio, toggleStripVideo, toggleStripSubtitle, toggleStripThumbnail, toggleStripAll, toggleDarkMode, askStartTimeOffset, deselectAllSegments, selectAllSegments, selectOnlyCurrentSegment, editCurrentSegmentTags, toggleCurrentSegmentSelected, invertSelectedSegments, removeSelectedSegments, tryFixInvalidDuration, shiftAllSegmentTimes, toggleMuted, copySegmentsToClipboard, handleShowStreamsSelectorClick, openFilesDialog, openDirDialog, toggleSettings, detectBlackScenes, detectSilentScenes, detectSceneChanges, readAllKeyframes, createSegmentsFromKeyframes, toggleWaveformMode, toggleShowThumbnails, toggleShowKeyframes, showIncludeExternalStreamsDialog, toggleFullscreenVideo, selectAllMarkers, selectSegmentsByLabel, selectSegmentsByExpr, labelSelectedSegments, mutateSegmentsByExpr, toggleKeyboardShortcuts, generateOverviewWaveform, checkFileOpened, cutSegments, seekRel, keyboardSeekAccFactor, togglePlay, play, userChangePlaybackRate, goToTimecode, keyboardNormalSeekSpeed, keyboardSeekSpeed2, keyboardSeekSpeed3, seekRelPercent, seekClosestKeyframe, shortStep, jumpSeg, zoomRel, batchFileJump, removeSegment, currentSegIndexSafe, cutSegmentsHistory, labelSegment, handleFinishPress, userHtml5ifyCurrentFile, toggleKeyframeCut, applyEnabledStreamsFilter, setPlaybackVolume, commandedTimeRef, closeFileWithConfirm, openSendReportDialogWithState]);
 
   const getKeyboardAction = useCallback((action: MainKeyboardAction) => mainActions[action], [mainActions]);
 
@@ -4013,7 +4044,7 @@ function App() {
                   increaseRotation={increaseRotation}
                   cleanupFilesDialog={cleanupFilesDialog}
                   captureSnapshot={captureSnapshot}
-                  onExportPress={simpleMode ? handleSimpleExport : onExportPress}
+                  onExportPress={handleFinishPress}
                   segmentsToExport={segmentsToExport}
                   seekAbs={seekAbs}
                   currentSegIndexSafe={currentSegIndexSafe}
@@ -4057,12 +4088,22 @@ function App() {
               {tunerVisible != null && <ValueTuners type={tunerVisible} onFinished={() => setTunerVisible(undefined)} />}
 
               {/* ─── Soccer Action Picker ──────────────────────────────── */}
+              <FinishDestinationDialog
+                visible={finishDestinationOpen}
+                clipCount={Math.max(1, segmentsToExport.length)}
+                hasProject={activeProject != null}
+                onDownload={() => handleFinishDestination('local')}
+                onContinueInKicko={() => handleFinishDestination('kicko')}
+                onClose={() => setFinishDestinationOpen(false)}
+              />
+
               <ActionPickerModal
                 visible={actionPickerOpen}
                 playerName={playerName}
                 clipDurationSec={quickCutDuration}
                 scoutRole={activeScoutRole}
                 scoutContext={activeScoutContext}
+                actionCounts={scoutActionCounts}
                 onConfirm={handleActionPicked}
                 onCancel={() => { setActionPickerOpen(false); pendingClipRef.current = null; }}
               />
@@ -4070,7 +4111,10 @@ function App() {
               <ProjectSetupDialog
                 visible={projectSetupOpen}
                 defaultPlayerName={playerName}
-                onCancel={() => setProjectSetupOpen(false)}
+                onCancel={() => {
+                  resumeFinishAfterProjectSetupRef.current = false;
+                  setProjectSetupOpen(false);
+                }}
                 onCreate={(value) => { void handleCreateProject(value); }}
               />
 

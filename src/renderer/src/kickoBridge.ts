@@ -38,6 +38,16 @@ interface StagedClip {
   metadata: Record<string, unknown>;
 }
 
+interface PreparedPlay {
+  play: ProjectPlay;
+  fileName: string;
+  size: number;
+  contentType: string;
+}
+
+export const KICKO_VIDEO_EXTENSIONS = ['avi', 'm4v', 'mkv', 'mov', 'mp4', 'webm', 'wmv'] as const;
+const KICKO_VIDEO_EXTENSION_SET = new Set<string>(KICKO_VIDEO_EXTENSIONS);
+
 export async function connectToKicko({ baseUrl = DEFAULT_KICKO_BASE_URL, onCode }: {
   baseUrl?: string;
   onCode?: (value: { userCode: string; verificationUrl: string }) => void;
@@ -76,6 +86,7 @@ export async function sendProjectToKicko({ connection, project, destinationProje
   const selected = getOrderedSelectedPlays(project);
   if (selected.length === 0) throw new Error('Select at least one play before sending.');
   const openingCandidateIds = getOpeningCandidateIds(project);
+  const preparedPlays = await preparePlays(selected);
 
   let projectId = destinationProjectId;
   let existingProject: KickoProjectRecord | null = null;
@@ -83,7 +94,23 @@ export async function sendProjectToKicko({ connection, project, destinationProje
     const existing = await bridgeRequest(connection, `/api/mvp/projects/${encodeURIComponent(projectId)}`);
     existingProject = (existing.project as KickoProjectRecord | undefined) || null;
     if (!existingProject) throw new Error('The selected KICKO project could not be loaded.');
-  } else {
+  }
+
+  const staged = [];
+  for (const [index, prepared] of preparedPlays.entries()) {
+    onProgress?.({ current: index, total: preparedPlays.length, fileName: prepared.fileName });
+    try {
+      staged.push({ play: prepared.play, staged: await uploadPlay(connection, prepared) });
+      onProgress?.({ current: index + 1, total: preparedPlays.length, fileName: prepared.fileName });
+    } catch (err) {
+      const reason = err instanceof Error ? err.message : 'Upload failed.';
+      throw new Error(`Could not upload "${prepared.fileName}": ${reason}`);
+    }
+  }
+
+  // Create a cloud project only after every local file passed preflight and upload.
+  // This prevents failed transfers from leaving an empty project in KICKO.
+  if (!projectId) {
     const created = await bridgeRequest(connection, '/api/mvp/projects/draft', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -91,12 +118,6 @@ export async function sendProjectToKicko({ connection, project, destinationProje
     });
     projectId = String(created.project?.id || '');
     if (!projectId) throw new Error('KICKO could not create the project.');
-  }
-
-  const staged = [];
-  for (const [index, play] of selected.entries()) {
-    onProgress?.({ current: index + 1, total: selected.length, fileName: play.fileName });
-    staged.push({ play, staged: await uploadPlay(connection, play) });
   }
 
   const existingClips = Array.isArray(existingProject?.['clips']) ? existingProject['clips'] : [];
@@ -149,29 +170,46 @@ export function buildProjectSavePayload(
   };
 }
 
-async function uploadPlay(connection: KickoConnection, play: ProjectPlay): Promise<StagedClip> {
+async function preparePlays(plays: ProjectPlay[]): Promise<PreparedPlay[]> {
+  const fs = window.require('fs/promises') as { stat: (path: string) => Promise<{ size: number; isFile: () => boolean }> };
+  const path = window.require('path') as { basename: (value: string) => string };
+  const prepared: PreparedPlay[] = [];
+  for (const play of plays) {
+    const fileName = path.basename(play.filePath || play.fileName);
+    const uploadInfo = getKickoUploadInfo(fileName);
+    let stats: { size: number; isFile: () => boolean };
+    try {
+      stats = await fs.stat(play.filePath);
+    } catch {
+      throw new Error(`Exported clip not found: "${fileName}". Export this game again before continuing to KICKO.`);
+    }
+    if (!stats.isFile() || stats.size <= 0) throw new Error(`Exported clip is empty: "${fileName}".`);
+    prepared.push({ play, fileName, size: stats.size, contentType: uploadInfo.contentType });
+  }
+  return prepared;
+}
+
+async function uploadPlay(connection: KickoConnection, prepared: PreparedPlay): Promise<StagedClip> {
+  const { play, fileName, size, contentType } = prepared;
   const fs = window.require('fs/promises') as {
     readFile: (path: string) => Promise<Uint8Array>;
-    stat: (path: string) => Promise<{size: number}>;
   };
-  const { size } = await fs.stat(play.filePath);
-  const contentType = mimeForFile(play.fileName);
   const signed = await bridgeRequest(connection, '/api/mvp/direct-upload-url', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ mediaType: 'clip', fileName: play.fileName, contentType, sizeBytes: size }),
+    body: JSON.stringify({ mediaType: 'clip', fileName, contentType, sizeBytes: size }),
   });
   const bytes = await fs.readFile(play.filePath);
   const uploadBody = Uint8Array.from(bytes).buffer;
   const uploadResponse = await fetch(String(signed.uploadUrl), { method: 'PUT', headers: signed.headers || { 'Content-Type': contentType }, body: uploadBody });
-  if (!uploadResponse.ok) throw new Error(`Upload failed for ${play.fileName}.`);
+  if (!uploadResponse.ok) throw new Error(`File transfer failed (${uploadResponse.status}).`);
   const staged = await bridgeRequest(connection, '/api/mvp/stage-direct-clip', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       clipKey: signed.clipKey,
       r2Key: signed.r2Key,
-      originalName: play.fileName,
+      originalName: fileName,
       sizeBytes: size,
       mimeType: contentType,
       metadata: { duration: play.duration || 0, sizeBytes: size, mimeType: contentType },
@@ -228,10 +266,21 @@ async function requestJson(url: string, init: RequestInit = {}) {
   return data;
 }
 
-function mimeForFile(fileName: string) {
-  const extension = fileName.split('.').pop()?.toLowerCase();
-  if (extension === 'mov') return 'video/quicktime';
-  if (extension === 'mkv') return 'video/x-matroska';
-  if (extension === 'avi') return 'video/x-msvideo';
-  return 'video/mp4';
+export function getKickoUploadInfo(fileName: string): { extension: string; contentType: string } {
+  const dotIndex = fileName.lastIndexOf('.');
+  const extension = dotIndex > 0 && dotIndex < fileName.length - 1 ? fileName.slice(dotIndex + 1).toLowerCase() : '';
+  if (!extension || !KICKO_VIDEO_EXTENSION_SET.has(extension)) {
+    const format = extension ? `.${extension}` : 'without a file extension';
+    throw new Error(`KICKO cannot upload clips ${format}. Export this clip as MP4 and try again.`);
+  }
+  const contentTypes: Record<string, string> = {
+    avi: 'video/x-msvideo',
+    m4v: 'video/x-m4v',
+    mkv: 'video/x-matroska',
+    mov: 'video/quicktime',
+    mp4: 'video/mp4',
+    webm: 'video/webm',
+    wmv: 'video/x-ms-wmv',
+  };
+  return { extension, contentType: contentTypes[extension]! };
 }

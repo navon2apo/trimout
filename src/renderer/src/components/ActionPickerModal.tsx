@@ -34,6 +34,7 @@ interface Props {
   clipDurationSec: number;
   scoutRole?: ScoutRole | null | undefined;
   scoutContext?: ScoutPhaseContext | null | undefined;
+  actionCounts?: Record<string, number> | undefined;
   onConfirm: (action: SoccerAction) => void;
   onCancel: () => void;
 }
@@ -93,10 +94,12 @@ function ActionBtn({
   );
 }
 
-function ScoutActionCard({ action, role, badge, onClick }: {
+function ScoutActionCard({ action, role, badge, collected, guideTarget, onClick }: {
   action: SoccerAction;
   role: ScoutRole;
   badge?: string | undefined;
+  collected: number;
+  guideTarget: number;
   onClick: () => void;
 }) {
   const catalogAction = SCOUT_ACTION_BY_ID.get(action.id);
@@ -108,12 +111,13 @@ function ScoutActionCard({ action, role, badge, onClick }: {
         {badge && <small>{badge}</small>}
       </span>
       <span>{catalogAction?.helper}</span>
+      <span className="scout-action-card-progress"><b>{collected} collected</b><small>guide ~{guideTarget}</small></span>
       <em>{guidance.hint}</em>
     </button>
   );
 }
 
-function ActionPickerModal({ visible, playerName, clipDurationSec, scoutRole, scoutContext, onConfirm, onCancel }: Props) {
+function ActionPickerModal({ visible, playerName, clipDurationSec, scoutRole, scoutContext, actionCounts = {}, onConfirm, onCancel }: Props) {
   const [showSecondary, setShowSecondary] = useState(false);
   const openingActions = scoutRole
     ? scoutRole.openingPriority
@@ -213,6 +217,8 @@ function ActionPickerModal({ visible, playerName, clipDurationSec, scoutRole, sc
                         action={action}
                         role={scoutRole}
                         badge={scoutContext.missingActionTypes.includes(action.id) ? 'SUGGESTED NEXT' : 'OPENING IDEA'}
+                        collected={actionCounts[action.id] ?? 0}
+                        guideTarget={1}
                         onClick={() => onConfirm(action)}
                       />
                     ))}
@@ -230,6 +236,8 @@ function ActionPickerModal({ visible, playerName, clipDurationSec, scoutRole, sc
                             action={action}
                             role={scoutRole}
                             badge={scoutContext.phase === 'consistency' && scoutContext.missingActionTypes.includes(action.id) ? 'SUGGESTED NEXT' : undefined}
+                            collected={actionCounts[action.id] ?? 0}
+                            guideTarget={scoutRole.consistencyTargets[action.id] ?? 1}
                             onClick={() => onConfirm(action)}
                           />
                         ))}
