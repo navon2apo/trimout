@@ -111,7 +111,7 @@ describe('paid KICKO handoff', () => {
         };
       }
       if (url.endsWith('/api/trimout/handoffs/status')) return { ok: true, status: 'ready_for_upload' };
-      if (url.endsWith('/api/trimout/handoffs/projects')) return { ok: true, projects: [{ id: 'project-old', title: 'Season reel', clipCount: 4 }] };
+      if (url.endsWith('/api/trimout/handoffs/projects')) return { ok: true, limits: { clipsPerProject: 12 }, projects: [{ id: 'project-old', title: 'Season reel', clipCount: 4 }] };
       if (url.endsWith('/api/trimout/handoffs/grants')) {
         return {
           ok: true,
@@ -130,7 +130,10 @@ describe('paid KICKO handoff', () => {
     const deps = dependencies({ requestJson, uploadFile });
     const project = makeProject();
     const connection = await connectToKicko({ project, baseUrl: 'https://kicko.example', dependencies: deps });
-    await expect(listKickoProjects(connection, deps)).resolves.toEqual([expect.objectContaining({ id: 'project-old', title: 'Season reel', clipCount: 4 })]);
+    await expect(listKickoProjects(connection, deps)).resolves.toEqual({
+      clipsPerProject: 12,
+      projects: [expect.objectContaining({ id: 'project-old', title: 'Season reel', clipCount: 4 })],
+    });
     await expect(sendProjectToKicko({ connection, project, destinationProjectId: null, dependencies: deps })).resolves.toEqual({
       projectId: 'project-new',
       openUrl: 'https://kicko.example/mvp/?projectId=project-new',

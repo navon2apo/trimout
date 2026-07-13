@@ -23,6 +23,11 @@ export interface KickoProjectSummary {
   updatedAt?: string;
 }
 
+export interface KickoProjectListing {
+  projects: KickoProjectSummary[];
+  clipsPerProject: number | null;
+}
+
 interface FileInspection {
   fileName: string;
   sizeBytes: number;
@@ -479,14 +484,20 @@ export async function resumeKickoHandoff({ project, onCode, onConnection, onProg
   return waitForKickoReadiness(connection, deps, { openApprovalPage: true, signal });
 }
 
-export async function listKickoProjects(connection: KickoConnection, dependencies?: Partial<KickoBridgeDependencies>, signal?: AbortSignal): Promise<KickoProjectSummary[]> {
+export async function listKickoProjects(connection: KickoConnection, dependencies?: Partial<KickoBridgeDependencies>, signal?: AbortSignal): Promise<KickoProjectListing> {
   const deps = getDependencies(dependencies);
   throwIfCancelled(signal);
   const response = await deps.requestJson(`${connection.baseUrl}/api/trimout/handoffs/projects`, {
     headers: deviceHeaders(connection),
     signal,
   });
-  return Array.isArray(response.projects) ? response.projects.map((value) => {
+  const limits = asObject(response['limits']);
+  const rawClipLimit = limits['clipsPerProject'];
+  const clipsPerProject = rawClipLimit === null ? null : Number(rawClipLimit);
+  if (clipsPerProject !== null && (!Number.isInteger(clipsPerProject) || clipsPerProject < 1 || clipsPerProject > 1000)) {
+    throw new KickoBridgeError('KICKO returned invalid project limits.', { code: 'invalid_project_limits' });
+  }
+  const projects = Array.isArray(response.projects) ? response.projects.map((value) => {
     const project = asObject(value);
     return {
       id: String(project['id'] || ''),
@@ -497,6 +508,7 @@ export async function listKickoProjects(connection: KickoConnection, dependencie
       updatedAt: project['updatedAt'] == null ? undefined : String(project['updatedAt']),
     };
   }).filter((project) => project.id) : [];
+  return { projects, clipsPerProject };
 }
 
 export async function sendProjectToKicko({ connection, project, destinationProjectId, onProgress, signal, dependencies }: {

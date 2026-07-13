@@ -56,10 +56,37 @@ export function getKickoProgressCopy(progress: KickoTransferProgress) {
   return { title: total > 0 ? `Checking play ${item} of ${total} locally` : 'Checking selected plays locally', detail: 'Nothing is being uploaded yet.' };
 }
 
+export function getKickoDestinationCapacity({ destination, projects, clipsPerProject, selectedCount }: {
+  destination: string;
+  projects: KickoProjectSummary[];
+  clipsPerProject: number | null | undefined;
+  selectedCount: number;
+}) {
+  const existingClipCount = destination === 'new'
+    ? 0
+    : projects.find((item) => item.id === destination)?.clipCount;
+  if (clipsPerProject == null || existingClipCount == null) {
+    return { exceeded: false, existingClipCount: existingClipCount ?? 0, remaining: null };
+  }
+  const remaining = Math.max(0, clipsPerProject - existingClipCount);
+  return { exceeded: selectedCount > remaining, existingClipCount, remaining };
+}
+
+export function getKickoProjectOptionLabel(
+  project: KickoProjectSummary,
+  clipsPerProject: number | null | undefined,
+) {
+  const title = project.title || 'Untitled project';
+  if (project.clipCount == null) return title;
+  if (clipsPerProject == null) return `${title} (${project.clipCount} plays)`;
+  return `${title} (${project.clipCount} of ${clipsPerProject} plays)`;
+}
+
 export default function KickoBridgeDialog({ visible, project, onClose }: Props) {
   const [phase, setPhase] = useState<Phase>('checking_resume');
   const [connection, setConnection] = useState<KickoConnection | null>(null);
   const [projects, setProjects] = useState<KickoProjectSummary[]>([]);
+  const [clipsPerProject, setClipsPerProject] = useState<number | null | undefined>(undefined);
   const [destination, setDestination] = useState('new');
   const [code, setCode] = useState('');
   const [error, setError] = useState('');
@@ -78,6 +105,7 @@ export default function KickoBridgeDialog({ visible, project, onClose }: Props) 
     setPhase('connect');
     setConnection(null);
     setProjects([]);
+    setClipsPerProject(undefined);
     setDestination('new');
     setCode('');
     setError('');
@@ -108,6 +136,7 @@ export default function KickoBridgeDialog({ visible, project, onClose }: Props) 
     setPhase('checking_resume');
     setConnection(null);
     setProjects([]);
+    setClipsPerProject(undefined);
     setDestination('new');
     setCode('');
     setError('');
@@ -135,7 +164,8 @@ export default function KickoBridgeDialog({ visible, project, onClose }: Props) 
         setConnection(resumed);
         const resumedProjects = await listKickoProjects(resumed, undefined, controller.signal);
         if (runId === runIdRef.current && !controller.signal.aborted) {
-          setProjects(resumedProjects);
+          setProjects(resumedProjects.projects);
+          setClipsPerProject(resumedProjects.clipsPerProject);
           setPhase('choose');
         }
       } catch (value) {
@@ -171,6 +201,7 @@ export default function KickoBridgeDialog({ visible, project, onClose }: Props) 
     setPhase('connecting');
     setConnection(null);
     setProjects([]);
+    setClipsPerProject(undefined);
     setCode('');
     setError('');
     setProgress(EMPTY_PROGRESS);
@@ -187,7 +218,8 @@ export default function KickoBridgeDialog({ visible, project, onClose }: Props) 
       try {
         const nextProjects = await listKickoProjects(nextConnection, undefined, controller.signal);
         if (runId === runIdRef.current && !controller.signal.aborted) {
-          setProjects(nextProjects);
+          setProjects(nextProjects.projects);
+          setClipsPerProject(nextProjects.clipsPerProject);
           setPhase('choose');
         }
       } catch (value) {
@@ -212,7 +244,8 @@ export default function KickoBridgeDialog({ visible, project, onClose }: Props) 
     try {
       const nextProjects = await listKickoProjects(connection, undefined, controller.signal);
       if (runId === runIdRef.current && !controller.signal.aborted) {
-        setProjects(nextProjects);
+        setProjects(nextProjects.projects);
+        setClipsPerProject(nextProjects.clipsPerProject);
         setPhase('choose');
       }
     } catch (value) {
@@ -226,6 +259,8 @@ export default function KickoBridgeDialog({ visible, project, onClose }: Props) 
   async function handleUpload() {
     const activeProject = projectRef.current;
     if (!connection || !activeProject) return;
+    const selectedCount = activeProject.plays.filter((play) => play.selected).length;
+    if (getKickoDestinationCapacity({ destination, projects, clipsPerProject, selectedCount }).exceeded) return;
     const controller = new AbortController();
     runIdRef.current += 1;
     const runId = runIdRef.current;
@@ -312,6 +347,7 @@ export default function KickoBridgeDialog({ visible, project, onClose }: Props) 
   }
 
   const selectedCount = project.plays.filter((play) => play.selected).length;
+  const destinationCapacity = getKickoDestinationCapacity({ destination, projects, clipsPerProject, selectedCount });
   const progressCopy = getKickoProgressCopy(progress);
   const closeDisabled = phase === 'cancelling';
 
@@ -328,7 +364,7 @@ export default function KickoBridgeDialog({ visible, project, onClose }: Props) 
           {phase === 'connecting' && (code
             ? <div className="bridge-state" role="status"><FiLogIn /><strong>Approve the connection in your browser</strong><span className="bridge-code-label">Connection code</span><code>{code}</code><span>No files are uploaded until KICKO confirms an active paid subscription.</span></div>
             : <div className="bridge-state" role="status"><FiLoader className="spinner-animation" /><strong>{progressCopy.title}</strong><span>{progressCopy.detail}</span>{progress.fileName && <small>{progress.fileName}</small>}<progress aria-label="Local file check progress" max={progress.total || 1} value={progress.current} /></div>)}
-          {phase === 'choose' && <><label className="bridge-project-select" htmlFor="kicko-destination"><span>Send selected plays to</span><select id="kicko-destination" value={destination} onChange={(event) => setDestination(event.target.value)}><option value="new">Create a new KICKO project</option>{projects.map((item) => <option key={item.id} value={item.id}>{item.title || 'Untitled project'}{item.clipCount == null ? '' : ` (${item.clipCount} plays)`}</option>)}</select></label><div className="bridge-transfer-summary"><strong>{selectedCount} selected {selectedCount === 1 ? 'play' : 'plays'}</strong><span>Files upload one at a time and are validated before they enter KICKO. Their approved order and Scout categories are preserved.</span><small>A new cloud project is created only after every selected play is ready.</small></div></>}
+          {phase === 'choose' && <><label className="bridge-project-select" htmlFor="kicko-destination"><span>Send selected plays to</span><select id="kicko-destination" value={destination} onChange={(event) => setDestination(event.target.value)}><option value="new">Create a new KICKO project</option>{projects.map((item) => <option key={item.id} value={item.id}>{getKickoProjectOptionLabel(item, clipsPerProject)}</option>)}</select></label><div className="bridge-transfer-summary"><strong>{selectedCount} selected {selectedCount === 1 ? 'play' : 'plays'}{destinationCapacity.remaining == null ? '' : ` · ${destinationCapacity.remaining} spots available`}</strong><span>Files upload one at a time and are validated before they enter KICKO. Their approved order and Scout categories are preserved.</span>{destinationCapacity.exceeded ? <small className="bridge-capacity-error">This destination does not have room for all selected plays. Return to Review and select {destinationCapacity.remaining} or fewer.</small> : <small>A new cloud project is created only after every selected play is ready.</small>}</div></>}
           {phase === 'transferring' && <div className="bridge-state" role="status"><FiUploadCloud /><strong>{progressCopy.title}</strong><span>{progressCopy.detail}</span>{progress.fileName && <small>{progress.fileName}</small>}<progress aria-label="KICKO transfer progress" max={progress.total || 1} value={progress.current} /><span>You can cancel safely. Your local TrimOut project will not change.</span></div>}
           {phase === 'cancelling' && <div className="bridge-state" role="status"><FiLoader className="spinner-animation" /><strong>Stopping the transfer safely</strong><span>KICKO is cancelling temporary upload work. Your local project stays untouched.</span></div>}
           {phase === 'subscription_required' && <div className="bridge-state subscription-required" role="status"><FiCreditCard /><strong>Active KICKO subscription required</strong><span>Your selected plays remain in TrimOut. No files were uploaded and no cloud project was created.</span><small>Founder Beta and documented admin accounts can continue through this connection.</small></div>}
@@ -338,7 +374,7 @@ export default function KickoBridgeDialog({ visible, project, onClose }: Props) 
         <footer className="kicko-dialog-footer bridge-footer">
           {phase === 'connect' && <><button type="button" className="secondary-button" onClick={() => handleClose()}>Close</button><button type="button" className="primary-button" disabled={selectedCount === 0} onClick={() => handleConnect()}><FiLogIn /> Connect KICKO account</button></>}
           {['checking_resume', 'connecting'].includes(phase) && <button type="button" className="secondary-button" onClick={() => handleClose()}>Cancel</button>}
-          {phase === 'choose' && <><button type="button" className="secondary-button" onClick={() => handleClose()}>Cancel</button><button type="button" className="primary-button" disabled={selectedCount === 0} onClick={() => handleUpload()}><FiUploadCloud /> Send selected plays</button></>}
+          {phase === 'choose' && <><button type="button" className="secondary-button" onClick={() => handleClose()}>Cancel</button><button type="button" className="primary-button" disabled={selectedCount === 0 || destinationCapacity.exceeded} onClick={() => handleUpload()}><FiUploadCloud /> Send selected plays</button></>}
           {phase === 'transferring' && <button type="button" className="secondary-button danger-button" onClick={() => handleClose()}><FiX /> Cancel transfer</button>}
           {phase === 'subscription_required' && <><button type="button" className="secondary-button" onClick={openPricing}><FiExternalLink /> View Founder Beta</button><button type="button" className="primary-button" onClick={() => handleFreshConnection()}><FiRefreshCw /> Try with active plan</button></>}
           {phase === 'done' && <><button type="button" className="secondary-button" onClick={() => handleClose()}>Close</button><button type="button" className="primary-button" onClick={openKicko}><FiExternalLink /> Open in KICKO</button></>}

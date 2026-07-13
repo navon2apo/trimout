@@ -397,6 +397,7 @@ input:focus-visible, select:focus-visible {
 .bridge-transfer-summary strong { color: var(--kicko-text); font-size: 13px; }
 .bridge-transfer-summary span { color: var(--kicko-muted); font-size: 11px; line-height: 1.55; }
 .bridge-transfer-summary small { color: #c5d3d8; font-size: 10px; }
+.bridge-transfer-summary .bridge-capacity-error { color: #ffb0b0; font-weight: 700; }
 .bridge-footer { min-height: 68px; box-sizing: border-box; }
 .bridge-footer .primary-button, .bridge-footer .secondary-button { min-height: 40px; }
 .danger-button { border-color: rgba(255, 115, 115, 0.45); color: #ffb0b0; }
