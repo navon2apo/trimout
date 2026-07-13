@@ -3,7 +3,7 @@ process.traceProcessWarnings = true;
 
 /* eslint-disable import/first */
 // eslint-disable-next-line import/no-extraneous-dependencies
-import electron, { BrowserWindow, type BrowserWindowConstructorOptions, nativeTheme, shell, app, ipcMain, Notification, type NotificationConstructorOptions } from 'electron';
+import electron, { BrowserWindow, type BrowserWindowConstructorOptions, nativeTheme, shell, app, ipcMain, Notification, safeStorage, type NotificationConstructorOptions } from 'electron';
 import i18n from 'i18next';
 import debounce from 'lodash.debounce/index.js';
 import yargsParser from 'yargs-parser';
@@ -44,12 +44,25 @@ import qrShare from './qrShare.js';
 import { transcribeVideo } from './whisper.js';
 import { activateLicense, checkLicense, deactivateLicense, getMachineFingerprint } from './license.js';
 import { cancelKickoFileUpload, inspectKickoFile, uploadKickoFile } from './kickoHandoffTransport.js';
+import { createKickoHandoffSessionStore } from './kickoHandoffSessionStore.js';
 
 // Separate untyped store for API keys (not part of Config schema)
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const Store = require('electron-store');
 
 const apiKeyStore = new Store({ name: 'api-keys', encryptionKey: 'trimout-api-keys-v1' });
+const handoffSessionBackend = new Store({ name: 'kicko-handoff-sessions' });
+const handoffSessions = createKickoHandoffSessionStore({
+  backend: {
+    read: () => handoffSessionBackend.get('sessions'),
+    write: (sessions) => handoffSessionBackend.set('sessions', sessions),
+  },
+  encryption: {
+    isAvailable: () => safeStorage.isEncryptionAvailable(),
+    encrypt: (value) => safeStorage.encryptString(value).toString('base64'),
+    decrypt: (value) => safeStorage.decryptString(Buffer.from(value, 'base64')),
+  },
+});
 
 function getApiKey(id: string): string { return (apiKeyStore.get(`key_${id}`) as string | undefined) ?? ''; }
 function setApiKey(id: string, value: string): void { if (value) apiKeyStore.set(`key_${id}`, value); else apiKeyStore.delete(`key_${id}`); }
@@ -513,6 +526,9 @@ const remoteApi = {
   inspectKickoFile,
   uploadKickoFile,
   cancelKickoFileUpload,
+  saveKickoHandoffSession: handoffSessions.saveSession,
+  loadKickoHandoffSession: handoffSessions.loadSession,
+  deleteKickoHandoffSession: handoffSessions.deleteSession,
 };
 
 export type RemoteApi = typeof remoteApi;
