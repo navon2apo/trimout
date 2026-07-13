@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { FiCheck, FiExternalLink, FiLoader, FiLogIn, FiUploadCloud, FiX } from 'react-icons/fi';
 
 import type { TrimoutProject } from '../projectModel';
-import type { KickoConnection, KickoProjectSummary } from '../kickoBridge';
+import type { KickoConnection, KickoProjectSummary, KickoTransferProgress } from '../kickoBridge';
 import { connectToKicko, listKickoProjects, sendProjectToKicko } from '../kickoBridge';
 
 interface Props {
@@ -20,7 +20,7 @@ export default function KickoBridgeDialog({ visible, project, onClose }: Props) 
   const [destination, setDestination] = useState('new');
   const [code, setCode] = useState('');
   const [error, setError] = useState('');
-  const [progress, setProgress] = useState({ current: 0, total: 0, fileName: '' });
+  const [progress, setProgress] = useState<KickoTransferProgress>({ phase: 'preparing', current: 0, total: 0, fileName: '' });
   const [openUrl, setOpenUrl] = useState('');
 
   function handleClose() {
@@ -30,7 +30,7 @@ export default function KickoBridgeDialog({ visible, project, onClose }: Props) 
     setDestination('new');
     setCode('');
     setError('');
-    setProgress({ current: 0, total: 0, fileName: '' });
+    setProgress({ phase: 'preparing', current: 0, total: 0, fileName: '' });
     setOpenUrl('');
     onClose();
   }
@@ -41,7 +41,7 @@ export default function KickoBridgeDialog({ visible, project, onClose }: Props) 
     setPhase('connecting');
     setError('');
     try {
-      const nextConnection = await connectToKicko({ onCode: ({ userCode }) => setCode(userCode) });
+      const nextConnection = await connectToKicko({ project, onCode: ({ userCode }) => setCode(userCode), onProgress: setProgress });
       setConnection(nextConnection);
       setProjects(await listKickoProjects(nextConnection));
       setPhase('choose');
