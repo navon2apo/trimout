@@ -4133,7 +4133,10 @@ function App() {
               <KickoBridgeDialog
                 visible={kickoBridgeOpen}
                 project={activeProject}
-                onClose={() => setKickoBridgeOpen(false)}
+                onClose={(reason) => {
+                  setKickoBridgeOpen(false);
+                  if (reason === 'cancelled') setProjectReviewOpen(true);
+                }}
               />
 
               <LegalDialog

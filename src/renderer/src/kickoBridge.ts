@@ -297,6 +297,12 @@ function deviceHeaders(connection: KickoConnection, headers: HeadersInit = {}) {
   return { ...headers, Authorization: `TrimOut ${connection.deviceSecret}` };
 }
 
+function throwIfCancelled(signal?: AbortSignal) {
+  if (signal?.aborted) {
+    throw new KickoBridgeError('The KICKO transfer was cancelled.', { code: 'handoff_cancelled' });
+  }
+}
+
 function resumableSession(connection: KickoConnection): KickoHandoffSessionRecord {
   return {
     projectId: connection.projectId,
@@ -322,13 +328,18 @@ const WAITING_HANDOFF_STATES = new Set([
 async function waitForKickoReadiness(
   connection: KickoConnection,
   deps: KickoBridgeDependencies,
-  { openApprovalPage = false }: { openApprovalPage?: boolean } = {},
+  { openApprovalPage = false, signal }: { openApprovalPage?: boolean; signal?: AbortSignal } = {},
 ): Promise<KickoConnection | null> {
   const expiryTime = new Date(connection.expiresAt).getTime();
   let approvalPageOpened = false;
   while (deps.now() < expiryTime) {
+    if (signal?.aborted) {
+      await deps.deleteSession(connection.projectId);
+      throw new KickoBridgeError('The KICKO connection was cancelled. No files were uploaded.', { code: 'handoff_cancelled' });
+    }
     const status = await deps.requestJson(`${connection.baseUrl}/api/trimout/handoffs/status`, {
       headers: deviceHeaders(connection),
+      signal,
     });
     const state = String(status.status || '');
     if (['ready_for_upload', 'uploading', 'completed'].includes(state)) return { ...connection, state };
@@ -359,21 +370,27 @@ export async function connectToKicko({
   project,
   baseUrl = DEFAULT_KICKO_BASE_URL,
   onCode,
+  onConnection,
   onProgress,
+  signal,
   dependencies,
 }: {
   project: TrimoutProject;
   baseUrl?: string;
   onCode?: (value: { userCode: string; verificationUrl: string; expiresAt: string }) => void;
+  onConnection?: (connection: KickoConnection) => void;
   onProgress?: (value: KickoTransferProgress) => void;
+  signal?: AbortSignal;
   dependencies?: Partial<KickoBridgeDependencies>;
 }): Promise<KickoConnection> {
   const deps = getDependencies(dependencies);
+  throwIfCancelled(signal);
   const normalizedBaseUrl = normalizeBaseUrl(baseUrl);
   const prepared = await prepareKickoHandoff(project, deps, onProgress);
   const started = await deps.requestJson(`${normalizedBaseUrl}/api/trimout/handoffs`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
+    signal,
     body: JSON.stringify({
       clientProjectId: project.id,
       snapshotHash: prepared.snapshotHash,
@@ -409,22 +426,29 @@ export async function connectToKicko({
     state: 'awaiting_auth',
   };
   await deps.saveSession(resumableSession(connection));
+  onConnection?.(connection);
   onCode?.({ userCode, verificationUrl, expiresAt });
-  const ready = await waitForKickoReadiness(connection, deps, { openApprovalPage: true });
+  const ready = await waitForKickoReadiness(connection, deps, { openApprovalPage: true, signal });
   if (!ready) throw new KickoBridgeError('The KICKO connection stopped before upload.', { code: 'handoff_stopped' });
   return ready;
 }
 
-export async function resumeKickoHandoff({ project, onCode, onProgress, dependencies }: {
+export async function resumeKickoHandoff({ project, onCode, onConnection, onProgress, signal, dependencies }: {
   project: TrimoutProject;
   onCode?: (value: { userCode: string; verificationUrl: string; expiresAt: string }) => void;
+  onConnection?: (connection: KickoConnection) => void;
   onProgress?: (value: KickoTransferProgress) => void;
+  signal?: AbortSignal;
   dependencies?: Partial<KickoBridgeDependencies>;
 }): Promise<KickoConnection | null> {
   const deps = getDependencies(dependencies);
   const saved = await deps.loadSession(project.id);
   if (!saved) return null;
   const prepared = await prepareKickoHandoff(project, deps, onProgress);
+  if (signal?.aborted) {
+    await deps.deleteSession(project.id);
+    throw new KickoBridgeError('The KICKO connection was cancelled. No files were uploaded.', { code: 'handoff_cancelled' });
+  }
   if (prepared.snapshotHash !== saved.snapshotHash) {
     await deps.deleteSession(project.id);
     return null;
@@ -450,14 +474,17 @@ export async function resumeKickoHandoff({ project, onCode, onProgress, dependen
     preparedPlays: prepared.preparedPlays,
     state: 'awaiting_auth',
   };
+  onConnection?.(connection);
   onCode?.({ userCode: connection.userCode, verificationUrl, expiresAt: connection.expiresAt });
-  return waitForKickoReadiness(connection, deps, { openApprovalPage: true });
+  return waitForKickoReadiness(connection, deps, { openApprovalPage: true, signal });
 }
 
-export async function listKickoProjects(connection: KickoConnection, dependencies?: Partial<KickoBridgeDependencies>): Promise<KickoProjectSummary[]> {
+export async function listKickoProjects(connection: KickoConnection, dependencies?: Partial<KickoBridgeDependencies>, signal?: AbortSignal): Promise<KickoProjectSummary[]> {
   const deps = getDependencies(dependencies);
+  throwIfCancelled(signal);
   const response = await deps.requestJson(`${connection.baseUrl}/api/trimout/handoffs/projects`, {
     headers: deviceHeaders(connection),
+    signal,
   });
   return Array.isArray(response.projects) ? response.projects.map((value) => {
     const project = asObject(value);
@@ -472,23 +499,27 @@ export async function listKickoProjects(connection: KickoConnection, dependencie
   }).filter((project) => project.id) : [];
 }
 
-export async function sendProjectToKicko({ connection, project, destinationProjectId, onProgress, dependencies }: {
+export async function sendProjectToKicko({ connection, project, destinationProjectId, onProgress, signal, dependencies }: {
   connection: KickoConnection;
   project: TrimoutProject;
   destinationProjectId: string | null;
   onProgress?: (value: KickoTransferProgress) => void;
+  signal?: AbortSignal;
   dependencies?: Partial<KickoBridgeDependencies>;
 }): Promise<{ projectId: string; openUrl: string }> {
   const deps = getDependencies(dependencies);
+  throwIfCancelled(signal);
   if (buildSelectionSignature(project) !== connection.selectionSignature) {
     throw new KickoBridgeError('The selected plays changed after connection. Connect again before uploading.', { code: 'selection_changed' });
   }
 
   if (connection.state !== 'completed') {
     for (const prepared of connection.preparedPlays) {
+      throwIfCancelled(signal);
       const grant = await deps.requestJson(`${connection.baseUrl}/api/trimout/handoffs/grants`, {
         method: 'POST',
         headers: deviceHeaders(connection, { 'Content-Type': 'application/json' }),
+        signal,
         body: JSON.stringify({
           clientClipId: prepared.clientClipId,
           originalName: prepared.fileName,
@@ -507,6 +538,7 @@ export async function sendProjectToKicko({ connection, project, destinationProje
       const grantId = String(grant.grantId || '');
       let grantStatus = String(grant.status || '');
       if (!grantId) throw new KickoBridgeError('KICKO did not return an upload grant.', { code: 'invalid_grant_response' });
+      throwIfCancelled(signal);
 
       if (grant.uploadRequired === true) {
         const uploadUrl = String(grant.uploadUrl || '');
@@ -521,6 +553,7 @@ export async function sendProjectToKicko({ connection, project, destinationProje
           expectedSizeBytes: prepared.sizeBytes,
           expectedMtimeMs: prepared.mtimeMs,
         });
+        throwIfCancelled(signal);
         grantStatus = 'uploaded';
       }
 
@@ -529,6 +562,7 @@ export async function sendProjectToKicko({ connection, project, destinationProje
         const completed = await deps.requestJson(`${connection.baseUrl}/api/trimout/handoffs/grants/${encodeURIComponent(grantId)}/complete`, {
           method: 'POST',
           headers: deviceHeaders(connection, { 'Content-Type': 'application/json' }),
+          signal,
           body: '{}',
         });
         grantStatus = String(completed.status || '');
@@ -540,10 +574,12 @@ export async function sendProjectToKicko({ connection, project, destinationProje
     }
   }
 
+  throwIfCancelled(signal);
   onProgress?.({ phase: 'finalizing', current: connection.preparedPlays.length, total: connection.preparedPlays.length, fileName: '' });
   const finalized = await deps.requestJson(`${connection.baseUrl}/api/trimout/handoffs/finalize`, {
     method: 'POST',
     headers: deviceHeaders(connection, { 'Content-Type': 'application/json' }),
+    signal,
     body: JSON.stringify({ destinationProjectId, title: project.name }),
   });
   const projectId = String(finalized.projectId || '');
@@ -563,6 +599,10 @@ export async function rollbackKickoHandoff(connection: KickoConnection, dependen
   });
   await deps.deleteSession(connection.projectId).catch(() => false);
   return result;
+}
+
+export async function forgetKickoHandoff(connection: KickoConnection, dependencies?: Partial<KickoBridgeDependencies>) {
+  return getDependencies(dependencies).deleteSession(connection.projectId);
 }
 
 export async function cancelKickoTransfer(connection: KickoConnection, operationId: string | null, dependencies?: Partial<KickoBridgeDependencies>) {

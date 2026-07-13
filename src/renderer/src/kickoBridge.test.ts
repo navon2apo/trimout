@@ -6,6 +6,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { addExportBatch, createTrimoutProject } from './projectModel';
 import {
   connectToKicko,
+  forgetKickoHandoff,
   getKickoUploadInfo,
   listKickoProjects,
   resumeKickoHandoff,
@@ -224,6 +225,106 @@ describe('paid KICKO handoff', () => {
       state: 'ready_for_upload',
     }, deps);
     expect(deps.deleteSession).toHaveBeenCalledWith(project.id);
+  });
+
+  it('stops approval polling locally when the user cancels before upload', async () => {
+    const controller = new AbortController();
+    const onConnection = vi.fn();
+    const deps = dependencies({
+      requestJson: vi.fn(async (url: string) => {
+        if (url.endsWith('/api/trimout/handoffs')) {
+          return {
+            ok: true,
+            handoffId: HANDOFF_ID,
+            deviceSecret: 's'.repeat(43),
+            userCode: 'ABCD-2345',
+            expiresAt: EXPIRES_AT,
+            verificationUrl: 'https://kicko.example/mvp/trimout-connect.html?code=ABCD-2345',
+          };
+        }
+        if (url.endsWith('/api/trimout/handoffs/status')) return { ok: true, status: 'awaiting_auth' };
+        throw new Error(`Unexpected request: ${url}`);
+      }),
+      sleep: vi.fn(async () => { controller.abort(); }),
+    });
+
+    await expect(connectToKicko({
+      project: makeProject(),
+      baseUrl: 'https://kicko.example',
+      onConnection,
+      signal: controller.signal,
+      dependencies: deps,
+    })).rejects.toMatchObject({ code: 'handoff_cancelled' });
+    expect(onConnection).toHaveBeenCalledOnce();
+    expect(deps.openExternal).toHaveBeenCalledOnce();
+    expect(deps.uploadFile).not.toHaveBeenCalled();
+    expect(deps.deleteSession).toHaveBeenCalled();
+  });
+
+  it('can forget an unapproved local capability without calling KICKO', async () => {
+    const project = makeProject();
+    const deps = dependencies({ requestJson: vi.fn(async () => { throw new Error('No cloud request expected.'); }) });
+    await forgetKickoHandoff({
+      projectId: project.id,
+      handoffId: HANDOFF_ID,
+      deviceSecret: 's'.repeat(43),
+      baseUrl: 'https://kicko.example',
+      expiresAt: EXPIRES_AT,
+      userCode: 'ABCD-2345',
+      verificationUrl: 'https://kicko.example/mvp/trimout-connect.html?code=ABCD-2345',
+      snapshotHash: 'b'.repeat(64),
+      selectionSignature: '{}',
+      preparedPlays: [],
+      state: 'awaiting_auth',
+    }, deps);
+    expect(deps.deleteSession).toHaveBeenCalledWith(project.id);
+    expect(deps.requestJson).not.toHaveBeenCalled();
+  });
+
+  it('does not start a file upload when cancellation wins the grant race', async () => {
+    const project = makeProject();
+    const controller = new AbortController();
+    const deps = dependencies({
+      requestJson: vi.fn(async (url: string) => {
+        if (url.endsWith('/api/trimout/handoffs/grants')) {
+          controller.abort();
+          return {
+            ok: true,
+            grantId: 'grant-1',
+            status: 'issued',
+            uploadRequired: true,
+            uploadUrl: 'https://storage.example/signed-upload',
+          };
+        }
+        throw new Error(`Unexpected request: ${url}`);
+      }),
+    });
+    const preparedProject = await connectToKicko({
+      project,
+      baseUrl: 'https://kicko.example',
+      dependencies: dependencies({
+        requestJson: vi.fn(async (url: string) => {
+          if (!url.endsWith('/handoffs')) return { ok: true, status: 'ready_for_upload' };
+          return {
+            ok: true,
+            handoffId: HANDOFF_ID,
+            deviceSecret: 's'.repeat(43),
+            userCode: 'ABCD-2345',
+            expiresAt: EXPIRES_AT,
+            verificationUrl: 'https://kicko.example/mvp/trimout-connect.html?code=ABCD-2345',
+          };
+        }),
+      }),
+    });
+
+    await expect(sendProjectToKicko({
+      connection: preparedProject,
+      project,
+      destinationProjectId: null,
+      signal: controller.signal,
+      dependencies: deps,
+    })).rejects.toMatchObject({ code: 'handoff_cancelled' });
+    expect(deps.uploadFile).not.toHaveBeenCalled();
   });
 
   it('contains no active legacy device or MVP bridge endpoints', async () => {
