@@ -1,6 +1,5 @@
 import type { ProjectPlayRating, TrimoutProject } from './projectModel';
 import { getOrderedSelectedPlays } from './projectModel';
-import { SCOUT_CATALOG_VERSION } from './scoutCatalog';
 import { getOpeningCandidateIds } from './scoutLogic';
 
 export const DEFAULT_KICKO_BASE_URL = 'https://soccer-web-edit-production.up.railway.app';
@@ -207,6 +206,19 @@ function buildSelectionSignature(project: TrimoutProject) {
   });
 }
 
+function buildServerSnapshotManifest(plays: PreparedKickoPlay[]) {
+  return plays.map((play) => [
+    play.clientClipId,
+    play.sha256,
+    play.sizeBytes,
+    play.actionType,
+    play.rating,
+    play.order,
+    Math.round(play.durationSeconds * 1000),
+    play.isOpeningCandidate ? 1 : 0,
+  ].join('|')).join('\n');
+}
+
 export const KICKO_VIDEO_EXTENSIONS = ['avi', 'm4v', 'mkv', 'mov', 'mp4', 'webm', 'wmv'] as const;
 const KICKO_VIDEO_EXTENSION_SET = new Set<string>(KICKO_VIDEO_EXTENSIONS);
 
@@ -281,24 +293,7 @@ async function prepareKickoHandoff(project: TrimoutProject, deps: KickoBridgeDep
     throw new KickoBridgeError('The selected plays exceed KICKO\'s 5 minute project limit.', { code: 'handoff_too_long' });
   }
 
-  const snapshotHash = await deps.digestText(JSON.stringify({
-    projectId: project.id,
-    name: project.name,
-    playerName: project.playerName,
-    scoutRole: project.scoutRole,
-    scoutCatalogVersion: SCOUT_CATALOG_VERSION,
-    clips: preparedPlays.map((play) => ({
-      clientClipId: play.clientClipId,
-      fileName: play.fileName,
-      sizeBytes: play.sizeBytes,
-      sha256: play.sha256,
-      actionType: play.actionType,
-      rating: play.rating,
-      order: play.order,
-      durationSeconds: play.durationSeconds,
-      isOpeningCandidate: play.isOpeningCandidate,
-    })),
-  }));
+  const snapshotHash = await deps.digestText(buildServerSnapshotManifest(preparedPlays));
 
   return {
     preparedPlays,

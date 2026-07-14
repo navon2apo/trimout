@@ -146,11 +146,15 @@ describe('paid KICKO handoff', () => {
       expectedMtimeMs: 123456,
     }));
     const grantCall = calls.find(({ url }) => url.endsWith('/api/trimout/handoffs/grants'));
-    expect(JSON.parse(String(grantCall?.init?.body))).toMatchObject({
+    const grantBody = JSON.parse(String(grantCall?.init?.body));
+    expect(grantBody).toMatchObject({
       contentType: 'video/mp4',
       sha256: 'a'.repeat(64),
       clip: { actionType: 'reception_pressure', rating: 'strong', order: 0, durationSeconds: 12, isOpeningCandidate: true },
     });
+    expect(deps.digestText).toHaveBeenCalledWith(
+      `${grantBody.clientClipId}|${'a'.repeat(64)}|1200|reception_pressure|strong|0|12000|1`,
+    );
     const finalizeCall = calls.find(({ url }) => url.endsWith('/api/trimout/handoffs/finalize'));
     expect(JSON.parse(String(finalizeCall?.init?.body))).toEqual({ destinationProjectId: null, title: 'Alex 2026' });
     expect(calls.filter(({ init }) => String((init?.headers as Record<string, string> | undefined)?.Authorization || '').startsWith('TrimOut ')).length).toBeGreaterThan(0);
