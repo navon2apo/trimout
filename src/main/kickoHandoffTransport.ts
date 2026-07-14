@@ -2,17 +2,10 @@ import { createHash } from 'node:crypto';
 import { createReadStream } from 'node:fs';
 import { stat } from 'node:fs/promises';
 import { basename, isAbsolute } from 'node:path';
-import { Readable } from 'node:stream';
 
 const MAX_SIGNED_URL_LENGTH = 12_000;
 const ALLOWED_UPLOAD_HEADERS = new Set([
   'content-type',
-  'content-md5',
-  'x-amz-checksum-sha256',
-  'x-amz-meta-trimout-sha256',
-  'x-amz-meta-trimout-grant-id',
-  'x-amz-meta-trimout-grant-version',
-  'x-amz-meta-trimout-handoff-id',
 ]);
 
 const activeUploads = new Map<string, AbortController>();
@@ -110,12 +103,12 @@ export async function uploadKickoFile(input: KickoFileUploadInput, {
 
   const controller = new AbortController();
   activeUploads.set(input.operationId, controller);
+  const body = createReadStream(input.filePath);
   try {
-    const body = Readable.toWeb(createReadStream(input.filePath)) as ReadableStream<Uint8Array>;
     const response = await fetchImpl(uploadUrl, {
       method: 'PUT',
       headers: normalizeUploadHeaders(input.headers, before.size),
-      body,
+      body: body as unknown as BodyInit,
       duplex: 'half',
       redirect: 'error',
       signal: controller.signal,
@@ -131,6 +124,7 @@ export async function uploadKickoFile(input: KickoFileUploadInput, {
     if (controller.signal.aborted) throw new Error('The KICKO upload was cancelled.');
     throw error;
   } finally {
+    body.destroy();
     activeUploads.delete(input.operationId);
   }
 }
