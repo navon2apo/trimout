@@ -5,7 +5,9 @@ import {
   getKickoDestinationCapacity,
   getKickoProgressCopy,
   getKickoProjectOptionLabel,
+  readFailure,
 } from './KickoBridgeDialog';
+import { KickoBridgeError } from '../kickoBridge';
 
 describe('KICKO bridge progress copy', () => {
   it('distinguishes local checks, upload, validation, and finalization', () => {
@@ -31,5 +33,18 @@ describe('KICKO bridge progress copy', () => {
     const project = { id: 'project-1', title: 'Season', clipCount: 6 };
     expect(getKickoProjectOptionLabel(project, 12)).toBe('Season (6 of 12 plays)');
     expect(getKickoProjectOptionLabel(project, null)).toBe('Season (6 plays)');
+  });
+
+  it('does not offer retry for a permanently rejected upload', () => {
+    const failure = readFailure(new KickoBridgeError('Upload rejected.', {
+      code: 'E_UPLOAD_INVALID',
+      status: 422,
+      retryable: false,
+    }));
+    expect(failure).toEqual({
+      message: 'Upload rejected.',
+      subscriptionRequired: false,
+      retryable: false,
+    });
   });
 });

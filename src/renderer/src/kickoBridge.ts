@@ -84,11 +84,18 @@ export class KickoBridgeError extends Error {
 
   status: number | null;
 
-  constructor(message: string, { code = 'kicko_handoff_failed', status = null }: { code?: string; status?: number | null } = {}) {
+  retryable: boolean;
+
+  constructor(message: string, {
+    code = 'kicko_handoff_failed',
+    status = null,
+    retryable = true,
+  }: { code?: string; status?: number | null; retryable?: boolean } = {}) {
     super(message);
     this.name = 'KickoBridgeError';
     this.code = code;
     this.status = status;
+    this.retryable = retryable;
   }
 }
 
@@ -126,7 +133,11 @@ function defaultRequestJson(url: string, init: RequestInit = {}) {
     if (!response.ok || data.ok === false) {
       throw new KickoBridgeError(
         String(error['message'] || error['userMessage'] || `KICKO request failed (${response.status}).`),
-        { code: String(error['code'] || 'kicko_request_failed'), status: response.status },
+        {
+          code: String(error['code'] || 'kicko_request_failed'),
+          status: response.status,
+          retryable: error['retryable'] !== false && response.status !== 422,
+        },
       );
     }
     return data;
