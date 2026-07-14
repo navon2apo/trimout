@@ -35,11 +35,14 @@ type RetryTarget = 'connect' | 'projects' | 'upload' | 'cancel';
 
 const EMPTY_PROGRESS: KickoTransferProgress = { phase: 'preparing', current: 0, total: 0, fileName: '' };
 
-function readFailure(error: unknown) {
+export function readFailure(error: unknown) {
   const code = String((error as { code?: unknown } | null)?.code || '').toLowerCase();
+  const status = Number((error as { status?: unknown } | null)?.status);
+  const explicitlyRetryable = (error as { retryable?: unknown } | null)?.retryable;
   return {
     message: error instanceof Error ? error.message : 'KICKO connection failed.',
     subscriptionRequired: code.includes('subscription'),
+    retryable: typeof explicitlyRetryable === 'boolean' ? explicitlyRetryable : status !== 422,
   };
 }
 
@@ -91,6 +94,7 @@ export default function KickoBridgeDialog({ visible, project, onClose }: Props) 
   const [code, setCode] = useState('');
   const [error, setError] = useState('');
   const [retryTarget, setRetryTarget] = useState<RetryTarget>('connect');
+  const [retryAllowed, setRetryAllowed] = useState(true);
   const [progress, setProgress] = useState<KickoTransferProgress>(EMPTY_PROGRESS);
   const [openUrl, setOpenUrl] = useState('');
   const projectRef = useRef(project);
@@ -110,6 +114,7 @@ export default function KickoBridgeDialog({ visible, project, onClose }: Props) 
     setCode('');
     setError('');
     setRetryTarget('connect');
+    setRetryAllowed(true);
     setProgress(EMPTY_PROGRESS);
     setOpenUrl('');
     operationIdRef.current = null;
@@ -120,6 +125,7 @@ export default function KickoBridgeDialog({ visible, project, onClose }: Props) 
     const failure = readFailure(value);
     setError(failure.message);
     setRetryTarget(retry);
+    setRetryAllowed(failure.retryable);
     setPhase(failure.subscriptionRequired ? 'subscription_required' : 'error');
   }
 
@@ -140,6 +146,7 @@ export default function KickoBridgeDialog({ visible, project, onClose }: Props) 
     setDestination('new');
     setCode('');
     setError('');
+    setRetryAllowed(true);
     setProgress(EMPTY_PROGRESS);
     setOpenUrl('');
 
@@ -173,6 +180,7 @@ export default function KickoBridgeDialog({ visible, project, onClose }: Props) 
           const failure = readFailure(value);
           setError(failure.message);
           setRetryTarget('connect');
+          setRetryAllowed(failure.retryable);
           setPhase(failure.subscriptionRequired ? 'subscription_required' : 'error');
         }
       } finally {
@@ -204,6 +212,7 @@ export default function KickoBridgeDialog({ visible, project, onClose }: Props) 
     setClipsPerProject(undefined);
     setCode('');
     setError('');
+    setRetryAllowed(true);
     setProgress(EMPTY_PROGRESS);
     try {
       const nextConnection = await connectToKicko({
@@ -241,6 +250,7 @@ export default function KickoBridgeDialog({ visible, project, onClose }: Props) 
     setPhase('connecting');
     setCode('');
     setError('');
+    setRetryAllowed(true);
     try {
       const nextProjects = await listKickoProjects(connection, undefined, controller.signal);
       if (runId === runIdRef.current && !controller.signal.aborted) {
@@ -269,6 +279,7 @@ export default function KickoBridgeDialog({ visible, project, onClose }: Props) 
     operationIdRef.current = null;
     setPhase('transferring');
     setError('');
+    setRetryAllowed(true);
     try {
       const result = await sendProjectToKicko({
         connection,
@@ -331,6 +342,7 @@ export default function KickoBridgeDialog({ visible, project, onClose }: Props) 
   }
 
   async function handleRetry() {
+    if (!retryAllowed) return undefined;
     if (retryTarget === 'upload') return handleUpload();
     if (retryTarget === 'projects') return handleReloadProjects();
     if (retryTarget === 'cancel') return handleClose();
@@ -369,7 +381,7 @@ export default function KickoBridgeDialog({ visible, project, onClose }: Props) 
           {phase === 'cancelling' && <div className="bridge-state" role="status"><FiLoader className="spinner-animation" /><strong>Stopping the transfer safely</strong><span>KICKO is cancelling temporary upload work. Your local project stays untouched.</span></div>}
           {phase === 'subscription_required' && <div className="bridge-state subscription-required" role="status"><FiCreditCard /><strong>Active KICKO subscription required</strong><span>Your selected plays remain in TrimOut. No files were uploaded and no cloud project was created.</span><small>Founder Beta and documented admin accounts can continue through this connection.</small></div>}
           {phase === 'done' && <div className="bridge-state success" role="status"><FiCheck /><strong>Your KICKO project is ready</strong><span>The selected plays arrived in the approved order. Open KICKO to select the player and add tracking effects.</span></div>}
-          {phase === 'error' && <div className="bridge-state error" role="alert"><FiAlertTriangle /><strong>{retryTarget === 'cancel' ? 'Rollback still needs confirmation' : 'Connection stopped'}</strong><span>{error}</span></div>}
+          {phase === 'error' && <div className="bridge-state error" role="alert"><FiAlertTriangle /><strong>{retryTarget === 'cancel' ? 'Rollback still needs confirmation' : (!retryAllowed && retryTarget === 'upload' ? 'Upload rejected' : 'Connection stopped')}</strong><span>{error}</span></div>}
         </div>
         <footer className="kicko-dialog-footer bridge-footer">
           {phase === 'connect' && <><button type="button" className="secondary-button" onClick={() => handleClose()}>Close</button><button type="button" className="primary-button" disabled={selectedCount === 0} onClick={() => handleConnect()}><FiLogIn /> Connect KICKO account</button></>}
@@ -378,7 +390,7 @@ export default function KickoBridgeDialog({ visible, project, onClose }: Props) 
           {phase === 'transferring' && <button type="button" className="secondary-button danger-button" onClick={() => handleClose()}><FiX /> Cancel transfer</button>}
           {phase === 'subscription_required' && <><button type="button" className="secondary-button" onClick={openPricing}><FiExternalLink /> View Founder Beta</button><button type="button" className="primary-button" onClick={() => handleFreshConnection()}><FiRefreshCw /> Try with active plan</button></>}
           {phase === 'done' && <><button type="button" className="secondary-button" onClick={() => handleClose()}>Close</button><button type="button" className="primary-button" onClick={openKicko}><FiExternalLink /> Open in KICKO</button></>}
-          {phase === 'error' && <>{retryTarget !== 'cancel' && <button type="button" className="secondary-button" onClick={() => handleClose()}>Close</button>}<button type="button" className="primary-button" onClick={() => handleRetry()}><FiRefreshCw /> {retryTarget === 'cancel' ? 'Try cancelling again' : 'Try again'}</button></>}
+          {phase === 'error' && <>{retryTarget !== 'cancel' && <button type="button" className="secondary-button" onClick={() => handleClose()}>{retryAllowed ? 'Close' : 'Close and clean up'}</button>}{retryAllowed && <button type="button" className="primary-button" onClick={() => handleRetry()}><FiRefreshCw /> {retryTarget === 'cancel' ? 'Try cancelling again' : 'Try again'}</button>}</>}
         </footer>
       </section>
     </div>

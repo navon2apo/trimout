@@ -39,8 +39,16 @@ describe('KICKO handoff transport', () => {
     const inspected = await inspectKickoFile(filePath);
     let receivedBody = '';
     let receivedType = '';
+    let receivedGrantId = '';
+    let receivedGrantVersion = '';
+    let receivedHandoffId = '';
+    let receivedSha256 = '';
     const server = createServer((request, response) => {
       receivedType = String(request.headers['content-type'] || '');
+      receivedGrantId = String(request.headers['x-amz-meta-trimout-grant-id'] || '');
+      receivedGrantVersion = String(request.headers['x-amz-meta-trimout-grant-version'] || '');
+      receivedHandoffId = String(request.headers['x-amz-meta-trimout-handoff-id'] || '');
+      receivedSha256 = String(request.headers['x-amz-meta-trimout-sha256'] || '');
       request.setEncoding('utf8');
       request.on('data', (chunk) => { receivedBody += chunk; });
       request.on('end', () => { response.statusCode = 200; response.end(); });
@@ -53,12 +61,22 @@ describe('KICKO handoff transport', () => {
         operationId: 'upload_test_1',
         filePath,
         uploadUrl: `http://127.0.0.1:${address.port}/signed`,
-        headers: { 'Content-Type': 'video/mp4' },
+        headers: {
+          'Content-Type': 'video/mp4',
+          'x-amz-meta-trimout-grant-id': 'grant-123',
+          'x-amz-meta-trimout-grant-version': '1',
+          'x-amz-meta-trimout-handoff-id': 'handoff-123',
+          'x-amz-meta-trimout-sha256': inspected.sha256,
+        },
         expectedSizeBytes: inspected.sizeBytes,
         expectedMtimeMs: inspected.mtimeMs,
       }, { allowInsecureLoopback: true })).resolves.toEqual({ status: 200 });
       expect(receivedBody).toBe('exact-upload-body');
       expect(receivedType).toBe('video/mp4');
+      expect(receivedGrantId).toBe('grant-123');
+      expect(receivedGrantVersion).toBe('1');
+      expect(receivedHandoffId).toBe('handoff-123');
+      expect(receivedSha256).toBe(inspected.sha256);
     } finally {
       await new Promise<void>((resolve, reject) => server.close((error) => (error ? reject(error) : resolve())));
     }
