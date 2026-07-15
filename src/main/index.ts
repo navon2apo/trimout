@@ -181,6 +181,7 @@ function createWindow() {
 
   mainWindow = new BrowserWindow({
     ...savedBounds.options,
+    ...(isDev ? { icon: fileURLToPath(new URL('../../icon-build/app.ico', import.meta.url)) } : {}),
     darkTheme: true,
     webPreferences: {
       contextIsolation: false,

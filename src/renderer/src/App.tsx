@@ -4082,6 +4082,7 @@ function App() {
                   playbackRate={playbackRate}
                   currentFrame={currentFrame}
                   playbackMode={playbackMode}
+                  transportCenterOffset={((showLeftBar ? leftBarWidth : 0) - rightBarWidth) / 2}
                 />
               </div>
 
