@@ -30,7 +30,6 @@ import type { UserSettingsContextType, AppContextType, SegColorsContextType } fr
 import { UserSettingsContext, SegColorsContext, AppContext } from './contexts';
 
 import NoFileLoaded from './NoFileLoaded';
-import TranscriptPanel from './components/TranscriptPanel';
 import ClipsPanel from './components/ClipsPanel';
 import ActionPickerModal, { type SoccerAction } from './components/ActionPickerModal';
 import LegalDialog from './components/LegalDialog';
@@ -42,7 +41,6 @@ import ProjectReviewDialog from './components/ProjectReviewDialog';
 import KickoBridgeDialog from './components/KickoBridgeDialog';
 import FinishDestinationDialog from './components/FinishDestinationDialog';
 import { compressClip, QUALITY_PRESETS, type QualityPreset, type AspectRatio, type FitMode } from './util/qualityPresets';
-import FEATURES from './util/features';
 import MediaSourcePlayer from './MediaSourcePlayer';
 import TopMenu from './TopMenu';
 import LastCommands from './LastCommands';
@@ -159,7 +157,6 @@ function App() {
   // Per project state
   // ─── QuickCut (✂️ button) ─────────────────────────────────────────────────
   const [quickCutDuration, setQuickCutDuration] = useState(20); // default 20s forward
-  const [showTranscript, setShowTranscript] = useState(false);
 
   // ─── Soccer player & action ────────────────────────────────────────────────
   const [playerName, setPlayerName] = useState('');
@@ -3621,42 +3618,6 @@ function App() {
                       <div style={{ fontSize: 10, color: 'rgba(251,191,36,0.7)', marginTop: 4, direction: 'ltr' }}>
                         Add a player name to keep exported files organized
                       </div>
-                    )}
-                  </div>
-                  )}
-
-                  {/* ── Transcript toggle — gated by FEATURES.transcript flag ── */}
-                  {FEATURES.transcript && (
-                  <div style={{ borderBottom: '1px solid rgba(255,255,255,0.07)', flexShrink: 0 }}>
-                    <button
-                      type="button"
-                      onClick={() => setShowTranscript((v) => !v)}
-                      style={{
-                        width: '100%',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'space-between',
-                        padding: '9px 14px',
-                        background: 'none',
-                        border: 'none',
-                        cursor: 'pointer',
-                        color: showTranscript ? '#38bdf8' : 'rgba(148,163,184,0.7)',
-                        fontSize: 11.5,
-                        fontWeight: 700,
-                        letterSpacing: '0.05em',
-                        transition: 'color 0.15s',
-                      }}
-                    >
-                      <span>📝 Transcript</span>
-                      <span style={{ fontSize: 10, opacity: 0.6 }}>{showTranscript ? '▲' : '▼'}</span>
-                    </button>
-
-                    {showTranscript && isFileOpened && filePath != null && (
-                      <TranscriptPanel
-                        filePath={filePath}
-                        onSeek={seekAbs}
-                        onApplySegments={(segs) => loadCutSegments({ segments: segs, append: false })}
-                      />
                     )}
                   </div>
                   )}

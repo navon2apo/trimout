@@ -212,7 +212,7 @@ class QrShareServer {
       try { await this.stop(); } catch (err) { logger.warn('expire stop failed', err); }
     }, ttlMs);
 
-    logger.info('qrShare started', { url, fileName, fileSize: stat.size, port });
+    logger.info('qrShare started', { fileName, fileSize: stat.size, port });
     this.emit({ status: 'ready' });
     return this.session;
   }

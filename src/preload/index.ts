@@ -14,7 +14,5 @@ const apiProxy = new Proxy(
   },
 );
 
-// todo use contextBridge instead once we get rid of @electron/remote
-// @ts-expect-error we don't need to type this
+// @ts-expect-error the inherited renderer still runs in the main world
 window.electron = apiProxy;
-// contextBridge.exposeInMainWorld('electron', apiProxy);

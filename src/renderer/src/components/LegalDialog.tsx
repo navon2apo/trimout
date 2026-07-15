@@ -122,8 +122,8 @@ function PrivacyContent() {
 
       <h3 style={H_STYLE}>4. Optional Online Features</h3>
       <p style={SECTION_STYLE}>
-        Features such as downloading a video from a URL, cloud transcription, or
-        continuing in KICKO require a network connection and send the information
+        Features such as downloading a video from a URL or continuing in KICKO
+        require a network connection and send the information
         needed to the service you explicitly choose. TrimOut does not perform an
         automatic software update check.
       </p>

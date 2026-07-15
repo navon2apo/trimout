@@ -96,7 +96,7 @@ export interface VideoInfo {
  */
 export async function listVideoFormats(url: string, onBootstrap?: () => void): Promise<VideoInfo> {
   const wrap = await getWrap(onBootstrap);
-  logger.info('yt-dlp listing formats', url);
+  logger.info('yt-dlp listing formats');
 
   // Run yt-dlp --dump-json and capture stdout as JSON
   const stdout: string = await new Promise((resolve, reject) => {
@@ -210,7 +210,7 @@ export async function downloadVideo(
 
   // Output template: title.ext — sanitised
   const outTemplate = join(outDir, '%(title)s.%(ext)s');
-  logger.info('yt-dlp download', url, outDir, 'format:', formatSelector ?? 'default');
+  logger.info('yt-dlp download', outDir, 'format:', formatSelector ?? 'default');
 
   let lastFile = '';
 
