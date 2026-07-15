@@ -63,7 +63,7 @@ import Working from './components/Working';
 import OutputFormatSelect from './components/OutputFormatSelect';
 import * as Dialog from './components/Dialog';
 
-import { loadMifiLink, runStartupCheck } from './mifi';
+import { runStartupCheck } from './startupCheck';
 import { darkModeTransition } from './colors';
 import { getSegColor } from './util/colors';
 import type {
@@ -83,7 +83,7 @@ import { exportEdlFile, readEdlFile, loadLlcProject, askForEdlImport } from './e
 import { formatYouTube, getFrameCountRaw, formatTsvHuman } from './edlFormats';
 import {
   getOutPath, getOutDir,
-  isStoreBuild, dragPreventer,
+  dragPreventer,
   havePermissionToReadFile, resolvePathIfNeeded, getPathReadAccessError, findExistingHtml5FriendlyFile,
   isOutOfSpaceError, readFileSize, readFileSizes, checkFileSizes, setDocumentTitle, readVideoTs, readDirRecursively, getImportProjectType,
   calcShouldShowWaveform, calcShouldShowKeyframes, mediaSourceQualities, isExecaError, getStdioString,
@@ -143,7 +143,7 @@ const electron = window.require('electron');
 const { lstat } = window.require('fs/promises');
 const { parse: parsePath, join: pathJoin, basename, dirname } = window.require('path');
 
-const { hasDisabledNetworking, pathToFileURL, lossyMode, isLinux } = window.require('@electron/remote').require('./index.js');
+const { pathToFileURL, lossyMode, isLinux } = window.require('@electron/remote').require('./index.js');
 
 
 const hevcPlaybackSupportedPromise = doesPlayerSupportHevcPlayback();
@@ -329,7 +329,6 @@ function App() {
   const [settingsVisible, setSettingsVisible] = useState(false);
   const [tunerVisible, setTunerVisible] = useState<TunerType>();
   const [keyboardShortcutsVisible, setKeyboardShortcutsVisible] = useState(false);
-  const [mifiLink, setMifiLink] = useState<unknown>();
   const [alwaysConcatMultipleFiles, setAlwaysConcatMultipleFiles] = useState(false);
   // Legacy LosslessCut segment-tags editing — state is set via keyboard shortcut but no UI reads it.
   // Kept to avoid breaking the keyBindings action; safe to remove if/when tags UI is dropped.
@@ -3188,10 +3187,6 @@ function App() {
   }, [setWaveformMode]);
 
   useEffect(() => {
-    if (!isStoreBuild && !hasDisabledNetworking()) loadMifiLink().then(setMifiLink);
-  }, []);
-
-  useEffect(() => {
     (async () => {
       setFfmpegInfo(await runStartupCheck({ onError: ({ title, message }) => setGenericError({ title, err: message }) }));
     })();
@@ -3278,7 +3273,6 @@ function App() {
                 <div style={{ position: 'relative', flexGrow: 1, overflow: 'hidden' }} ref={videoContainerRef}>
                   {!isFileOpened && (
                     <NoFileLoaded
-                      mifiLink={mifiLink}
                       currentCutSeg={currentCutSeg}
                       onClick={openFilesDialog}
                       darkMode={darkMode}

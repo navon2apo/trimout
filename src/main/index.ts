@@ -31,7 +31,6 @@ import HttpServer from './httpServer.js';
 import isDev from './isDev.js';
 import isStoreBuild from './isStoreBuild.js';
 import { getAboutPanelOptions } from './aboutPanel.js';
-import { checkNewVersion } from './updateChecker.js';
 import * as i18nCommon from './i18nCommon.js';
 import './i18n.js';
 import type { ApiActionRequest } from '../common/types.js';
@@ -94,8 +93,6 @@ let mainWindow: BrowserWindow | null;
 
 let askBeforeClose = false;
 let rendererReady = false;
-let newVersion: string | undefined;
-let disableNetworking: boolean;
 
 const openFiles = (paths: string[]) => mainWindow!.webContents.send('openFiles', paths);
 
@@ -248,7 +245,7 @@ function createWindow() {
 
 function updateMenu() {
   assert(mainWindow);
-  menu({ app, mainWindow, newVersion, isStoreBuild });
+  menu({ app, mainWindow });
 }
 
 async function changeLanguage(language: string | null) {
@@ -435,8 +432,6 @@ async function init() {
     if (filesToOpen.length === 0) filesToOpen = argv._.map(String);
     const { settingsJson } = argv;
 
-    ({ disableNetworking } = argv);
-
     if (settingsJson != null) {
       logger.info('initializing settings', settingsJson);
       Object.entries(JSON5.parse(settingsJson)).forEach(([key, value]) => {
@@ -466,13 +461,6 @@ async function init() {
     // will also updateMenu and set about panel options
     await changeLanguage(language);
 
-    const enableUpdateCheck = configStore.get('enableUpdateCheck');
-
-    if (!disableNetworking && enableUpdateCheck && !isStoreBuild) {
-      newVersion = await checkNewVersion();
-      // newVersion = '1.2.3';
-      if (newVersion) updateMenu();
-    }
   } catch (err) {
     logger.error('Failed to initialize', err);
   }
@@ -490,8 +478,6 @@ function quitApp() {
   // allow HTTP API to respond etc.
   timers.setTimeout(1000).then(() => electron.app.quit());
 }
-
-const hasDisabledNetworking = () => !!disableNetworking;
 
 const setProgressBar = (v: number) => mainWindow?.setProgressBar(v);
 
@@ -552,7 +538,6 @@ const remoteApiLegacy = {
   isDev,
   lossyMode,
   pathToFileURL,
-  hasDisabledNetworking,
 };
 
 export type RemoteApiLegacy = typeof remoteApiLegacy;

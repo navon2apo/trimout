@@ -46,7 +46,7 @@
   ],
   "repository": {
     "type": "git",
-    "url": "https://github.com/mifi/lossless-cut.git"
+    "url": "https://github.com/navon2apo/trimout.git"
   },
   "license": "GPL-2.0-only",
   "devDependencies": {
@@ -147,7 +147,6 @@
   },
   "dependencies": {
     "@electron/remote": "^2.1.3",
-    "@octokit/core": "7.0.6",
     "@xenova/transformers": "^2.17.2",
     "cue-parser": "^0.3.0",
     "electron-devtools-installer": "^4.0.0",
@@ -182,7 +181,7 @@
     "asar": {
       "smartUnpack": false
     },
-    "appId": "no.mifi.losslesscut",
+    "appId": "com.kicko.trimout",
     "artifactName": "${productName}-${os}-${arch}.${ext}",
     "extraResources": [
       {
@@ -193,7 +192,7 @@
     "mac": {
       "hardenedRuntime": true,
       "notarize": true,
-      "appId": "no.mifi.losslesscut-mac",
+      "appId": "com.kicko.trimout",
       "category": "public.app-category.productivity",
       "target": [
         {
@@ -334,16 +333,8 @@
           "target": "7z"
         },
         {
-          "arch": "x64",
-          "target": "appx"
-        },
-        {
           "arch": "arm64",
           "target": "7z"
-        },
-        {
-          "arch": "arm64",
-          "target": "appx"
         }
       ],
       "extraResources": [
@@ -450,15 +441,8 @@
         }
       ]
     },
-    "appx": {
-      "artifactName": "${productName}-${os}-${arch}-DONT-USE-THIS-FILE.${ext}",
-      "applicationId": "LosslessCut",
-      "identityName": "57275mifi.no.LosslessCut",
-      "publisher": "CN=2C479316-22A8-4D63-BC38-F0FB9AB0B974",
-      "publisherDisplayName": "mifi.no"
-    },
     "linux": {
-      "executableName": "losslesscut",
+      "executableName": "trimout",
       "extraResources": [
         {
           "from": "ffmpeg/linux-${arch}/lib",

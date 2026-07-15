@@ -18,7 +18,6 @@ const container: React.CSSProperties = {
 };
 
 function NoFileLoaded({ onClick, onUrlDownload }: {
-  mifiLink: unknown,
   currentCutSeg: StateSegment | undefined,
   onClick: () => void,
   darkMode?: boolean,
