@@ -1,11 +1,11 @@
 {
   "name": "trimout",
   "productName": "KICKO TrimOut",
-  "description": "Trim any video, mark highlights, export clips instantly — no rendering, no waiting.",
+  "description": "Cut and organize soccer plays locally, then continue selected clips in KICKO.",
   "copyright": "Copyright © 2026 Navon Amos. Based on LosslessCut © Mikael Finstad (GPL-2.0)",
-  "version": "1.1.1",
+  "version": "1.2.0",
   "main": "./out/main/index.js",
-  "homepage": "./",
+  "homepage": "https://github.com/navon2apo/trimout",
   "type": "module",
   "scripts": {
     "clean": "rimraf dist out common-ts-dist main-ts-dist build-resources icon-build",
@@ -23,7 +23,9 @@
     "check": "yarn tsc && yarn lint && yarn test run && yarn build && yarn check-licenses && yarn scan-i18n && yarn dedupe --check && yarn generate-docs",
     "pack-mac": "yarn build && electron-builder --mac dmg",
     "pack-mas-dev": "yarn build && electron-builder --mac mas-dev -c.mas.provisioningProfile=LosslessCut_Dev.provisionprofile -c.mas.identity='Mikael Finstad (JH4PH8B3C8)'",
-    "pack-win": "yarn build && tsx script/verifyFfmpegBundle.ts win32-x64 && electron-builder --win zip --x64",
+    "pack-win": "yarn build && tsx script/verifyFfmpegBundle.ts win32-x64 && electron-builder --win nsis --x64",
+    "pack-win-portable": "yarn build && tsx script/verifyFfmpegBundle.ts win32-x64 && electron-builder --win zip --x64",
+    "release-win": "tsx script/verifyWindowsSigningEnv.ts && yarn build && tsx script/verifyFfmpegBundle.ts win32-x64 && electron-builder --win nsis --x64 -c.forceCodeSigning=true",
     "postinstall": "electron-builder install-app-deps",
     "version": "node script/postversion.ts && git add no.mifi.losslesscut.appdata.xml",
     "pack-linux": "yarn build && electron-builder --linux",
@@ -181,7 +183,15 @@
       "smartUnpack": false
     },
     "appId": "com.kicko.trimout",
-    "artifactName": "${productName}-${os}-${arch}.${ext}",
+    "artifactName": "KICKO-TrimOut-${version}-${os}-${arch}.${ext}",
+    "electronFuses": {
+      "runAsNode": false,
+      "enableCookieEncryption": true,
+      "enableNodeOptionsEnvironmentVariable": false,
+      "enableNodeCliInspectArguments": false,
+      "enableEmbeddedAsarIntegrityValidation": true,
+      "onlyLoadAppFromAsar": true
+    },
     "extraResources": [
       {
         "from": "locales",
@@ -329,11 +339,7 @@
       "target": [
         {
           "arch": "x64",
-          "target": "7z"
-        },
-        {
-          "arch": "arm64",
-          "target": "7z"
+          "target": "nsis"
         }
       ],
       "extraResources": [
@@ -439,6 +445,22 @@
           "role": "Viewer"
         }
       ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowElevation": true,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "KICKO TrimOut",
+      "uninstallDisplayName": "KICKO TrimOut ${version}",
+      "deleteAppDataOnUninstall": false,
+      "runAfterFinish": true,
+      "installerIcon": "icon-build/app.ico",
+      "uninstallerIcon": "icon-build/app.ico",
+      "license": "LICENSE",
+      "artifactName": "KICKO-TrimOut-Setup-${version}-${arch}.${ext}"
     },
     "linux": {
       "executableName": "trimout",
