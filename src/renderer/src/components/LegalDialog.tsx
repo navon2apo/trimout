@@ -35,41 +35,48 @@ function TermsContent() {
         Welcome to KICKO TrimOut. By using the app, you agree to the following terms.
       </p>
 
-      <h3 style={H_STYLE}>1. License</h3>
+      <h3 style={H_STYLE}>1. Open-Source License</h3>
       <p style={SECTION_STYLE}>
-        Purchasing KICKO TrimOut grants you a personal, non-exclusive license to install
-        and use the app on your computers. You may not distribute, sell, or transfer
-        your license key to others.
+        KICKO TrimOut is free to download and use under the GNU General Public License
+        version 2. The corresponding source code and license notice are available from
+        the TrimOut source repository.
       </p>
 
-      <h3 style={H_STYLE}>2. Content Use</h3>
+      <h3 style={H_STYLE}>2. Optional KICKO Cloud Service</h3>
+      <p style={SECTION_STYLE}>
+        Local editing does not require a KICKO account. Continuing a project in KICKO is
+        optional and requires an eligible KICKO account. KICKO subscriptions and cloud
+        services are governed by their separate account and service terms.
+      </p>
+
+      <h3 style={H_STYLE}>3. Content Use</h3>
       <p style={SECTION_STYLE}>
         You are solely responsible for the content you import and edit in the app.
         You must make sure you have the required rights to use the video files and
         consent from anyone appearing in them, especially when minors are involved.
       </p>
 
-      <h3 style={H_STYLE}>3. Limitation of Liability</h3>
+      <h3 style={H_STYLE}>4. Limitation of Liability</h3>
       <p style={SECTION_STYLE}>
         KICKO TrimOut is provided &quot;as is&quot;. We are not responsible for data loss,
         damaged files, or indirect damage caused by using the software. Keep backup
         copies of your original files before editing.
       </p>
 
-      <h3 style={H_STYLE}>4. Third-Party Components</h3>
+      <h3 style={H_STYLE}>5. Third-Party Components</h3>
       <p style={SECTION_STYLE}>
         KICKO TrimOut is based on LosslessCut by Mikael Finstad (GPL-2.0 license) and
         uses FFmpeg. Third-party components are governed by their own licenses.
       </p>
 
-      <h3 style={H_STYLE}>5. Updates and Service Availability</h3>
+      <h3 style={H_STYLE}>6. Updates and Service Availability</h3>
       <p style={SECTION_STYLE}>
         We may release updates from time to time. Online services are not guaranteed
         to remain available. The core app works locally and does not require an
         internet connection for basic editing.
       </p>
 
-      <h3 style={H_STYLE}>6. Support</h3>
+      <h3 style={H_STYLE}>7. Support</h3>
       <p style={SECTION_STYLE}>
         For issues and requests, contact: info@demente-show.com
       </p>
@@ -89,37 +96,43 @@ function PrivacyContent() {
         and what is not.
       </p>
 
-      <h3 style={H_STYLE}>1. Local Processing Only</h3>
+      <h3 style={H_STYLE}>1. Local Editing by Default</h3>
       <p style={SECTION_STYLE}>
-        All video editing happens on your computer. Your video files, generated
-        clips, names, and selected actions <strong>are not sent to any external server</strong>.
+        Video selection, cutting, categorization, and local export happen on your
+        computer. Original game videos remain local unless you independently upload
+        them elsewhere.
       </p>
 
       <h3 style={H_STYLE}>2. Locally Stored Data</h3>
       <p style={SECTION_STYLE}>
         The app stores the following on your computer:
         <br />- User settings, such as export folder and preferred quality
-        <br />- Software license data
-        <br />- A metadata.json file next to exports, if you choose to create one
+        <br />- TrimOut project files and local file references
+        <br />- Export metadata, when created as part of your project
       </p>
 
-      <h3 style={H_STYLE}>3. License Check</h3>
+      <h3 style={H_STYLE}>3. Optional KICKO Transfer</h3>
       <p style={SECTION_STYLE}>
-        On first launch, KICKO TrimOut may verify your license with the distribution
-        server. Only the license key, device identifier hash, and app version are
-        sent. No additional personal information is collected.
+        Nothing is uploaded to KICKO until you choose the KICKO destination, sign in,
+        approve the connection, and start the transfer. TrimOut then sends only the
+        selected rendered clips and the project metadata needed to preserve their
+        names, categories, and order. KICKO stores and processes that data under the
+        privacy terms for your KICKO account.
       </p>
 
-      <h3 style={H_STYLE}>4. Update Checks</h3>
+      <h3 style={H_STYLE}>4. Optional Online Features</h3>
       <p style={SECTION_STYLE}>
-        The app may occasionally check whether a new version is available. This
-        check is anonymous and not personally identifying.
+        Features such as downloading a video from a URL, cloud transcription, or
+        continuing in KICKO require a network connection and send the information
+        needed to the service you explicitly choose. TrimOut does not perform an
+        automatic software update check.
       </p>
 
       <h3 style={H_STYLE}>5. Cookies and Tracking</h3>
       <p style={SECTION_STYLE}>
-        There are no cookies, no analytics, and no third-party services tracking
-        your app usage.
+        The desktop app does not use cookies or analytics to track local editing.
+        KICKO and other optional online services may process account and request data
+        according to their own privacy policies.
       </p>
 
       <h3 style={H_STYLE}>6. Children</h3>

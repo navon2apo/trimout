@@ -380,7 +380,6 @@ export default function useUserSettingsRoot() {
     setCaptureFrameQuality,
     setCaptureFrameFileNameFormat,
     setEnableNativeHevc,
-    setEnableUpdateCheck,
     setCleanupChoices,
     setAllowMultipleInstances,
     toggleDarkMode,

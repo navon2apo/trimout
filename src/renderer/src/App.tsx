@@ -30,7 +30,6 @@ import type { UserSettingsContextType, AppContextType, SegColorsContextType } fr
 import { UserSettingsContext, SegColorsContext, AppContext } from './contexts';
 
 import NoFileLoaded from './NoFileLoaded';
-import LicenseGate from './components/LicenseGate';
 import TranscriptPanel from './components/TranscriptPanel';
 import ClipsPanel from './components/ClipsPanel';
 import ActionPickerModal, { type SoccerAction } from './components/ActionPickerModal';
@@ -156,21 +155,6 @@ function emitEvent(appEvent: AppEvent) {
 
 function App() {
   const { t } = useTranslation();
-
-  // ─── License gate ────────────────────────────────────────────────────────
-  const [licenseChecked, setLicenseChecked] = useState(false);
-  const [licenseOk, setLicenseOk] = useState(false);
-  const [machineId, setMachineId] = useState('');
-
-  useEffect(() => {
-    (async () => {
-      const mid = await window.electron.getMachineFingerprint();
-      setMachineId(mid);
-      const result = await window.electron.checkLicense();
-      setLicenseOk(result.ok);
-      setLicenseChecked(true);
-    })();
-  }, []);
 
   // Per project state
   // ─── QuickCut (✂️ button) ─────────────────────────────────────────────────
@@ -3220,19 +3204,6 @@ function App() {
   ].join(' '), [darkMode, prefersReducedMotion]);
 
   const rootStyle = useMemo<CSSProperties>(() => ({ ...baseColorStyle, display: 'flex', flexDirection: 'column', height: '100vh', transition: darkModeTransition }), [baseColorStyle]);
-
-  // Show nothing while checking license (avoids flash of main UI)
-  if (!licenseChecked) return null;
-
-  // Show gate if not activated
-  if (!licenseOk) {
-    return (
-      <LicenseGate
-        machineId={machineId}
-        onActivated={() => setLicenseOk(true)}
-      />
-    );
-  }
 
   return (
     <MotionConfig reducedMotion={reducedMotion}>

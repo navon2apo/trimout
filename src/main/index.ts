@@ -41,7 +41,6 @@ import { detectSpeechSegments, detectEnergyPeaks, detectSceneChanges } from './a
 import { downloadVideo, isSupportedUrl, listVideoFormats } from './ytdlp.js';
 import qrShare from './qrShare.js';
 import { transcribeVideo } from './whisper.js';
-import { activateLicense, checkLicense, deactivateLicense, getMachineFingerprint } from './license.js';
 import { cancelKickoFileUpload, inspectKickoFile, uploadKickoFile } from './kickoHandoffTransport.js';
 import { createKickoHandoffSessionStore } from './kickoHandoffSessionStore.js';
 
@@ -504,11 +503,6 @@ const remoteApi = {
   // API key management
   getApiKey,
   setApiKey,
-  // License system
-  activateLicense,
-  checkLicense,
-  deactivateLicense,
-  getMachineFingerprint,
   // KICKO handoff files stay in the main process so large videos are streamed.
   inspectKickoFile,
   uploadKickoFile,
