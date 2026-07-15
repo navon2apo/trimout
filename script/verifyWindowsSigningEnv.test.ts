@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { verifyWindowsSigningEnv } from './verifyWindowsSigningEnv';
+import { verifyWindowsSigningEnv } from './verifyWindowsSigningEnv.js';
 
 describe('Windows signing preflight', () => {
   it('fails closed when signing credentials are missing', () => {

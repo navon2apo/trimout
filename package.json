@@ -26,6 +26,7 @@
     "pack-win": "yarn build && tsx script/verifyFfmpegBundle.ts win32-x64 && electron-builder --win nsis --x64",
     "pack-win-portable": "yarn build && tsx script/verifyFfmpegBundle.ts win32-x64 && electron-builder --win zip --x64",
     "release-win": "tsx script/verifyWindowsSigningEnv.ts && yarn build && tsx script/verifyFfmpegBundle.ts win32-x64 && electron-builder --win nsis --x64 -c.forceCodeSigning=true",
+    "verify-packaged-win": "tsx script/verifyPackagedApp.ts",
     "postinstall": "electron-builder install-app-deps",
     "version": "node script/postversion.ts && git add no.mifi.losslesscut.appdata.xml",
     "pack-linux": "yarn build && electron-builder --linux",

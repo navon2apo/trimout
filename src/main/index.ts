@@ -29,7 +29,6 @@ import { appName } from './common.js';
 import attachContextMenu from './contextMenu.js';
 import HttpServer from './httpServer.js';
 import isDev from './isDev.js';
-import isStoreBuild from './isStoreBuild.js';
 import { getAboutPanelOptions } from './aboutPanel.js';
 import * as i18nCommon from './i18nCommon.js';
 import './i18n.js';

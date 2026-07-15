@@ -1,7 +1,7 @@
 // eslint-disable-next-line import/no-extraneous-dependencies
 import { describe, expect, it } from 'vitest';
 
-import { findMissingFfmpegBundleEntries } from './verifyFfmpegBundle';
+import { findMissingFfmpegBundleEntries } from './verifyFfmpegBundle.js';
 
 describe('Windows FFmpeg release bundle', () => {
   it('requires both executables and every runtime DLL family', () => {
