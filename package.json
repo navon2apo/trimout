@@ -32,7 +32,7 @@
     "pack-linux": "yarn build && electron-builder --linux",
     "scan-i18n": "i18next-cli -c i18next.config.scan.ts extract",
     "generate-icon": "mkdirp icon-build build-resources/appx && tsx script/generateIcon.ts",
-    "generate-licenses": "yarn licenses generate-disclaimer -R > licenses.txt && echo '\n\nffmpeg is licensed under GPL v2+:\n\nhttp://www.gnu.org/licenses/old-licenses/gpl-2.0.html' >> licenses.txt",
+    "generate-licenses": "yarn licenses generate-disclaimer -R > licenses.txt && echo '\n\nThe bundled FFmpeg build is licensed under GNU GPL version 3. See FFMPEG-LICENSE.txt and release/FFMPEG-SOURCE.md.' >> licenses.txt",
     "generate-docs": "node script/generateDocs.ts",
     "check-licenses": "node script/checkLicenses.ts",
     "upload-artifacts": "node script/uploadArtifacts.ts"
@@ -213,6 +213,10 @@
       {
         "from": "licenses.txt",
         "to": "licenses.txt"
+      },
+      {
+        "from": "FFMPEG-LICENSE.txt",
+        "to": "FFMPEG-LICENSE.txt"
       }
     ],
     "mac": {

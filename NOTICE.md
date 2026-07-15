@@ -6,6 +6,6 @@ KICKO TrimOut is based on and contains modified code from LosslessCut, copyright
 
 KICKO TrimOut and the modified LosslessCut code are distributed under the GNU General Public License version 2. See `LICENSE` and the corresponding source at https://github.com/navon2apo/trimout.
 
-The Windows package includes FFmpeg and FFprobe GPL builds. FFmpeg source and license information are available at https://ffmpeg.org and https://github.com/mifi/ffmpeg-builds.
+The Windows package includes the FFmpeg and FFprobe build `n8.0-23-gd1f31a829d-20251022`. Its configuration enables GPL version 3 components, and the bundled build is distributed under GNU GPL version 3. See `FFMPEG-LICENSE.txt` and `release/FFMPEG-SOURCE.md`. The binary was repackaged by https://github.com/mifi/ffmpeg-builds from a BtbN FFmpeg build.
 
 Third-party JavaScript dependency notices are listed in `licenses.txt`.

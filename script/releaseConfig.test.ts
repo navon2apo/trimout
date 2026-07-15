@@ -34,6 +34,7 @@ describe('Windows release configuration', () => {
       'NOTICE.md',
       'PRIVACY.md',
       'licenses.txt',
+      'FFMPEG-LICENSE.txt',
     ]));
     expect(packageJson.build.nsis.license).toBe('LICENSE');
   });

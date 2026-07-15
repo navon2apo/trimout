@@ -10,6 +10,8 @@
 - [ ] Installer and application signatures both report `Valid`.
 - [ ] SHA-256 file matches the signed installer.
 - [ ] Source ZIP is created from the exact released commit or tag.
+- [ ] Complete corresponding source for the exact bundled FFmpeg GPLv3 build is available next to the installer.
+- [ ] `FFMPEG-LICENSE.txt` and `release/FFMPEG-SOURCE.md` have been reviewed.
 
 ## Clean Windows Test
 
@@ -29,7 +31,7 @@
 
 ## Gumroad
 
-- [ ] Upload only the signed installer, checksum, and corresponding source archive.
+- [ ] Upload only the signed installer, checksum, TrimOut source archive, and complete FFmpeg corresponding source package.
 - [ ] Disable Gumroad license keys.
 - [ ] Use the English copy in `release/GUMROAD.md`.
 - [ ] Publish links to source, privacy, support, and system requirements.

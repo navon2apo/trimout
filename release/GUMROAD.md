@@ -37,9 +37,10 @@ Included in one Windows installer: KICKO TrimOut, FFmpeg, FFprobe, and required 
 - Signed `KICKO-TrimOut-Setup-1.2.0-x64.exe`.
 - `KICKO-TrimOut-1.2.0-SHA256.txt`.
 - `KICKO-TrimOut-1.2.0-source.zip` for GPL source availability.
+- The complete corresponding source package for the bundled FFmpeg GPLv3 build, as required by `release/FFMPEG-SOURCE.md`.
 - Optional product screenshots and logo assets.
 
-Do not upload the unsigned QA installer. Do not upload certificate files, signing passwords, `.env` files, local KICKO sessions, or private test videos.
+Do not publish until both the TrimOut source archive and complete FFmpeg corresponding source are available next to the binary. Do not upload the unsigned QA installer, certificate files, signing passwords, `.env` files, local KICKO sessions, or private test videos.
 
 ## Support Notes
 

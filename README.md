@@ -58,4 +58,4 @@ Read [PRIVACY.md](PRIVACY.md) for the user-facing data flow and [SECURITY.md](SE
 
 ## Open Source License
 
-KICKO TrimOut is licensed under GPL-2.0-only. It is based on [LosslessCut](https://github.com/mifi/lossless-cut) by Mikael Finstad. The corresponding source code for this version is available in this repository. See [LICENSE](LICENSE), [NOTICE.md](NOTICE.md), and `licenses.txt`.
+KICKO TrimOut is licensed under GPL-2.0-only. It is based on [LosslessCut](https://github.com/mifi/lossless-cut) by Mikael Finstad. The bundled FFmpeg build is a separate GPLv3 component. The corresponding TrimOut source is available in this repository; FFmpeg distribution requirements are tracked in [release/FFMPEG-SOURCE.md](release/FFMPEG-SOURCE.md). See [LICENSE](LICENSE), `FFMPEG-LICENSE.txt`, [NOTICE.md](NOTICE.md), and `licenses.txt`.
