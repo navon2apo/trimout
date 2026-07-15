@@ -194,8 +194,24 @@
     },
     "extraResources": [
       {
-        "from": "locales",
-        "to": "locales"
+        "from": "locales/en",
+        "to": "locales/en"
+      },
+      {
+        "from": "LICENSE",
+        "to": "LICENSE"
+      },
+      {
+        "from": "NOTICE.md",
+        "to": "NOTICE.md"
+      },
+      {
+        "from": "PRIVACY.md",
+        "to": "PRIVACY.md"
+      },
+      {
+        "from": "licenses.txt",
+        "to": "licenses.txt"
       }
     ],
     "mac": {

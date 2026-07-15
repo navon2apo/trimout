@@ -322,10 +322,11 @@ async function init() {
   try {
     logger.info('TrimOut version', app.getVersion(), { isDev });
     await configStore.init({ customConfigDir: argv['configDir'] });
+    configStore.set('language', i18nCommon.fallbackLng);
     logger.info('Initialized config store');
 
     const allowMultipleInstances = configStore.get('allowMultipleInstances');
-    const language = configStore.get('language');
+    const language = i18nCommon.fallbackLng;
 
     if (!allowMultipleInstances && !safeRequestSingleInstanceLock({ argv: process.argv })) {
       logger.info('Found running instance, quitting');
