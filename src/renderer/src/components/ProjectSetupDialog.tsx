@@ -7,12 +7,13 @@ import { SCOUT_ROLES } from '../scoutCatalog';
 interface Props {
   visible: boolean;
   defaultPlayerName: string;
+  defaultName?: string | undefined;
   onCancel: () => void;
   onCreate: (value: { name: string; playerName: string; scoutRole: ScoutRoleId | null }) => void;
 }
 
-function ProjectSetupForm({ defaultPlayerName, onCancel, onCreate }: Omit<Props, 'visible'>) {
-  const [name, setName] = useState('');
+function ProjectSetupForm({ defaultPlayerName, defaultName, onCancel, onCreate }: Omit<Props, 'visible'>) {
+  const [name, setName] = useState(defaultName ?? '');
   const [playerName, setPlayerName] = useState(defaultPlayerName);
   const [scoutRole, setScoutRole] = useState<ScoutRoleId | ''>('');
 
@@ -38,11 +39,12 @@ function ProjectSetupForm({ defaultPlayerName, onCancel, onCreate }: Omit<Props,
           <label htmlFor="project-scout-role">
             <span>Position <small>Optional</small></span>
             <select id="project-scout-role" value={scoutRole} onChange={(event) => setScoutRole(event.target.value as ScoutRoleId | '')}>
-              <option value="">No Scout recommendations</option>
+              <option value="">Continue without a role</option>
               {SCOUT_ROLES.map((role) => <option key={role.id} value={role.id}>{role.label}</option>)}
             </select>
           </label>
-          <p className="form-note">Your original game videos stay on this computer. Only rendered plays are collected in the project.</p>
+          <p className="form-note">Pick a position to get the moves worth capturing for that role (from KICKO&apos;s research) as you catalog. Or continue without one — you can still tag any move freely, including your own.</p>
+          <p className="form-note">Your original game videos stay on this computer. Only the plays you export are collected in the project.</p>
         </div>
         <footer className="kicko-dialog-footer">
           <button type="button" className="secondary-button" onClick={onCancel}>Cancel</button>
@@ -53,7 +55,7 @@ function ProjectSetupForm({ defaultPlayerName, onCancel, onCreate }: Omit<Props,
   );
 }
 
-export default function ProjectSetupDialog({ visible, defaultPlayerName, onCancel, onCreate }: Props) {
+export default function ProjectSetupDialog({ visible, defaultPlayerName, defaultName, onCancel, onCreate }: Props) {
   if (!visible) return null;
-  return <ProjectSetupForm defaultPlayerName={defaultPlayerName} onCancel={onCancel} onCreate={onCreate} />;
+  return <ProjectSetupForm defaultPlayerName={defaultPlayerName} defaultName={defaultName} onCancel={onCancel} onCreate={onCreate} />;
 }

@@ -161,8 +161,11 @@ function App() {
   // ─── Soccer player & action ────────────────────────────────────────────────
   const [playerName, setPlayerName] = useState('');
   const [activeProject, setActiveProject] = useState<TrimoutProject | null>(null);
+  const activeProjectRef = useRef(activeProject);
+  activeProjectRef.current = activeProject;
   const [activeProjectPath, setActiveProjectPath] = useState<string | null>(null);
   const [projectSetupOpen, setProjectSetupOpen] = useState(false);
+  const [projectSetupDefaultName, setProjectSetupDefaultName] = useState('');
   const [projectReviewOpen, setProjectReviewOpen] = useState(false);
   const [kickoBridgeOpen, setKickoBridgeOpen] = useState(false);
   // Pending clip range — set when ✂️ is pressed, consumed when action is picked
@@ -2198,6 +2201,14 @@ function App() {
         getSwal().toast.fire({ icon: 'warning', timer: 10000, text: i18n.t('This file does not have a valid duration. This may cause issues. You can try to fix the file\'s duration from the File menu') });
       }
 
+      // Auto-start a project on the first video so plays are attributed. The setup dialog
+      // doubles as the "choose a role, or continue without" prompt. Skipped when opening an
+      // existing project, or when a project is already active (e.g. adding a second game).
+      if (activeProjectRef.current == null && projectPath == null) {
+        setProjectSetupDefaultName(basename(fp).replace(/\.[^./\\]+$/, ''));
+        setProjectSetupOpen(true);
+      }
+
       // This needs to be last, because it triggers <video> to load the video
       // If not, onVideoError might be triggered before setWorking() has been cleared.
       // https://github.com/mifi/lossless-cut/issues/515
@@ -4073,6 +4084,7 @@ function App() {
               <ProjectSetupDialog
                 visible={projectSetupOpen}
                 defaultPlayerName={playerName}
+                defaultName={projectSetupDefaultName}
                 onCancel={() => {
                   resumeFinishAfterProjectSetupRef.current = false;
                   setProjectSetupOpen(false);
