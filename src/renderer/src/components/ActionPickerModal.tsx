@@ -119,6 +119,13 @@ function ScoutActionCard({ action, role, badge, collected, guideTarget, onClick 
 
 function ActionPickerModal({ visible, playerName, clipDurationSec, scoutRole, scoutContext, actionCounts = {}, onConfirm, onCancel }: Props) {
   const [showSecondary, setShowSecondary] = useState(false);
+  const [customLabel, setCustomLabel] = useState('');
+  const submitCustom = () => {
+    const value = customLabel.trim();
+    if (!value) return;
+    onConfirm({ id: 'custom', label: value });
+    setCustomLabel('');
+  };
   const openingActions = scoutRole
     ? scoutRole.openingPriority
       .map((id) => PRIMARY_ACTIONS.find((action) => action.id === id))
@@ -306,6 +313,29 @@ function ActionPickerModal({ visible, playerName, clipDurationSec, scoutRole, sc
                   </motion.div>
                 )}
               </AnimatePresence>
+            </div>
+
+            {/* Custom label — write your own move, in any language */}
+            <div style={{ padding: '12px 16px', borderTop: '1px solid rgba(255,255,255,0.05)' }}>
+              <div style={{ fontSize: 11, color: 'rgba(148,163,184,0.7)', marginBottom: 7, letterSpacing: '0.02em' }}>Or write your own move</div>
+              <div style={{ display: 'flex', gap: 8 }}>
+                <input
+                  dir="auto"
+                  value={customLabel}
+                  onChange={(e) => setCustomLabel(e.target.value)}
+                  onKeyDown={(e) => { if (e.key === 'Enter') submitCustom(); }}
+                  placeholder="Type a move name — any language"
+                  style={{ flex: 1, minHeight: 38, boxSizing: 'border-box', background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 8, color: '#edf5f7', padding: '0 12px', fontSize: 13, outline: 'none' }}
+                />
+                <button
+                  type="button"
+                  disabled={!customLabel.trim()}
+                  onClick={submitCustom}
+                  style={{ background: customLabel.trim() ? '#d2ff00' : 'rgba(255,255,255,0.06)', color: customLabel.trim() ? '#071018' : 'rgba(148,163,184,0.5)', border: 'none', borderRadius: 8, padding: '0 18px', fontWeight: 700, fontSize: 13, cursor: customLabel.trim() ? 'pointer' : 'default', whiteSpace: 'nowrap' }}
+                >
+                  Add move
+                </button>
+              </div>
             </div>
 
             {/* Footer */}

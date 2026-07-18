@@ -257,6 +257,21 @@ export function mapRecommendedDefaultFormat({ streams, sourceFormat }: { streams
     return { format: 'mov', message: i18n.t('This file contains an audio track that FFmpeg is unable to mux into the MP4 format, so MOV has been auto-selected as the default output format.') };
   }
 
+  // KICKO TrimOut: prefer MP4 output (best for KICKO + phones) when the source is a non-mp4
+  // container (e.g. mkv/webm) whose streams are cleanly mp4-muxable. This is a lossless remux
+  // (stream copy, no re-encode). Anything not mp4-safe keeps its original container.
+  const mp4SafeVideoCodecs = new Set(['h264', 'hevc', 'av1', 'mpeg4', 'mpeg2video', 'mjpeg']);
+  const streamsAreMp4Safe = streams.every((stream) => {
+    if (stream.codec_type === 'video') return mp4SafeVideoCodecs.has(stream.codec_name);
+    if (stream.codec_type === 'audio') return !pcmAudioCodecs.includes(stream.codec_name);
+    if (stream.codec_type === 'subtitle') return stream.codec_name === 'mov_text';
+    return true; // data / attachment streams aren't copied into the output by default
+  });
+  const hasVideoStream = streams.some((stream) => stream.codec_type === 'video');
+  if (sourceFormat != null && !['mp4', 'mov'].includes(sourceFormat) && hasVideoStream && streamsAreMp4Safe) {
+    return { format: 'mp4' };
+  }
+
   return { format: sourceFormat };
 }
 

@@ -182,15 +182,19 @@ function App() {
   }) => {
     const safeName = name.trim().replaceAll(/[<>:"|?*\\/]/g, '').slice(0, 80) || 'KICKO TrimOut Project';
     const remote = window.require('@electron/remote') as typeof import('@electron/remote');
-    const result = await remote.dialog.showSaveDialog({
-      title: 'Create KICKO TrimOut project',
-      defaultPath: pathJoin(remote.app.getPath('documents'), `${safeName}.trimout`),
-      filters: [{ name: 'KICKO TrimOut project', extensions: ['trimout'] }],
-    });
-    if (result.canceled || !result.filePath) return;
+    // Invisible save: the .trimout is an internal working file on the way to KICKO — save it
+    // automatically into a dedicated "KICKO TrimOut Projects" folder in Documents, so the user
+    // is never interrupted by a "save as" dialog.
+    const { mkdir: fsMkdir } = window.require('fs/promises') as { mkdir: (p: string, o?: { recursive?: boolean }) => Promise<void> };
+    const projectsDir = pathJoin(remote.app.getPath('documents'), 'KICKO TrimOut Projects');
+    await fsMkdir(projectsDir, { recursive: true });
+    const now = new Date();
+    const pad = (n: number) => String(n).padStart(2, '0');
+    const stamp = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}_${pad(now.getHours())}-${pad(now.getMinutes())}`;
+    const projectFilePath = pathJoin(projectsDir, `${safeName}_${stamp}.trimout`);
     const project = createTrimoutProject({ name, playerName: projectPlayerName, scoutRole });
-    await saveTrimoutProject(result.filePath, project);
-    setActiveProjectPath(result.filePath);
+    await saveTrimoutProject(projectFilePath, project);
+    setActiveProjectPath(projectFilePath);
     setActiveProject(project);
     setPlayerName(project.playerName);
     setProjectSetupOpen(false);
@@ -1603,6 +1607,34 @@ function App() {
           combinedClip: mergedOutFilePath != null ? basename(mergedOutFilePath) : null,
         };
 
+        // Human-readable catalog (catalog.csv + index.html) — so the exported folder is
+        // understandable at a glance, without opening a single clip. Built from `metadata`.
+        const buildCatalog = (clipSubdir: string) => {
+          const fmtTime = (s: number | null | undefined) => {
+            if (s == null) return '';
+            const m = Math.floor(s / 60); const sec = Math.floor(s % 60);
+            return `${m}:${String(sec).padStart(2, '0')}`;
+          };
+          const csvCell = (v: unknown) => {
+            const str = String(v ?? '');
+            return /[",\n\r]/.test(str) ? `"${str.replaceAll('"', '""')}"` : str;
+          };
+          const esc = (v: unknown) => String(v ?? '').replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;').replaceAll('"', '&quot;');
+          const rows = metadata.clips;
+          const csv = ['#,Move,Action,Player,Time,Duration,Favorite,File',
+            ...rows.map((c) => [c.clipIndex, csvCell(c.actionLabel), csvCell(c.actionType), csvCell(c.playerName), fmtTime(c.startTime), fmtTime(c.duration), c.isFavorite ? 'yes' : '', csvCell(c.fileName)].join(',')),
+          ].join('\r\n');
+          const trs = rows.map((c) => `<tr><td class="n">${c.clipIndex}</td><td class="mv"><a href="${encodeURI(clipSubdir + c.fileName)}">${esc(c.actionLabel || c.fileName)}</a></td><td>${esc(c.playerName || '')}</td><td class="t">${fmtTime(c.startTime)}</td><td class="t">${fmtTime(c.duration)}</td><td class="fav">${c.isFavorite ? '★' : ''}</td></tr>`).join('');
+          const title = esc(metadata.playerName || 'Clip catalog');
+          const html = `<!doctype html><html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Catalog — ${title}</title><style>body{margin:0;background:#03080d;color:#edf5f7;font-family:"Segoe UI",system-ui,Arial,sans-serif;padding:28px}h1{font-size:22px;margin:0 0 4px}.sub{color:#96a9b2;font-size:13px;margin-bottom:20px}table{border-collapse:collapse;width:100%;font-size:14px}th{text-align:left;color:#96a9b2;font-size:11px;text-transform:uppercase;letter-spacing:.08em;padding:8px 12px;border-bottom:1px solid rgba(255,255,255,.12)}td{padding:10px 12px;border-bottom:1px solid rgba(255,255,255,.06)}.n{color:#96a9b2;font-variant-numeric:tabular-nums;width:34px}.t{font-variant-numeric:tabular-nums;color:#96a9b2}.fav{color:#d2ff00;text-align:center}.mv a{color:#edf5f7;text-decoration:none;font-weight:600}.mv a:hover{color:#d2ff00}tr:hover td{background:rgba(255,255,255,.02)}</style></head><body><h1>${title}</h1><div class="sub">${rows.length} clips · exported ${esc(new Date(metadata.exportedAt).toLocaleString())}</div><table><thead><tr><th>#</th><th>Move</th><th>Player</th><th>Time</th><th>Duration</th><th>★</th></tr></thead><tbody>${trs}</tbody></table></body></html>`;
+          return { csv, html };
+        };
+        const writeCatalog = async (destDir: string, clipSubdir: string) => {
+          const { csv, html } = buildCatalog(clipSubdir);
+          await fsWriteFile(pathJoin(destDir, 'catalog.csv'), csv);
+          await fsWriteFile(pathJoin(destDir, 'index.html'), html);
+        };
+
         // 3. Optional ExportPackage folder — only create folders that actually have files
         if (createExportPackage) {
           const mergedExists = mergedOutFilePath != null && await fileExists(mergedOutFilePath);
@@ -1701,10 +1733,13 @@ function App() {
                 isUncertain: s.isUncertain ?? false,
               })),
             }, null, 2));
+            // catalog.csv + index.html — clips live in the clips/ subfolder
+            await writeCatalog(finalRoot, 'clips/');
           }
         } else {
-          // Flat mode — files stayed at the export root, just drop metadata.json
+          // Flat mode — files stayed at the export root, just drop metadata.json + catalog
           await fsWriteFile(pathJoin(exportRootDir, 'metadata.json'), JSON.stringify(metadata, null, 2));
+          await writeCatalog(exportRootDir, '');
           // Track last exported file for QR-share (merged preferred over first separate)
           if (mergedOutFilePath != null && await fileExists(mergedOutFilePath)) {
             setLastExportedFile(mergedOutFilePath);
