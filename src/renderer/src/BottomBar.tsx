@@ -262,7 +262,7 @@ function BottomBar({
   toggleShowThumbnails, toggleWaveformMode, waveformMode, showThumbnails,
   outputPlaybackRate, setOutputPlaybackRate,
   formatTimecode, parseTimecode, playbackRate,
-  currentFrame, playbackMode,
+  currentFrame, playbackMode, transportCenterOffset,
 }: {
   zoom: number,
   setZoom: (fn: (z: number) => number) => void,
@@ -312,6 +312,7 @@ function BottomBar({
   playbackRate: number,
   currentFrame: Frame | undefined,
   playbackMode: PlaybackMode | undefined,
+  transportCenterOffset: number,
 }) {
   const { t } = useTranslation();
   const { getSegColor } = useSegColors();
@@ -450,93 +451,95 @@ function BottomBar({
 
         <div style={{ flexGrow: 1 }} />
 
-        {!simpleMode && (
-          <>
-            <FaStepBackward
-              size={16}
-              style={{ flexShrink: 0 }}
-              title={t('Jump to start of video')}
+        <div style={{ display: 'flex', alignItems: 'center', transform: `translateX(${transportCenterOffset}px)` }}>
+          {!simpleMode && (
+            <>
+              <FaStepBackward
+                size={16}
+                style={{ flexShrink: 0 }}
+                title={t('Jump to start of video')}
+                role="button"
+                onClick={jumpTimelineStart}
+              />
+
+              {renderJumpCutpointButton(-1)}
+
+              <SegmentCutpointButton currentCutSeg={currentCutSeg} side="start" Icon={FaStepBackward} onClick={jumpCutStart} title={t('Jump to current segment\'s start time')} style={{ marginRight: 5 }} />
+            </>
+          )}
+
+          {simpleMode
+            ? <FaCaretLeft style={{ flexShrink: 0, marginRight: 4, cursor: 'pointer' }} size={32} role="button" title={t('One frame back')} onClick={() => shortStep(-1)} />
+            : <SetCutpointButton currentCutSeg={currentCutSegOrDefault} side="start" onClick={setCutStart} title={t('Start current segment at current time')} style={{ marginRight: 5 }} />}
+
+          {!simpleMode && <CutTimeInput disabled={!isFileOpened} darkMode={darkMode} currentCutSeg={currentCutSeg} startTimeOffset={startTimeOffset} seekAbs={seekAbs} cutTime={currentCutSeg?.start} setCutTime={setCutTime} isStart formatTimecode={formatTimecode} parseTimecode={parseTimecode} />}
+
+          {keyframesEnabled && !simpleMode && (
+            <IoMdKey
+              size={25}
               role="button"
-              onClick={jumpTimelineStart}
+              title={t('Seek previous keyframe')}
+              style={{ flexShrink: 0, marginRight: 2, transform: mirrorTransform, ...keyframeStyle }}
+              onClick={() => seekClosestKeyframe(-1)}
             />
+          )}
 
-            {renderJumpCutpointButton(-1)}
+          {!simpleMode && (
+            <FaCaretLeft
+              style={{ flexShrink: 0, marginLeft: -6, marginRight: -4 }}
+              size={28}
+              role="button"
+              title={t('One frame back')}
+              onClick={() => shortStep(-1)}
+            />
+          )}
 
-            <SegmentCutpointButton currentCutSeg={currentCutSeg} side="start" Icon={FaStepBackward} onClick={jumpCutStart} title={t('Jump to current segment\'s start time')} style={{ marginRight: 5 }} />
-          </>
-        )}
+          <div role="button" onClick={() => togglePlay()} style={{ ...playStyle, margin: '.1em .1em 0 .2em', background: primaryColor }}>
+            <PlayPause style={{ fontSize: '.9em' }} />
+          </div>
 
-        {simpleMode
-          ? <FaCaretLeft style={{ flexShrink: 0, marginRight: 4, cursor: 'pointer' }} size={32} role="button" title={t('One frame back')} onClick={() => shortStep(-1)} />
-          : <SetCutpointButton currentCutSeg={currentCutSegOrDefault} side="start" onClick={setCutStart} title={t('Start current segment at current time')} style={{ marginRight: 5 }} />}
+          {!simpleMode && (
+            <FaCaretRight
+              style={{ flexShrink: 0, marginRight: -6, marginLeft: -4 }}
+              size={28}
+              role="button"
+              title={t('One frame forward')}
+              onClick={() => shortStep(1)}
+            />
+          )}
 
-        {!simpleMode && <CutTimeInput disabled={!isFileOpened} darkMode={darkMode} currentCutSeg={currentCutSeg} startTimeOffset={startTimeOffset} seekAbs={seekAbs} cutTime={currentCutSeg?.start} setCutTime={setCutTime} isStart formatTimecode={formatTimecode} parseTimecode={parseTimecode} />}
+          {keyframesEnabled && !simpleMode && (
+            <IoMdKey
+              style={{ flexShrink: 0, marginLeft: 2, ...keyframeStyle }}
+              size={25}
+              role="button"
+              title={t('Seek next keyframe')}
+              onClick={() => seekClosestKeyframe(1)}
+            />
+          )}
 
-        {keyframesEnabled && !simpleMode && (
-          <IoMdKey
-            size={25}
-            role="button"
-            title={t('Seek previous keyframe')}
-            style={{ flexShrink: 0, marginRight: 2, transform: mirrorTransform, ...keyframeStyle }}
-            onClick={() => seekClosestKeyframe(-1)}
-          />
-        )}
+          {!simpleMode && <CutTimeInput disabled={!isFileOpened} darkMode={darkMode} currentCutSeg={currentCutSeg} startTimeOffset={startTimeOffset} seekAbs={seekAbs} cutTime={currentCutSeg?.end} setCutTime={setCutTime} formatTimecode={formatTimecode} parseTimecode={parseTimecode} />}
 
-        {!simpleMode && (
-          <FaCaretLeft
-            style={{ flexShrink: 0, marginLeft: -6, marginRight: -4 }}
-            size={28}
-            role="button"
-            title={t('One frame back')}
-            onClick={() => shortStep(-1)}
-          />
-        )}
+          {simpleMode
+            ? <FaCaretRight style={{ flexShrink: 0, marginLeft: 4, cursor: 'pointer' }} size={32} role="button" title={t('One frame forward')} onClick={() => shortStep(1)} />
+            : <SetCutpointButton currentCutSeg={currentCutSeg} side="end" onClick={setCutEnd} title={t('End current segment at current time')} style={{ marginLeft: 5 }} />}
 
-        <div role="button" onClick={() => togglePlay()} style={{ ...playStyle, margin: '.1em .1em 0 .2em', background: primaryColor }}>
-          <PlayPause style={{ fontSize: '.9em' }} />
+          {!simpleMode && (
+            <>
+              <SegmentCutpointButton currentCutSeg={currentCutSeg} side="end" Icon={FaStepForward} onClick={jumpCutEnd} title={t('Jump to current segment\'s end time')} style={{ marginLeft: 5 }} />
+
+              {renderJumpCutpointButton(1)}
+
+              <FaStepForward
+                size={16}
+                style={{ flexShrink: 0 }}
+                title={t('Jump to end of video')}
+                role="button"
+                onClick={jumpTimelineEnd}
+              />
+            </>
+          )}
         </div>
-
-        {!simpleMode && (
-          <FaCaretRight
-            style={{ flexShrink: 0, marginRight: -6, marginLeft: -4 }}
-            size={28}
-            role="button"
-            title={t('One frame forward')}
-            onClick={() => shortStep(1)}
-          />
-        )}
-
-        {keyframesEnabled && !simpleMode && (
-          <IoMdKey
-            style={{ flexShrink: 0, marginLeft: 2, ...keyframeStyle }}
-            size={25}
-            role="button"
-            title={t('Seek next keyframe')}
-            onClick={() => seekClosestKeyframe(1)}
-          />
-        )}
-
-        {!simpleMode && <CutTimeInput disabled={!isFileOpened} darkMode={darkMode} currentCutSeg={currentCutSeg} startTimeOffset={startTimeOffset} seekAbs={seekAbs} cutTime={currentCutSeg?.end} setCutTime={setCutTime} formatTimecode={formatTimecode} parseTimecode={parseTimecode} />}
-
-        {simpleMode
-          ? <FaCaretRight style={{ flexShrink: 0, marginLeft: 4, cursor: 'pointer' }} size={32} role="button" title={t('One frame forward')} onClick={() => shortStep(1)} />
-          : <SetCutpointButton currentCutSeg={currentCutSeg} side="end" onClick={setCutEnd} title={t('End current segment at current time')} style={{ marginLeft: 5 }} />}
-
-        {!simpleMode && (
-          <>
-            <SegmentCutpointButton currentCutSeg={currentCutSeg} side="end" Icon={FaStepForward} onClick={jumpCutEnd} title={t('Jump to current segment\'s end time')} style={{ marginLeft: 5 }} />
-
-            {renderJumpCutpointButton(1)}
-
-            <FaStepForward
-              size={16}
-              style={{ flexShrink: 0 }}
-              title={t('Jump to end of video')}
-              role="button"
-              onClick={jumpTimelineEnd}
-            />
-          </>
-        )}
 
         <div style={{ flexGrow: 1 }} />
 

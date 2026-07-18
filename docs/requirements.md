@@ -1,9 +1,27 @@
-# Supported OS versions
+# System Requirements
 
-LosslessCut is based on Electron which routinely drops support for old OS versions, and therefore LosslessCut will also do so. [More info](https://github.com/mifi/lossless-cut/discussions/1476#discussioncomment-5012521). Note that older versions of LosslessCut still work on older operating systems.
+## Supported
 
-- v3.66 [dropped support](https://www.electronjs.org/blog/electron-38-0#removed-macos-11-support) for MacOS 11.
-- v3.58.0 [dropped support](https://www.electronjs.org/docs/latest/breaking-changes#removed-macos-1013--1014-support) for MacOS 10.14 and older.
-- v3.52.0 dropped support for [Windows 8.1 and older](https://github.com/mifi/lossless-cut/discussions/1476).
-- v3.48.2 dropped support for MacOS 10.12 and older.
-- v3.48.2 dropped support for 32 bit Linux.
+- Windows 10 or Windows 11, 64-bit.
+- 64-bit Intel or AMD processor.
+- 4 GB RAM minimum; 8 GB or more recommended for long game videos.
+- At least 1 GB free for the application, plus free space for source videos, temporary media, and exported clips.
+- A display resolution of 1366 x 768 or higher; 1920 x 1080 recommended.
+
+A dedicated GPU is not required for normal cutting. Preview performance and export speed depend on the source codec, video resolution, storage speed, and CPU.
+
+## Included Dependencies
+
+The Windows installer includes Electron, FFmpeg, FFprobe, and the media DLLs used by TrimOut. No separate runtime or codec installation is required.
+
+## Network Use
+
+Local editing works without an internet connection. Internet access is required for URL download, KICKO account authorization, subscription checks, and the optional upload of selected clips to KICKO.
+
+## Unsupported
+
+- 32-bit Windows.
+- Windows 8.1 and older.
+- Devices that cannot run a current 64-bit Electron application.
+
+The public release should be tested on a clean, supported Windows account before upload to Gumroad.

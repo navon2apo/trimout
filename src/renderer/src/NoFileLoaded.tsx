@@ -3,6 +3,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { FiLink, FiPlus } from 'react-icons/fi';
 import type { StateSegment } from './types';
 import type { KeyBinding } from '../../common/types';
+import trimOutLogoUrl from './trimout-logo.png';
 
 const container: React.CSSProperties = {
   position: 'absolute',
@@ -16,43 +17,7 @@ const container: React.CSSProperties = {
   userSelect: 'none',
 };
 
-// Inline SVG icon — clean trim / cut mark
-function TrimIcon() {
-  return (
-    <svg width="54" height="54" viewBox="0 0 54 54" fill="none" xmlns="http://www.w3.org/2000/svg">
-      {/* Gradient defs */}
-      <defs>
-        <linearGradient id="g1" x1="0" y1="0" x2="54" y2="54" gradientUnits="userSpaceOnUse">
-          <stop offset="0%" stopColor="#d2ff00" />
-          <stop offset="100%" stopColor="#82b300" />
-        </linearGradient>
-        <filter id="glow">
-          <feGaussianBlur stdDeviation="2.5" result="blur" />
-          <feMerge><feMergeNode in="blur" /><feMergeNode in="SourceGraphic" /></feMerge>
-        </filter>
-      </defs>
-      {/* Film strip left */}
-      <rect x="3" y="10" width="19" height="34" rx="3" stroke="url(#g1)" strokeWidth="2.2" fill="none" filter="url(#glow)" />
-      <rect x="6" y="14" width="4" height="4" rx="1" fill="url(#g1)" opacity="0.7" />
-      <rect x="6" y="22" width="4" height="4" rx="1" fill="url(#g1)" opacity="0.7" />
-      <rect x="6" y="30" width="4" height="4" rx="1" fill="url(#g1)" opacity="0.7" />
-      <rect x="6" y="38" width="4" height="4" rx="1" fill="url(#g1)" opacity="0.7" />
-      {/* Film strip right */}
-      <rect x="32" y="10" width="19" height="34" rx="3" stroke="url(#g1)" strokeWidth="2.2" fill="none" filter="url(#glow)" />
-      <rect x="44" y="14" width="4" height="4" rx="1" fill="url(#g1)" opacity="0.7" />
-      <rect x="44" y="22" width="4" height="4" rx="1" fill="url(#g1)" opacity="0.7" />
-      <rect x="44" y="30" width="4" height="4" rx="1" fill="url(#g1)" opacity="0.7" />
-      <rect x="44" y="38" width="4" height="4" rx="1" fill="url(#g1)" opacity="0.7" />
-      {/* Cut line */}
-      <line x1="22" y1="27" x2="32" y2="27" stroke="url(#g1)" strokeWidth="2.5" strokeLinecap="round" filter="url(#glow)" />
-      {/* Cut diamond */}
-      <rect x="24.5" y="24.5" width="5" height="5" rx="1" transform="rotate(45 27 27)" fill="url(#g1)" filter="url(#glow)" />
-    </svg>
-  );
-}
-
 function NoFileLoaded({ onClick, onUrlDownload }: {
-  mifiLink: unknown,
   currentCutSeg: StateSegment | undefined,
   onClick: () => void,
   darkMode?: boolean,
@@ -107,23 +72,29 @@ function NoFileLoaded({ onClick, onUrlDownload }: {
         transition={{ duration: 0.55, ease: [0.16, 1, 0.3, 1] }}
         style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 0 }}
       >
-        {/* Icon */}
+        {/* Brand */}
         <motion.div
-          animate={{ filter: dragging ? 'drop-shadow(0 0 18px rgba(210,255,0,0.5))' : 'drop-shadow(0 0 8px rgba(210,255,0,0.2))' }}
+          animate={{
+            borderColor: dragging ? 'rgba(210,255,0,0.65)' : 'rgba(255,255,255,0.14)',
+            boxShadow: dragging ? '0 0 28px rgba(210,255,0,0.18)' : '0 8px 28px rgba(0,0,0,0.28)',
+          }}
           transition={{ duration: 0.3 }}
-          style={{ marginBottom: 20 }}
+          style={{
+            marginBottom: 24,
+            padding: '12px 18px',
+            border: '1px solid rgba(255,255,255,0.14)',
+            borderRadius: 8,
+            background: '#f4f8f7',
+          }}
         >
-          <TrimIcon />
+          <img
+            src={trimOutLogoUrl}
+            alt="TrimOut by KICKO"
+            style={{
+              display: 'block', width: 340, maxWidth: '42vw', height: 'auto',
+            }}
+          />
         </motion.div>
-
-        <div className="kicko-kicker" style={{ marginBottom: 7 }}>KICKO</div>
-        <div style={{
-          fontSize: 36, fontWeight: 800, marginBottom: 10,
-          color: '#edf5f7',
-          lineHeight: 1,
-        }}>
-          TrimOut
-        </div>
 
         {/* Tagline */}
         <div style={{

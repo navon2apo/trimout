@@ -29,9 +29,7 @@ import { appName } from './common.js';
 import attachContextMenu from './contextMenu.js';
 import HttpServer from './httpServer.js';
 import isDev from './isDev.js';
-import isStoreBuild from './isStoreBuild.js';
 import { getAboutPanelOptions } from './aboutPanel.js';
-import { checkNewVersion } from './updateChecker.js';
 import * as i18nCommon from './i18nCommon.js';
 import './i18n.js';
 import type { ApiActionRequest } from '../common/types.js';
@@ -41,16 +39,15 @@ import { downloadMediaUrl } from './ffmpeg.js';
 import { detectSpeechSegments, detectEnergyPeaks, detectSceneChanges } from './aiAnalysis.js';
 import { downloadVideo, isSupportedUrl, listVideoFormats } from './ytdlp.js';
 import qrShare from './qrShare.js';
-import { transcribeVideo } from './whisper.js';
-import { activateLicense, checkLicense, deactivateLicense, getMachineFingerprint } from './license.js';
 import { cancelKickoFileUpload, inspectKickoFile, uploadKickoFile } from './kickoHandoffTransport.js';
 import { createKickoHandoffSessionStore } from './kickoHandoffSessionStore.js';
+import { getApiKey, setApiKey } from './apiKeyStore.js';
+import { isTrustedRendererUrl } from './rendererSecurity.js';
 
 // Separate untyped store for API keys (not part of Config schema)
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const Store = require('electron-store');
 
-const apiKeyStore = new Store({ name: 'api-keys', encryptionKey: 'trimout-api-keys-v1' });
 const handoffSessionBackend = new Store({ name: 'kicko-handoff-sessions' });
 const handoffSessions = createKickoHandoffSessionStore({
   backend: {
@@ -64,10 +61,13 @@ const handoffSessions = createKickoHandoffSessionStore({
   },
 });
 
-function getApiKey(id: string): string { return (apiKeyStore.get(`key_${id}`) as string | undefined) ?? ''; }
-function setApiKey(id: string, value: string): void { if (value) apiKeyStore.set(`key_${id}`, value); else apiKeyStore.delete(`key_${id}`); }
-
 electronUnhandled({ showDialog: true, logger: (err) => logger.error('electron-unhandled', err) });
+
+const rendererEntryPath = fileURLToPath(new URL('../renderer/index.html', import.meta.url));
+
+function isTrustedAppRendererUrl(value: string) {
+  return isTrustedRendererUrl(value, { isDev, rendererEntryPath });
+}
 
 // https://chromestatus.com/feature/5748496434987008
 // https://peter.sh/experiments/chromium-command-line-switches/
@@ -94,8 +94,6 @@ let mainWindow: BrowserWindow | null;
 
 let askBeforeClose = false;
 let rendererReady = false;
-let newVersion: string | undefined;
-let disableNetworking: boolean;
 
 const openFiles = (paths: string[]) => mainWindow!.webContents.send('openFiles', paths);
 
@@ -181,12 +179,16 @@ function createWindow() {
 
   mainWindow = new BrowserWindow({
     ...savedBounds.options,
+    ...(isDev ? { icon: fileURLToPath(new URL('../../icon-build/app.ico', import.meta.url)) } : {}),
     darkTheme: true,
     webPreferences: {
+      // The inherited LosslessCut renderer still requires Node and @electron/remote.
+      // Navigation, permissions, webviews and renderer RPC are restricted below.
       contextIsolation: false,
       nodeIntegration: true,
-      // https://github.com/electron/electron/issues/5107
-      webSecurity: !isDev,
+      webSecurity: true,
+      allowRunningInsecureContent: false,
+      webviewTag: false,
       preload: fileURLToPath(new URL('../preload/index.cjs', import.meta.url)),
     },
     backgroundColor: darkMode ? '#333' : '#fff',
@@ -198,11 +200,19 @@ function createWindow() {
 
   remote.enable(mainWindow.webContents);
 
+  mainWindow.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
+  mainWindow.webContents.on('will-navigate', (event, url) => {
+    if (!isTrustedAppRendererUrl(url)) event.preventDefault();
+  });
+  mainWindow.webContents.on('will-attach-webview', (event) => event.preventDefault());
+  mainWindow.webContents.session.setPermissionCheckHandler(() => false);
+  mainWindow.webContents.session.setPermissionRequestHandler((_webContents, _permission, callback) => callback(false));
+
   attachContextMenu(mainWindow);
 
   if (isDev) mainWindow.loadURL('http://localhost:3001');
   // Need to useloadFile for special characters https://github.com/mifi/lossless-cut/issues/40
-  else mainWindow.loadFile('out/renderer/index.html');
+  else mainWindow.loadFile(rendererEntryPath);
 
   // Open the DevTools.
   // mainWindow.webContents.openDevTools()
@@ -247,7 +257,7 @@ function createWindow() {
 
 function updateMenu() {
   assert(mainWindow);
-  menu({ app, mainWindow, newVersion, isStoreBuild });
+  menu({ app, mainWindow });
 }
 
 async function changeLanguage(language: string | null) {
@@ -311,10 +321,11 @@ async function init() {
   try {
     logger.info('TrimOut version', app.getVersion(), { isDev });
     await configStore.init({ customConfigDir: argv['configDir'] });
+    configStore.set('language', i18nCommon.fallbackLng);
     logger.info('Initialized config store');
 
     const allowMultipleInstances = configStore.get('allowMultipleInstances');
-    const language = configStore.get('language');
+    const language = i18nCommon.fallbackLng;
 
     if (!allowMultipleInstances && !safeRequestSingleInstanceLock({ argv: process.argv })) {
       logger.info('Found running instance, quitting');
@@ -417,11 +428,6 @@ async function init() {
     ipcMain.handle('qrShareStop', async () => qrShare.stop());
     ipcMain.handle('qrShareStatus', async () => qrShare.getSession());
 
-    // Whisper transcription with progress
-    ipcMain.handle('whisperTranscribe', async (event, filePath: string, model: string) => transcribeVideo(filePath, model as Parameters<typeof transcribeVideo>[1], (p) => {
-      event.sender.send('whisperProgress', p);
-    }));
-
     ipcMain.on('apiActionResponse', (_e, { id }) => {
       apiActionRequests.get(id)?.();
     });
@@ -433,8 +439,6 @@ async function init() {
     // Only if no files to open already (open-file might have already added some files)
     if (filesToOpen.length === 0) filesToOpen = argv._.map(String);
     const { settingsJson } = argv;
-
-    ({ disableNetworking } = argv);
 
     if (settingsJson != null) {
       logger.info('initializing settings', settingsJson);
@@ -465,13 +469,6 @@ async function init() {
     // will also updateMenu and set about panel options
     await changeLanguage(language);
 
-    const enableUpdateCheck = configStore.get('enableUpdateCheck');
-
-    if (!disableNetworking && enableUpdateCheck && !isStoreBuild) {
-      newVersion = await checkNewVersion();
-      // newVersion = '1.2.3';
-      if (newVersion) updateMenu();
-    }
   } catch (err) {
     logger.error('Failed to initialize', err);
   }
@@ -489,8 +486,6 @@ function quitApp() {
   // allow HTTP API to respond etc.
   timers.setTimeout(1000).then(() => electron.app.quit());
 }
-
-const hasDisabledNetworking = () => !!disableNetworking;
 
 const setProgressBar = (v: number) => mainWindow?.setProgressBar(v);
 
@@ -517,11 +512,6 @@ const remoteApi = {
   // API key management
   getApiKey,
   setApiKey,
-  // License system
-  activateLicense,
-  checkLicense,
-  deactivateLicense,
-  getMachineFingerprint,
   // KICKO handoff files stay in the main process so large videos are streamed.
   inspectKickoFile,
   uploadKickoFile,
@@ -551,7 +541,6 @@ const remoteApiLegacy = {
   isDev,
   lossyMode,
   pathToFileURL,
-  hasDisabledNetworking,
 };
 
 export type RemoteApiLegacy = typeof remoteApiLegacy;
@@ -566,7 +555,8 @@ app.addListener('remote-require', (event: { returnValue: RemoteApiLegacy }, _web
 });
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-ipcMain.handle('__electron_rpc__', async (_event, method: keyof RemoteApi, args: any[]) => {
+ipcMain.handle('__electron_rpc__', async (event, method: keyof RemoteApi, args: any[]) => {
+  assert(mainWindow != null && event.sender === mainWindow.webContents && isTrustedAppRendererUrl(event.senderFrame.url), 'Untrusted renderer RPC request');
   const fn = remoteApi[method];
   assert(fn, `Unknown API method: ${method}`);
   // @ts-expect-error don't know how to type

@@ -1,40 +1,22 @@
-# Installation and files
+# Windows Installation
 
-## There is no installer
+1. Download the signed `KICKO-TrimOut-Setup-1.2.0-x64.exe` installer from the official KICKO TrimOut product page.
+2. Open the installer and review the GPL-2.0 license.
+3. Choose the installation folder, then complete the installation.
+4. Launch KICKO TrimOut from the Start menu or desktop shortcut.
 
-There is no installer. The app is just a compressed file that you download from [GitHub](https://github.com/mifi/lossless-cut/releases) and extract. Then you run the executable contained within.
-- Windows: Download the `.7z` file and extract it using [7zip](https://www.7-zip.org/download.html).
-- MacOS: Mount the `dmg` and drag the app into your `Applications` folder.
-- Linux: Y'all know what to do ;)
+Electron, FFmpeg, FFprobe, and the native media libraries required by TrimOut are included in the installer. The installer does not download a second dependency package, and the user does not need Python, Node.js, FFmpeg, or a codec pack.
 
-## Portable app?
+Local cutting, cataloging, project saving, and computer export do not require an account or license key. Internet access is needed only for actions that use a network service, including downloading a video URL or explicitly continuing selected clips in KICKO.
 
-LosslessCut is **not** a portable app. If you install it from the Mac App Store or Microsoft Store, it is somewhat portable because it will be containerized by the operating system, so that when you uninstall the app there will most likely not be many traces of it left. You *can* however customise where settings are stored, see below.
+## Updating
 
-## Settings and temporary files
+TrimOut does not use the former LosslessCut update link. Install a newer official KICKO TrimOut installer over the existing version when an update is announced. Projects and settings remain in the user's profile.
 
-Settings, keyboard shortcuts, logs and temporary cache files are stored in your [`appData`](https://www.electronjs.org/docs/api/app#appgetpathname) folder.
+## Uninstalling
 
-| OS | `appData` folder Path | Notes |
-|-|-|-|
-| Windows | `%APPDATA%\LosslessCut` | [What is `%APPDATA%`?](https://superuser.com/questions/632891/what-is-appdata) |
-| Windows (MS Store Version) | `C:\Users\%USERNAME%\AppData\Local\Packages\57275mifi.no.LosslessCut_eg8x93dt4dxje\LocalCache\Roaming\LosslessCut` | [*Not sure](https://github.com/mifi/lossless-cut/discussions/2167) |
-| MacOS | `~/Library/Application Support/LosslessCut` | |
-| MacOS (App Store version) | `~/Library/Containers/no.mifi.losslesscut/Data/Library/Application Support/LosslessCut` | |
-| Linux | `$XDG_CONFIG_HOME/LosslessCut` or `~/.config/LosslessCut` | |
+Use **Settings > Apps > Installed apps > KICKO TrimOut > Uninstall**. The uninstaller does not delete user projects or application data automatically.
 
-App settings and keyboard shortcuts are stored inside the `config.json` file inside your `appData` folder.
+## Windows Warning
 
-### Custom `config.json` path
-
-On Windows, if you create a `config.json` file with the contents `{}` next to the `LosslessCut.exe` file, LosslessCut will read/store settings from this file instead of the one inside `appData`. Note that other temporary files will still be stored in `appData`. Alternatively you can specify a custom path to a folder containing `config.json` by using the [CLI option](cli.md) `--config-dir`. See also [#645](https://github.com/mifi/lossless-cut/issues/645).
-
-## How to uninstall
-
-Just delete the folder/app that you extracted when you installed it.
-
-If you want to also delete all settings, logs and caches, see [Settings and temporary files](#settings-and-temporary-files) above. See also [#2058](https://github.com/mifi/lossless-cut/issues/).
-
-## Unofficial versions
-
-Because LosslessCut is Open Source (GPL), there are many people and organizations who publish their own variant of LosslessCut for example portableapps.com. This is fine, however **I don't provide support for those versions**.
+Do not publish an unsigned QA installer. A public installer must show a valid publisher in Windows signature properties. If Windows reports an unknown publisher, stop and verify the download before running it.

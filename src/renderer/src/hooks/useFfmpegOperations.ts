@@ -17,6 +17,7 @@ import type { LossyMode } from '../../../main';
 import { UserFacingError } from '../../errors';
 import mainApi from '../mainApi';
 import { getHwaccelArgs } from '../../../common/util';
+import { decodeText } from '../util/bytes';
 
 const { join, resolve, dirname } = window.require('path');
 const { writeFile, mkdir, access, constants: { W_OK } } = window.require('fs/promises');
@@ -839,7 +840,7 @@ function useFfmpegOperations({ filePath, treatInputFileModifiedTimeAsStart, trea
     appendFfmpegCommandLog(ffmpegArgs);
     const { stdout } = await runFfmpegWithProgress({ ffmpegArgs, duration, onProgress });
 
-    console.log(new TextDecoder().decode(stdout));
+    console.log(decodeText(stdout));
 
     invariant(outPath != null);
     await transferTimestamps({ inPath: filePathArg, outPath, duration, treatInputFileModifiedTimeAsStart, treatOutputFileModifiedTimeAsStart });
@@ -956,7 +957,7 @@ function useFfmpegOperations({ filePath, treatInputFileModifiedTimeAsStart, trea
 
     appendFfmpegCommandLog(ffmpegArgs);
     const { stdout } = await runFfmpeg(ffmpegArgs);
-    console.log(new TextDecoder().decode(stdout));
+    console.log(decodeText(stdout));
 
     return outPaths;
   }, [appendFfmpegCommandLog, enableOverwriteOutput, filePath]);
@@ -994,7 +995,7 @@ function useFfmpegOperations({ filePath, treatInputFileModifiedTimeAsStart, trea
     try {
       appendFfmpegCommandLog(ffmpegArgs);
       const { stdout } = await runFfmpeg(ffmpegArgs);
-      console.log(new TextDecoder().decode(stdout));
+      console.log(decodeText(stdout));
     } catch (err) {
       // Unfortunately ffmpeg will exit with code 1 even though it's a success
       // Note: This is kind of hacky:

@@ -11,21 +11,32 @@ const svg2png = (from: string, to: string, width: number, height: number) => sha
   })
   .toFile(to);
 
-const srcIcon = 'src/renderer/src/icon.svg';
+const srcIcon = 'src/renderer/src/trimout-icon.png';
+const preparedIcon = './icon-build/app-source.png';
+
+await sharp(srcIcon)
+  .trim({ background: { r: 0, g: 0, b: 0, alpha: 0 } })
+  .resize(1024, 1024, {
+    fit: sharp.fit.contain,
+    background: { r: 0, g: 0, b: 0, alpha: 0 },
+  })
+  .png()
+  .toFile(preparedIcon);
+
 // Linux:
-await svg2png(srcIcon, './icon-build/app-512.png', 512, 512);
+await svg2png(preparedIcon, './icon-build/app-512.png', 512, 512);
 
 // Windows Store
-await svg2png(srcIcon, './build-resources/appx/StoreLogo.png', 50, 50);
-await svg2png(srcIcon, './build-resources/appx/Square150x150Logo.png', 300, 300);
-await svg2png(srcIcon, './build-resources/appx/Square44x44Logo.png', 44, 44);
-await svg2png(srcIcon, './build-resources/appx/Wide310x150Logo.png', 620, 300);
+await svg2png(preparedIcon, './build-resources/appx/StoreLogo.png', 50, 50);
+await svg2png(preparedIcon, './build-resources/appx/Square150x150Logo.png', 300, 300);
+await svg2png(preparedIcon, './build-resources/appx/Square44x44Logo.png', 44, 44);
+await svg2png(preparedIcon, './build-resources/appx/Wide310x150Logo.png', 620, 300);
 
 // MacOS:
 // https://github.com/mifi/lossless-cut/issues/1820
-await icongen('./src/renderer/src/icon-mac.svg', './icon-build', { icns: { sizes: [512, 1024] }, report: false });
+await icongen(preparedIcon, './icon-build', { icns: { sizes: [512, 1024] }, report: false });
 
 // Windows ICO:
 // https://github.com/mifi/lossless-cut/issues/778
 // https://stackoverflow.com/questions/3236115/which-icon-sizes-should-my-windows-applications-icon-include
-await icongen(srcIcon, './icon-build', { ico: { sizes: [16, 24, 32, 40, 48, 64, 96, 128, 256, 512] }, report: false });
+await icongen(preparedIcon, './icon-build', { ico: { sizes: [16, 24, 32, 40, 48, 64, 96, 128, 256, 512] }, report: false });

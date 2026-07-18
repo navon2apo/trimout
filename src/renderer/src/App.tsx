@@ -30,8 +30,6 @@ import type { UserSettingsContextType, AppContextType, SegColorsContextType } fr
 import { UserSettingsContext, SegColorsContext, AppContext } from './contexts';
 
 import NoFileLoaded from './NoFileLoaded';
-import LicenseGate from './components/LicenseGate';
-import TranscriptPanel from './components/TranscriptPanel';
 import ClipsPanel from './components/ClipsPanel';
 import ActionPickerModal, { type SoccerAction } from './components/ActionPickerModal';
 import LegalDialog from './components/LegalDialog';
@@ -43,7 +41,6 @@ import ProjectReviewDialog from './components/ProjectReviewDialog';
 import KickoBridgeDialog from './components/KickoBridgeDialog';
 import FinishDestinationDialog from './components/FinishDestinationDialog';
 import { compressClip, QUALITY_PRESETS, type QualityPreset, type AspectRatio, type FitMode } from './util/qualityPresets';
-import FEATURES from './util/features';
 import MediaSourcePlayer from './MediaSourcePlayer';
 import TopMenu from './TopMenu';
 import LastCommands from './LastCommands';
@@ -63,7 +60,7 @@ import Working from './components/Working';
 import OutputFormatSelect from './components/OutputFormatSelect';
 import * as Dialog from './components/Dialog';
 
-import { loadMifiLink, runStartupCheck } from './mifi';
+import { runStartupCheck } from './startupCheck';
 import { darkModeTransition } from './colors';
 import { getSegColor } from './util/colors';
 import type {
@@ -83,7 +80,7 @@ import { exportEdlFile, readEdlFile, loadLlcProject, askForEdlImport } from './e
 import { formatYouTube, getFrameCountRaw, formatTsvHuman } from './edlFormats';
 import {
   getOutPath, getOutDir,
-  isStoreBuild, dragPreventer,
+  dragPreventer,
   havePermissionToReadFile, resolvePathIfNeeded, getPathReadAccessError, findExistingHtml5FriendlyFile,
   isOutOfSpaceError, readFileSize, readFileSizes, checkFileSizes, setDocumentTitle, readVideoTs, readDirRecursively, getImportProjectType,
   calcShouldShowWaveform, calcShouldShowKeyframes, mediaSourceQualities, isExecaError, getStdioString,
@@ -143,7 +140,7 @@ const electron = window.require('electron');
 const { lstat } = window.require('fs/promises');
 const { parse: parsePath, join: pathJoin, basename, dirname } = window.require('path');
 
-const { hasDisabledNetworking, pathToFileURL, lossyMode, isLinux } = window.require('@electron/remote').require('./index.js');
+const { pathToFileURL, lossyMode, isLinux } = window.require('@electron/remote').require('./index.js');
 
 
 const hevcPlaybackSupportedPromise = doesPlayerSupportHevcPlayback();
@@ -157,25 +154,9 @@ function emitEvent(appEvent: AppEvent) {
 function App() {
   const { t } = useTranslation();
 
-  // ─── License gate ────────────────────────────────────────────────────────
-  const [licenseChecked, setLicenseChecked] = useState(false);
-  const [licenseOk, setLicenseOk] = useState(false);
-  const [machineId, setMachineId] = useState('');
-
-  useEffect(() => {
-    (async () => {
-      const mid = await window.electron.getMachineFingerprint();
-      setMachineId(mid);
-      const result = await window.electron.checkLicense();
-      setLicenseOk(result.ok);
-      setLicenseChecked(true);
-    })();
-  }, []);
-
   // Per project state
   // ─── QuickCut (✂️ button) ─────────────────────────────────────────────────
   const [quickCutDuration, setQuickCutDuration] = useState(20); // default 20s forward
-  const [showTranscript, setShowTranscript] = useState(false);
 
   // ─── Soccer player & action ────────────────────────────────────────────────
   const [playerName, setPlayerName] = useState('');
@@ -329,7 +310,6 @@ function App() {
   const [settingsVisible, setSettingsVisible] = useState(false);
   const [tunerVisible, setTunerVisible] = useState<TunerType>();
   const [keyboardShortcutsVisible, setKeyboardShortcutsVisible] = useState(false);
-  const [mifiLink, setMifiLink] = useState<unknown>();
   const [alwaysConcatMultipleFiles, setAlwaysConcatMultipleFiles] = useState(false);
   // Legacy LosslessCut segment-tags editing — state is set via keyboard shortcut but no UI reads it.
   // Kept to avoid breaking the keyBindings action; safe to remove if/when tags UI is dropped.
@@ -3188,10 +3168,6 @@ function App() {
   }, [setWaveformMode]);
 
   useEffect(() => {
-    if (!isStoreBuild && !hasDisabledNetworking()) loadMifiLink().then(setMifiLink);
-  }, []);
-
-  useEffect(() => {
     (async () => {
       setFfmpegInfo(await runStartupCheck({ onError: ({ title, message }) => setGenericError({ title, err: message }) }));
     })();
@@ -3225,19 +3201,6 @@ function App() {
   ].join(' '), [darkMode, prefersReducedMotion]);
 
   const rootStyle = useMemo<CSSProperties>(() => ({ ...baseColorStyle, display: 'flex', flexDirection: 'column', height: '100vh', transition: darkModeTransition }), [baseColorStyle]);
-
-  // Show nothing while checking license (avoids flash of main UI)
-  if (!licenseChecked) return null;
-
-  // Show gate if not activated
-  if (!licenseOk) {
-    return (
-      <LicenseGate
-        machineId={machineId}
-        onActivated={() => setLicenseOk(true)}
-      />
-    );
-  }
 
   return (
     <MotionConfig reducedMotion={reducedMotion}>
@@ -3278,7 +3241,6 @@ function App() {
                 <div style={{ position: 'relative', flexGrow: 1, overflow: 'hidden' }} ref={videoContainerRef}>
                   {!isFileOpened && (
                     <NoFileLoaded
-                      mifiLink={mifiLink}
                       currentCutSeg={currentCutSeg}
                       onClick={openFilesDialog}
                       darkMode={darkMode}
@@ -3656,42 +3618,6 @@ function App() {
                       <div style={{ fontSize: 10, color: 'rgba(251,191,36,0.7)', marginTop: 4, direction: 'ltr' }}>
                         Add a player name to keep exported files organized
                       </div>
-                    )}
-                  </div>
-                  )}
-
-                  {/* ── Transcript toggle — gated by FEATURES.transcript flag ── */}
-                  {FEATURES.transcript && (
-                  <div style={{ borderBottom: '1px solid rgba(255,255,255,0.07)', flexShrink: 0 }}>
-                    <button
-                      type="button"
-                      onClick={() => setShowTranscript((v) => !v)}
-                      style={{
-                        width: '100%',
-                        display: 'flex',
-                        alignItems: 'center',
-                        justifyContent: 'space-between',
-                        padding: '9px 14px',
-                        background: 'none',
-                        border: 'none',
-                        cursor: 'pointer',
-                        color: showTranscript ? '#38bdf8' : 'rgba(148,163,184,0.7)',
-                        fontSize: 11.5,
-                        fontWeight: 700,
-                        letterSpacing: '0.05em',
-                        transition: 'color 0.15s',
-                      }}
-                    >
-                      <span>📝 Transcript</span>
-                      <span style={{ fontSize: 10, opacity: 0.6 }}>{showTranscript ? '▲' : '▼'}</span>
-                    </button>
-
-                    {showTranscript && isFileOpened && filePath != null && (
-                      <TranscriptPanel
-                        filePath={filePath}
-                        onSeek={seekAbs}
-                        onApplySegments={(segs) => loadCutSegments({ segments: segs, append: false })}
-                      />
                     )}
                   </div>
                   )}
@@ -4082,6 +4008,7 @@ function App() {
                   playbackRate={playbackRate}
                   currentFrame={currentFrame}
                   playbackMode={playbackMode}
+                  transportCenterOffset={((showLeftBar ? leftBarWidth : 0) - rightBarWidth) / 2}
                 />
               </div>
 

@@ -16,7 +16,8 @@ export function getAboutPanelOptions() {
   const aboutPanelLines = [
     isStoreBuild ? homepageUrl : githubUrl,
     '',
-    `${t('Copyright')} © 2016-${copyrightYear} Mikael Finstad ❤️ 🇳🇴`,
+    `${t('Copyright')} © ${copyrightYear} Navon Amos`,
+    `Based on LosslessCut © 2016-${copyrightYear} Mikael Finstad (GPL-2.0)`,
   ];
 
   const aboutPanelOptions: AboutPanelOptionsOptions = {
