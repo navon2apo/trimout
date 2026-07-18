@@ -135,7 +135,10 @@ function getTemplateProblems({ fileNames, filePath, outputDir, safeOutputFileNam
 
 // This is used as a fallback and so it has to always generate unique file names
 // eslint-disable-next-line no-template-curly-in-string
-export const defaultCutFileTemplate = '${FILENAME}-${CUT_FROM}-${CUT_TO}${SEG_SUFFIX}${EXT}';
+// KICKO TrimOut: name each exported clip after its catalog label (the move the user tagged),
+// falling back to the source name + segment number for un-tagged plain trims. Cut times stay
+// internal (they live in the catalog file / metadata), never cluttering the file name.
+export const defaultCutFileTemplate = '${SEG_LABEL || `${FILENAME}-${SEG_NUM}`}${SEG_SUFFIX}${EXT}';
 // eslint-disable-next-line no-template-curly-in-string
 export const defaultCutMergedFileTemplate = '${FILENAME}-cut-merged-${EPOCH_MS}${EXT}';
 // eslint-disable-next-line no-template-curly-in-string
