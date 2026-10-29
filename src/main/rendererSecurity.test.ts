@@ -2,7 +2,7 @@ import { pathToFileURL } from 'node:url';
 import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 
-import { isTrustedRendererUrl } from './rendererSecurity';
+import isTrustedRendererUrl from './rendererSecurity';
 
 const rendererEntryPath = resolve('out/renderer/index.html');
 

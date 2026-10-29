@@ -48,22 +48,22 @@ function ActionBtn({
 }) {
   const [hovered, setHovered] = useState(false);
 
-  let bg = hovered ? 'rgba(255,255,255,0.09)' : 'rgba(255,255,255,0.04)';
-  let border = hovered ? 'rgba(255,255,255,0.18)' : 'rgba(255,255,255,0.08)';
-  let color = hovered ? '#f1f5f9' : 'rgba(203,213,225,0.85)';
+  let bg = hovered ? '#f1f5f9' : '#ffffff';
+  let border = hovered ? '#94a3b8' : '#d0d5dd';
+  let color = '#0f172a';
 
   if (action.id === 'goal') {
-    bg = hovered ? 'rgba(34,197,94,0.22)' : 'rgba(34,197,94,0.1)';
-    border = hovered ? 'rgba(34,197,94,0.5)' : 'rgba(34,197,94,0.25)';
-    color = hovered ? '#86efac' : 'rgba(134,239,172,0.85)';
+    bg = hovered ? '#dcfce7' : '#f0fdf4';
+    border = hovered ? '#22c55e' : '#86efac';
+    color = '#166534';
   } else if (action.isUncertain) {
-    bg = hovered ? 'rgba(234,179,8,0.18)' : 'rgba(234,179,8,0.08)';
-    border = hovered ? 'rgba(234,179,8,0.45)' : 'rgba(234,179,8,0.2)';
-    color = hovered ? '#fde047' : 'rgba(253,224,71,0.8)';
+    bg = hovered ? '#fef9c3' : '#fefce8';
+    border = hovered ? '#eab308' : '#fde047';
+    color = '#854d0e';
   } else if (action.isNegative) {
-    bg = hovered ? 'rgba(239,68,68,0.15)' : 'rgba(239,68,68,0.06)';
-    border = hovered ? 'rgba(239,68,68,0.35)' : 'rgba(239,68,68,0.15)';
-    color = hovered ? '#fca5a5' : 'rgba(252,165,165,0.75)';
+    bg = hovered ? '#fee2e2' : '#fef2f2';
+    border = hovered ? '#f87171' : '#fecaca';
+    color = '#991b1b';
   }
 
   return (
@@ -152,7 +152,7 @@ function ActionPickerModal({ visible, playerName, clipDurationSec, scoutRole, sc
             position: 'fixed',
             inset: 0,
             zIndex: 9999,
-            background: 'rgba(0,0,0,0.6)',
+            background: 'rgba(15,23,42,0.45)',
             backdropFilter: 'blur(8px)',
             display: 'flex',
             alignItems: 'center',
@@ -174,10 +174,10 @@ function ActionPickerModal({ visible, playerName, clipDurationSec, scoutRole, sc
               width: 560,
               maxWidth: '92vw',
               maxHeight: '88vh',
-              background: 'rgba(13,17,27,0.96)',
-              border: '1px solid rgba(255,255,255,0.08)',
+              background: '#ffffff',
+              border: '1px solid #e4e7ec',
               borderRadius: 16,
-              boxShadow: '0 32px 80px rgba(0,0,0,0.6), 0 0 0 1px rgba(255,255,255,0.04)',
+              boxShadow: '0 24px 64px rgba(15,23,42,0.22)',
               direction: 'ltr',
               overflowY: 'auto',
             }}
@@ -185,13 +185,13 @@ function ActionPickerModal({ visible, playerName, clipDurationSec, scoutRole, sc
             {/* Header strip */}
             <div style={{
               padding: '18px 20px 14px',
-              borderBottom: '1px solid rgba(255,255,255,0.06)',
+              borderBottom: '1px solid #e4e7ec',
             }}
             >
               <div style={{
                 fontSize: 15,
                 fontWeight: 600,
-                color: '#e2e8f0',
+                color: '#0f172a',
                 marginBottom: 3,
                 letterSpacing: '-0.01em',
               }}
@@ -199,7 +199,7 @@ function ActionPickerModal({ visible, playerName, clipDurationSec, scoutRole, sc
                 What happened here?
               </div>
               {meta && (
-                <div style={{ fontSize: 11.5, color: 'rgba(148,163,184,0.55)', letterSpacing: '0.02em' }}>
+                <div style={{ fontSize: 11.5, color: '#64748b', letterSpacing: '0.02em' }}>
                   {meta}
                 </div>
               )}
@@ -261,7 +261,7 @@ function ActionPickerModal({ visible, playerName, clipDurationSec, scoutRole, sc
 
             {/* Secondary toggle + actions */}
             <div style={{
-              borderTop: '1px solid rgba(255,255,255,0.05)',
+              borderTop: '1px solid #e4e7ec',
               padding: '10px 16px',
             }}
             >
@@ -272,7 +272,7 @@ function ActionPickerModal({ visible, playerName, clipDurationSec, scoutRole, sc
                   background: 'none',
                   border: 'none',
                   cursor: 'pointer',
-                  color: 'rgba(100,116,139,0.7)',
+                  color: '#64748b',
                   fontSize: 11,
                   fontWeight: 500,
                   padding: '2px 0',
@@ -316,8 +316,8 @@ function ActionPickerModal({ visible, playerName, clipDurationSec, scoutRole, sc
             </div>
 
             {/* Custom label — write your own move, in any language */}
-            <div style={{ padding: '12px 16px', borderTop: '1px solid rgba(255,255,255,0.05)' }}>
-              <div style={{ fontSize: 11, color: 'rgba(148,163,184,0.7)', marginBottom: 7, letterSpacing: '0.02em' }}>Or write your own move</div>
+            <div style={{ padding: '12px 16px', borderTop: '1px solid #e4e7ec' }}>
+              <div style={{ fontSize: 11, color: '#64748b', marginBottom: 7, letterSpacing: '0.02em' }}>Or write your own move</div>
               <div style={{ display: 'flex', gap: 8 }}>
                 <input
                   dir="auto"
@@ -325,13 +325,13 @@ function ActionPickerModal({ visible, playerName, clipDurationSec, scoutRole, sc
                   onChange={(e) => setCustomLabel(e.target.value)}
                   onKeyDown={(e) => { if (e.key === 'Enter') submitCustom(); }}
                   placeholder="Type a move name — any language"
-                  style={{ flex: 1, minHeight: 38, boxSizing: 'border-box', background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 8, color: '#edf5f7', padding: '0 12px', fontSize: 13, outline: 'none' }}
+                  style={{ flex: 1, minHeight: 38, boxSizing: 'border-box', background: '#ffffff', border: '1px solid #d0d5dd', borderRadius: 8, color: '#0f172a', padding: '0 12px', fontSize: 13, outline: 'none' }}
                 />
                 <button
                   type="button"
                   disabled={!customLabel.trim()}
                   onClick={submitCustom}
-                  style={{ background: customLabel.trim() ? '#d2ff00' : 'rgba(255,255,255,0.06)', color: customLabel.trim() ? '#071018' : 'rgba(148,163,184,0.5)', border: 'none', borderRadius: 8, padding: '0 18px', fontWeight: 700, fontSize: 13, cursor: customLabel.trim() ? 'pointer' : 'default', whiteSpace: 'nowrap' }}
+                  style={{ background: customLabel.trim() ? '#d2ff00' : '#f1f5f9', color: customLabel.trim() ? '#071018' : '#94a3b8', border: 'none', borderRadius: 8, padding: '0 18px', fontWeight: 700, fontSize: 13, cursor: customLabel.trim() ? 'pointer' : 'default', whiteSpace: 'nowrap' }}
                 >
                   Add move
                 </button>
@@ -341,7 +341,7 @@ function ActionPickerModal({ visible, playerName, clipDurationSec, scoutRole, sc
             {/* Footer */}
             <div style={{
               padding: '10px 16px 14px',
-              borderTop: '1px solid rgba(255,255,255,0.05)',
+              borderTop: '1px solid #e4e7ec',
               display: 'flex',
               justifyContent: 'flex-start',
             }}
@@ -351,16 +351,16 @@ function ActionPickerModal({ visible, playerName, clipDurationSec, scoutRole, sc
                 onClick={onCancel}
                 style={{
                   background: 'none',
-                  border: '1px solid rgba(255,255,255,0.08)',
+                  border: '1px solid #e4e7ec',
                   borderRadius: 7,
-                  color: 'rgba(100,116,139,0.7)',
+                  color: '#64748b',
                   fontSize: 12,
                   padding: '5px 16px',
                   cursor: 'pointer',
                   transition: 'border-color 0.1s, color 0.1s',
                 }}
-                onMouseEnter={(e) => { e.currentTarget.style.borderColor = 'rgba(255,255,255,0.18)'; e.currentTarget.style.color = 'rgba(148,163,184,0.9)'; }}
-                onMouseLeave={(e) => { e.currentTarget.style.borderColor = 'rgba(255,255,255,0.08)'; e.currentTarget.style.color = 'rgba(100,116,139,0.7)'; }}
+                onMouseEnter={(e) => { e.currentTarget.style.borderColor = '#94a3b8'; e.currentTarget.style.color = '#0f172a'; }}
+                onMouseLeave={(e) => { e.currentTarget.style.borderColor = '#d0d5dd'; e.currentTarget.style.color = '#64748b'; }}
               >
                 Cancel
               </button>

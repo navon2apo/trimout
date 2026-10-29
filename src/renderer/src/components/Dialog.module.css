@@ -5,6 +5,8 @@
 */
 
 .DialogOverlay {
+	/* Above the floating scissors and trim handles (z 5-7), below SweetAlert prompts (1060) */
+	z-index: 1000;
 	background-color: var(--black-a9);
 	position: fixed;
 	inset: 0;
@@ -23,6 +25,7 @@
 }
 
 .DialogContent {
+	z-index: 1000;
 	position: fixed;
 	top: 50%;
 	left: 50%;

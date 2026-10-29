@@ -12,7 +12,6 @@ import invariant from 'tiny-invariant';
 import { primaryTextColor, primaryColor, darkModeTransition, dangerColor } from './colors';
 import SegmentCutpointButton from './components/SegmentCutpointButton';
 import SetCutpointButton from './components/SetCutpointButton';
-import ClipMarkButton from './components/ClipMarkButton';
 import SpeedStrip from './components/SpeedStrip';
 import ExportButton from './components/ExportButton';
 import ToggleExportConfirm from './components/ToggleExportConfirm';
@@ -360,20 +359,13 @@ function BottomBar({
     color: currentFrame != null && currentFrame.keyframe ? primaryTextColor : undefined,
   }), [currentFrame]);
 
-  const { invertCutSegments, setInvertCutSegments, simpleMode, toggleSimpleMode, exportConfirmEnabled } = useUserSettings();
+  const { invertCutSegments, setInvertCutSegments, simpleMode, exportConfirmEnabled } = useUserSettings();
 
   const rotationStr = `${rotation}°`;
 
   useEffect(() => {
     checkAppPath();
   }, []);
-
-  // In simple mode, invert segments mode is confusing — reset it silently
-  useEffect(() => {
-    if (simpleMode && invertCutSegments) {
-      setInvertCutSegments(false);
-    }
-  }, [simpleMode, invertCutSegments, setInvertCutSegments]);
 
   const handleChangePlaybackRateClick = useCallback(async () => {
     const newRate = await askForPlaybackRate({ detectedFps, outputPlaybackRate });
@@ -623,10 +615,11 @@ function BottomBar({
           </div>
         )}
 
-        {!exportConfirmEnabled && (<FaExclamationTriangle style={{ color: dangerColor, marginLeft: '.4em' }} title={t('Export options screen is disabled, and you will not see any important notices or warnings.')} />)}
-        {(!simpleMode || !exportConfirmEnabled) && <ToggleExportConfirm style={{ marginLeft: exportConfirmEnabled ? '.4em' : undefined }} />}
+        {/* TrimOut: Finish lives in the side panel, and export settings in the Finish dialog */}
+        {!simpleMode && !exportConfirmEnabled && (<FaExclamationTriangle style={{ color: dangerColor, marginLeft: '.4em' }} title={t('Export options screen is disabled, and you will not see any important notices or warnings.')} />)}
+        {!simpleMode && <ToggleExportConfirm style={{ marginLeft: exportConfirmEnabled ? '.4em' : undefined }} />}
 
-        {isFileOpened && (
+        {isFileOpened && !simpleMode && (
           <ExportButton segmentsToExport={segmentsToExport} areWeCutting={areWeCutting} onClick={withBlur(onExportPress)} />
         )}
       </div>

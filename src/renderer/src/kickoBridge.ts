@@ -16,10 +16,10 @@ const USER_CODE_RE = /^[A-Z2-9]{4}-[A-Z2-9]{4}$/;
 export interface KickoProjectSummary {
   id: string;
   title: string;
-  projectType?: string;
-  status?: string;
-  clipCount?: number;
-  updatedAt?: string;
+  projectType?: string | undefined;
+  status?: string | undefined;
+  clipCount?: number | undefined;
+  updatedAt?: string | undefined;
 }
 
 export interface KickoProjectListing {
@@ -98,14 +98,17 @@ export class KickoBridgeError extends Error {
   }
 }
 
+// fetch init where `signal` may be passed through as undefined
+export type KickoRequestInit = Omit<RequestInit, 'signal'> & { signal?: AbortSignal | undefined };
+
 export interface KickoBridgeDependencies {
-  requestJson: (url: string, init?: RequestInit) => Promise<Record<string, unknown>>;
+  requestJson: (url: string, init?: KickoRequestInit) => Promise<Record<string, unknown>>;
   inspectFile: (filePath: string) => Promise<FileInspection>;
   uploadFile: (input: {
     operationId: string;
     filePath: string;
     uploadUrl: string;
-    headers?: Record<string, string>;
+    headers?: Record<string, string> | undefined;
     expectedSizeBytes: number;
     expectedMtimeMs: number;
   }) => Promise<{ status: number }>;
@@ -125,11 +128,11 @@ function asObject(value: unknown): Record<string, unknown> {
   return value != null && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : {};
 }
 
-function defaultRequestJson(url: string, init: RequestInit = {}) {
-  return fetch(url, { ...init, cache: 'no-store' }).then(async (response) => {
+function defaultRequestJson(url: string, { signal, ...init }: KickoRequestInit = {}) {
+  return fetch(url, { ...init, ...(signal != null && { signal }), cache: 'no-store' }).then(async (response) => {
     const data = asObject(await response.json().catch(() => ({})));
     const error = asObject(data['error']);
-    if (!response.ok || data.ok === false) {
+    if (!response.ok || data['ok'] === false) {
       throw new KickoBridgeError(
         String(error['message'] || error['userMessage'] || `KICKO request failed (${response.status}).`),
         {
@@ -304,7 +307,7 @@ async function prepareKickoHandoff(project: TrimoutProject, deps: KickoBridgeDep
   };
 }
 
-function deviceHeaders(connection: KickoConnection, headers: HeadersInit = {}) {
+function deviceHeaders(connection: KickoConnection, headers: Record<string, string> = {}) {
   return { ...headers, Authorization: `TrimOut ${connection.deviceSecret}` };
 }
 
@@ -339,7 +342,7 @@ const WAITING_HANDOFF_STATES = new Set([
 async function waitForKickoReadiness(
   connection: KickoConnection,
   deps: KickoBridgeDependencies,
-  { openApprovalPage = false, signal }: { openApprovalPage?: boolean; signal?: AbortSignal } = {},
+  { openApprovalPage = false, signal }: { openApprovalPage?: boolean | undefined; signal?: AbortSignal | undefined } = {},
 ): Promise<KickoConnection | null> {
   const expiryTime = new Date(connection.expiresAt).getTime();
   let approvalPageOpened = false;
@@ -352,7 +355,7 @@ async function waitForKickoReadiness(
       headers: deviceHeaders(connection),
       signal,
     });
-    const state = String(status.status || '');
+    const state = String(status['status'] || '');
     if (['ready_for_upload', 'uploading', 'completed'].includes(state)) return { ...connection, state };
     if (state === 'subscription_required' || ['awaiting_subscription', 'awaiting_payment_confirmation'].includes(state)) {
       throw new KickoBridgeError('An active paid KICKO subscription is required. No files were uploaded.', { code: 'subscription_required', status: 402 });
@@ -412,11 +415,11 @@ export async function connectToKicko({
       selectedDurationSeconds: prepared.selectedDurationSeconds,
     }),
   });
-  const handoffId = String(started.handoffId || '');
-  const deviceSecret = String(started.deviceSecret || '');
-  const userCode = String(started.userCode || '');
-  const expiresAt = String(started.expiresAt || '');
-  const verificationUrl = normalizeVerificationUrl(started.verificationUrl, normalizedBaseUrl);
+  const handoffId = String(started['handoffId'] || '');
+  const deviceSecret = String(started['deviceSecret'] || '');
+  const userCode = String(started['userCode'] || '');
+  const expiresAt = String(started['expiresAt'] || '');
+  const verificationUrl = normalizeVerificationUrl(started['verificationUrl'], normalizedBaseUrl);
   const expiryTime = new Date(expiresAt).getTime();
   if (!HANDOFF_ID_RE.test(handoffId) || !DEVICE_SECRET_RE.test(deviceSecret) || !USER_CODE_RE.test(userCode)
     || !Number.isFinite(expiryTime) || expiryTime <= deps.now()) {
@@ -503,7 +506,7 @@ export async function listKickoProjects(connection: KickoConnection, dependencie
   if (clipsPerProject !== null && (!Number.isInteger(clipsPerProject) || clipsPerProject < 1 || clipsPerProject > 1000)) {
     throw new KickoBridgeError('KICKO returned invalid project limits.', { code: 'invalid_project_limits' });
   }
-  const projects = Array.isArray(response.projects) ? response.projects.map((value) => {
+  const projects = Array.isArray(response['projects']) ? response['projects'].map((value) => {
     const project = asObject(value);
     return {
       id: String(project['id'] || ''),
@@ -553,13 +556,13 @@ export async function sendProjectToKicko({ connection, project, destinationProje
           },
         }),
       });
-      const grantId = String(grant.grantId || '');
-      let grantStatus = String(grant.status || '');
+      const grantId = String(grant['grantId'] || '');
+      let grantStatus = String(grant['status'] || '');
       if (!grantId) throw new KickoBridgeError('KICKO did not return an upload grant.', { code: 'invalid_grant_response' });
       throwIfCancelled(signal);
 
-      if (grant.uploadRequired === true) {
-        const uploadUrl = String(grant.uploadUrl || '');
+      if (grant['uploadRequired'] === true) {
+        const uploadUrl = String(grant['uploadUrl'] || '');
         if (!uploadUrl) throw new KickoBridgeError('KICKO did not return an upload address.', { code: 'invalid_grant_response' });
         const operationId = deps.randomId();
         onProgress?.({ phase: 'uploading', current: prepared.order, total: connection.preparedPlays.length, fileName: prepared.fileName, operationId });
@@ -567,7 +570,7 @@ export async function sendProjectToKicko({ connection, project, destinationProje
           operationId,
           filePath: prepared.filePath,
           uploadUrl,
-          headers: grant.headers as Record<string, string> | undefined,
+          headers: grant['headers'] as Record<string, string> | undefined,
           expectedSizeBytes: prepared.sizeBytes,
           expectedMtimeMs: prepared.mtimeMs,
         });
@@ -583,7 +586,7 @@ export async function sendProjectToKicko({ connection, project, destinationProje
           signal,
           body: '{}',
         });
-        grantStatus = String(completed.status || '');
+        grantStatus = String(completed['status'] || '');
       }
       if (!['validated', 'consumed'].includes(grantStatus)) {
         throw new KickoBridgeError(`KICKO could not validate "${prepared.fileName}".`, { code: 'upload_not_validated' });
@@ -600,8 +603,8 @@ export async function sendProjectToKicko({ connection, project, destinationProje
     signal,
     body: JSON.stringify({ destinationProjectId, title: project.name }),
   });
-  const projectId = String(finalized.projectId || '');
-  if (!projectId || String(finalized.status || '') !== 'completed') {
+  const projectId = String(finalized['projectId'] || '');
+  if (!projectId || String(finalized['status'] || '') !== 'completed') {
     throw new KickoBridgeError('KICKO could not finalize the project.', { code: 'finalize_failed' });
   }
   await deps.deleteSession(project.id).catch(() => false);

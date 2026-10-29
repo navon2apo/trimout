@@ -33,6 +33,13 @@ module.exports = {
       },
     },
     {
+      // Main-process tests run under vitest, a dev dependency
+      files: ['./src/main/**/*.test.ts'],
+      rules: {
+        'import/no-extraneous-dependencies': ['error', { devDependencies: true }],
+      },
+    },
+    {
       files: ['./script/**/*.{js,cjs,mjs,jsx,ts,tsx,mts}', 'electron.vite.config.ts'],
       rules: {
         'import/no-extraneous-dependencies': ['error', {

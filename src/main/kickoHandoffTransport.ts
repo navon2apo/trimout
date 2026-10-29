@@ -21,7 +21,7 @@ export interface KickoFileUploadInput {
   operationId: string;
   filePath: string;
   uploadUrl: string;
-  headers?: Record<string, string>;
+  headers?: Record<string, string> | undefined;
   expectedSizeBytes: number;
   expectedMtimeMs: number;
 }
@@ -108,7 +108,7 @@ export async function uploadKickoFile(input: KickoFileUploadInput, {
     const response = await fetchImpl(uploadUrl, {
       method: 'PUT',
       headers: normalizeUploadHeaders(input.headers, before.size),
-      body: body as unknown as BodyInit,
+      body: body as unknown as NonNullable<RequestInit['body']>,
       duplex: 'half',
       redirect: 'error',
       signal: controller.signal,

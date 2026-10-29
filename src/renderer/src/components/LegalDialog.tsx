@@ -16,14 +16,14 @@ type Tab = 'terms' | 'privacy';
 const SECTION_STYLE: React.CSSProperties = {
   fontSize: 12.5,
   lineHeight: 1.6,
-  color: 'rgba(203,213,225,0.9)',
+  color: '#334155',
   marginBottom: 14,
 };
 
 const H_STYLE: React.CSSProperties = {
   fontSize: 13,
   fontWeight: 700,
-  color: '#e2e8f0',
+  color: '#0f172a',
   marginBottom: 6,
   marginTop: 14,
 };
@@ -81,7 +81,7 @@ function TermsContent() {
         For issues and requests, contact: info@demente-show.com
       </p>
 
-      <p style={{ ...SECTION_STYLE, fontSize: 11, color: 'rgba(148,163,184,0.6)', marginTop: 18 }}>
+      <p style={{ ...SECTION_STYLE, fontSize: 11, color: '#64748b', marginTop: 18 }}>
         Last updated: 2026
       </p>
     </div>
@@ -147,7 +147,7 @@ function PrivacyContent() {
         For privacy questions: info@demente-show.com
       </p>
 
-      <p style={{ ...SECTION_STYLE, fontSize: 11, color: 'rgba(148,163,184,0.6)', marginTop: 18 }}>
+      <p style={{ ...SECTION_STYLE, fontSize: 11, color: '#64748b', marginTop: 18 }}>
         Last updated: 2026
       </p>
     </div>
@@ -165,7 +165,7 @@ function LegalDialog({ visible, onClose }: Props) {
             position: 'fixed',
             inset: 0,
             zIndex: 9998,
-            background: 'rgba(0,0,0,0.65)',
+            background: 'rgba(15,23,42,0.45)',
             backdropFilter: 'blur(8px)',
             display: 'flex',
             alignItems: 'center',
@@ -188,10 +188,10 @@ function LegalDialog({ visible, onClose }: Props) {
               width: 560,
               maxWidth: '94vw',
               maxHeight: '86vh',
-              background: 'rgba(13,17,27,0.97)',
-              border: '1px solid rgba(255,255,255,0.08)',
+              background: '#ffffff',
+              border: '1px solid #e4e7ec',
               borderRadius: 14,
-              boxShadow: '0 32px 80px rgba(0,0,0,0.6)',
+              boxShadow: '0 24px 64px rgba(15,23,42,0.22)',
               overflow: 'hidden',
               display: 'flex',
               flexDirection: 'column',
@@ -199,7 +199,7 @@ function LegalDialog({ visible, onClose }: Props) {
           >
             {/* Header with tabs */}
             <div style={{
-              borderBottom: '1px solid rgba(255,255,255,0.06)',
+              borderBottom: '1px solid #e4e7ec',
               display: 'flex',
               alignItems: 'center',
               padding: '0 8px',
@@ -214,11 +214,11 @@ function LegalDialog({ visible, onClose }: Props) {
                     background: 'none',
                     border: 'none',
                     cursor: 'pointer',
-                    color: tab === t ? '#e2e8f0' : 'rgba(148,163,184,0.65)',
+                    color: tab === t ? '#0f172a' : '#64748b',
                     fontSize: 13,
                     fontWeight: 600,
                     padding: '14px 16px',
-                    borderBottom: `2px solid ${tab === t ? '#d2ff00' : 'transparent'}`,
+                    borderBottom: `2px solid ${tab === t ? '#84cc16' : 'transparent'}`,
                     transition: 'color 0.12s, border-color 0.12s',
                   }}
                 >
@@ -234,7 +234,7 @@ function LegalDialog({ visible, onClose }: Props) {
                   background: 'none',
                   border: 'none',
                   cursor: 'pointer',
-                  color: 'rgba(148,163,184,0.7)',
+                  color: '#64748b',
                   fontSize: 20,
                   padding: '6px 12px',
                 }}

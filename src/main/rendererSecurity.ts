@@ -1,6 +1,6 @@
 import { fileURLToPath } from 'node:url';
 
-export function isTrustedRendererUrl(value: string, {
+export default function isTrustedRendererUrl(value: string, {
   isDev,
   rendererEntryPath,
   devOrigin = 'http://localhost:3001',

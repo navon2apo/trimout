@@ -1,10 +1,13 @@
 import { spawn } from 'node:child_process';
-import { access, mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { access, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { basename, join, resolve, sep } from 'node:path';
 import { tmpdir } from 'node:os';
 
-type CdpTarget = { type?: string, webSocketDebuggerUrl?: string };
-type CdpResult = { id?: number, error?: { message?: string }, result?: unknown };
+const { version } = JSON.parse(await readFile(new URL('../package.json', import.meta.url), 'utf8')) as { version: string };
+const expectedTitle = `KICKO TrimOut ${version}`;
+
+interface CdpTarget { type?: string, webSocketDebuggerUrl?: string }
+interface CdpResult { id?: number, error?: { message?: string }, result?: unknown }
 
 const executablePath = resolve('dist', 'win-unpacked', 'KICKO TrimOut.exe');
 const mediaPath = process.argv[2] ? resolve(process.argv[2]) : undefined;
@@ -41,6 +44,7 @@ async function getTarget() {
 }
 
 let socket: WebSocket | undefined;
+let unexpectedQaDirectory = false;
 try {
   socket = new WebSocket(await getTarget());
   await new Promise<void>((done, reject) => {
@@ -61,7 +65,8 @@ try {
   });
 
   const call = (method: string, params: Record<string, unknown> = {}) => new Promise<unknown>((done, reject) => {
-    const id = nextId++;
+    const id = nextId;
+    nextId += 1;
     pending.set(id, { resolve: done, reject });
     socket?.send(JSON.stringify({ id, method, params }));
   });
@@ -95,12 +100,12 @@ try {
     };
     state = evaluated.result?.value;
     const expectedSurfaceReady = mediaPath ? state?.videoReadyState != null && state.videoReadyState >= 1 : state?.logoVisible;
-    if (state && state.title.includes('KICKO TrimOut 1.2.0') && expectedSurfaceReady) break;
+    if (state && state.title.includes(expectedTitle) && expectedSurfaceReady) break;
     await new Promise((done) => setTimeout(done, 300));
   }
 
   if (!state) throw new Error('The packaged renderer did not return a QA state.');
-  if (!state.title.includes('KICKO TrimOut 1.2.0')) throw new Error(`Unexpected packaged title: ${state.title}`);
+  if (!state.title.includes(expectedTitle)) throw new Error(`Unexpected packaged title: ${state.title}`);
   if (state.bodyText.includes('Something went wrong')) throw new Error('The packaged app opened its error boundary.');
   if (state.bodyText.includes('Failed to load FFmpeg')) throw new Error('The packaged app could not load FFmpeg.');
   if (/\p{Script=Hebrew}/u.test(state.bodyText)) throw new Error('The packaged app displayed Hebrew text.');
@@ -124,7 +129,7 @@ try {
     screenshotPath,
   }, null, 2));
 
-  socket.send(JSON.stringify({ id: nextId++, method: 'Browser.close' }));
+  socket.send(JSON.stringify({ id: nextId, method: 'Browser.close' }));
 } finally {
   socket?.close();
   if (child.exitCode == null) child.kill();
@@ -132,8 +137,11 @@ try {
 
   const resolvedTemp = `${resolve(tmpdir())}${sep}`.toLowerCase();
   const resolvedUserData = resolve(userDataDir).toLowerCase();
-  if (!resolvedUserData.startsWith(resolvedTemp) || !basename(resolvedUserData).startsWith('kicko-trimout-packaged-qa-')) {
-    throw new Error('Refusing to remove an unexpected QA directory.');
+  // Only ever delete our own temp QA profile; anything else is left alone and reported below.
+  if (resolvedUserData.startsWith(resolvedTemp) && basename(resolvedUserData).startsWith('kicko-trimout-packaged-qa-')) {
+    await rm(userDataDir, { recursive: true, force: true });
+  } else {
+    unexpectedQaDirectory = true;
   }
-  await rm(userDataDir, { recursive: true, force: true });
 }
+if (unexpectedQaDirectory) throw new Error('Refusing to remove an unexpected QA directory.');

@@ -117,8 +117,8 @@ function Segment({
   const backgroundColor = useMemo(() => {
     // we use both transparency and lightness, so that segments can be visible when overlapping
     if (invertCutSegments || !selected) return darkMode ? color.desaturate(0.3).lightness(30).alpha(0.5).string() : color.desaturate(0.3).lightness(70).alpha(0.5).string();
-    if (isActive) return darkMode ? color.saturate(0.2).lightness(60).alpha(0.7).string() : color.saturate(0.2).lightness(40).alpha(0.8).string();
-    return darkMode ? color.desaturate(0.2).lightness(50).alpha(0.7).string() : color.lightness(35).alpha(0.6).string();
+    if (isActive) return darkMode ? color.saturate(0.2).lightness(60).alpha(0.7).string() : color.saturate(0.1).lightness(62).alpha(0.9).string();
+    return darkMode ? color.desaturate(0.2).lightness(50).alpha(0.7).string() : color.lightness(76).alpha(0.85).string();
   }, [darkMode, invertCutSegments, isActive, color, selected]);
 
   const vertBorderRadius = 5;
@@ -145,7 +145,8 @@ function Segment({
       justifyContent: 'space-between',
       originX: 0,
       boxSizing: 'border-box',
-      color: 'white',
+      color: darkMode ? 'white' : '#0f172a',
+      fontWeight: 600,
       overflow: 'hidden',
 
       borderLeft: border.vertical,
@@ -159,7 +160,7 @@ function Segment({
       borderTop: border.horizontal,
       borderBottom: border.horizontal,
     };
-  }, [getTimePercent, seg.end, seg.start, border]);
+  }, [getTimePercent, seg.end, seg.start, border, darkMode]);
 
   return (
     <motion.div

@@ -7,6 +7,7 @@ import { FaCaretDown, FaCaretUp } from 'react-icons/fa';
 import invariant from 'tiny-invariant';
 
 import TimelineSeg from './TimelineSeg';
+import ClipTrimHandles from './components/ClipTrimHandles';
 import BetweenSegments from './BetweenSegments';
 import useContextMenu from './hooks/useContextMenu';
 import useUserSettings from './hooks/useUserSettings';
@@ -97,10 +98,6 @@ function Timeline({
   seekAbs,
   exportedRanges,
   simpleMode,
-  simpleTrimStart,
-  simpleTrimEnd,
-  onSimpleTrimAdjust,
-  onSimpleTrimReset,
   cutSegments,
   setCurrentSegIndex,
   currentSegIndexSafe,
@@ -127,6 +124,7 @@ function Timeline({
   goToTimecode,
   darkMode,
   setCutTime,
+  onTrimClip,
   playingClip,
 } : {
   fileDurationNonZero: number,
@@ -139,10 +137,6 @@ function Timeline({
   seekAbs: (a: number) => void,
   exportedRanges: { start: number; end: number }[],
   simpleMode: boolean,
-  simpleTrimStart: number,
-  simpleTrimEnd: number,
-  onSimpleTrimAdjust: (start: number, end: number) => void,
-  onSimpleTrimReset: () => void,
   cutSegments: StateSegment[],
   setCurrentSegIndex: (a: number) => void,
   currentSegIndexSafe: number,
@@ -169,6 +163,7 @@ function Timeline({
   goToTimecode: () => void,
   darkMode: boolean,
   setCutTime: UseSegments['setCutTime'];
+  onTrimClip?: ((index: number, edge: 'start' | 'end', time: number) => void) | undefined,
   playingClip?: { start: number; end: number; color: string } | undefined,
 }) {
   const { t } = useTranslation();
@@ -470,7 +465,9 @@ function Timeline({
             />
           ))}
 
-          {!simpleMode && cutSegments.map((seg, i) => {
+          {cutSegments.map((seg, i) => {
+            // The automatic whole-video segment is not a clip the user marked
+            if (seg.initial) return null;
             const selected = invertCutSegments || seg.selected;
 
             return (
@@ -488,7 +485,17 @@ function Timeline({
             );
           })}
 
-          {/* Simple mode trim window removed — QuickCut workflow uses the scissors button only */}
+          {/* Trim handles on the active clip: drag an edge, the video follows it */}
+          {onTrimClip != null && currentCutSeg != null && currentCutSeg.end != null && !currentCutSeg.initial && (
+            <ClipTrimHandles
+              start={currentCutSeg.start}
+              end={currentCutSeg.end}
+              fileDurationNonZero={fileDurationNonZero}
+              formatTimecode={formatTimecode}
+              getMouseTimelinePos={getMouseTimelinePos}
+              onTrim={(edge, time) => onTrimClip(currentSegIndexSafe, edge, time)}
+            />
+          )}
 
           {shouldShowKeyframes && !areKeyframesTooClose && keyFramesInZoomWindow.map((f) => (
             <div key={f.time} style={{ position: 'absolute', top: 0, bottom: 0, left: `${(f.time / fileDurationNonZero) * 100}%`, marginLeft: -1, width: 1, background: 'var(--gray-10)', pointerEvents: 'none' }} />
@@ -524,9 +531,15 @@ function Timeline({
             const widthPct = ((playingClip.end - playingClip.start) / fileDurationNonZero) * 100;
             return (
               <div style={{
-                position: 'absolute', top: 0, bottom: 0, pointerEvents: 'none', zIndex: 4,
-                left: `${leftPct}%`, width: `${widthPct}%`,
-              }}>
+                position: 'absolute',
+                top: 0,
+                bottom: 0,
+                pointerEvents: 'none',
+                zIndex: 4,
+                left: `${leftPct}%`,
+                width: `${widthPct}%`,
+              }}
+              >
                 {/* Tinted fill */}
                 <div style={{ position: 'absolute', inset: 0, background: `${playingClip.color}28` }} />
                 {/* Top + bottom accent lines */}

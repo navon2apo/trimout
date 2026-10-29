@@ -56,11 +56,13 @@ function NoFileLoaded({ onClick, onUrlDownload }: {
     >
       {/* Dashed border */}
       <motion.div
-        animate={{ borderColor: dragging ? 'rgba(210,255,0,0.55)' : 'rgba(255,255,255,0.08)' }}
+        animate={{ borderColor: dragging ? '#84cc16' : '#d0d5dd' }}
         transition={{ duration: 0.2 }}
         style={{
-          position: 'absolute', inset: 16, borderRadius: 14,
-          border: '1.5px dashed rgba(255,255,255,0.07)',
+          position: 'absolute',
+          inset: 16,
+          borderRadius: 14,
+          border: '1.5px dashed #d0d5dd',
           pointerEvents: 'none',
         }}
       />
@@ -75,14 +77,14 @@ function NoFileLoaded({ onClick, onUrlDownload }: {
         {/* Brand */}
         <motion.div
           animate={{
-            borderColor: dragging ? 'rgba(210,255,0,0.65)' : 'rgba(255,255,255,0.14)',
-            boxShadow: dragging ? '0 0 28px rgba(210,255,0,0.18)' : '0 8px 28px rgba(0,0,0,0.28)',
+            borderColor: dragging ? '#84cc16' : '#e4e7ec',
+            boxShadow: dragging ? '0 0 0 4px rgba(132,204,22,0.2)' : '0 8px 24px rgba(15,23,42,0.08)',
           }}
           transition={{ duration: 0.3 }}
           style={{
             marginBottom: 24,
             padding: '12px 18px',
-            border: '1px solid rgba(255,255,255,0.14)',
+            border: '1px solid #e4e7ec',
             borderRadius: 8,
             background: '#f4f8f7',
           }}
@@ -98,17 +100,26 @@ function NoFileLoaded({ onClick, onUrlDownload }: {
 
         {/* Tagline */}
         <div style={{
-          fontSize: 13.5, color: 'rgba(148,163,184,0.85)', marginBottom: 6,
-          letterSpacing: '0.01em', textAlign: 'center',
-        }}>
+          fontSize: 15,
+          fontWeight: 600,
+          color: '#0f172a',
+          marginBottom: 6,
+          letterSpacing: '0.01em',
+          textAlign: 'center',
+        }}
+        >
           Find the moments that matter.
         </div>
 
         {/* Sub tagline */}
         <div style={{
-          fontSize: 11.5, color: 'rgba(100,116,139,0.8)', marginBottom: 36,
-          textAlign: 'center', lineHeight: 1.7,
-        }}>
+          fontSize: 12.5,
+          color: '#64748b',
+          marginBottom: 36,
+          textAlign: 'center',
+          lineHeight: 1.7,
+        }}
+        >
           Cut and organize plays locally. Continue in KICKO when you are ready.
         </div>
 
@@ -117,12 +128,18 @@ function NoFileLoaded({ onClick, onUrlDownload }: {
           whileHover={{ scale: 1.06 }}
           whileTap={{ scale: 0.97 }}
           style={{
-            width: 68, height: 68, borderRadius: '50%', marginBottom: 18,
-            background: 'rgba(210,255,0,0.12)',
-            border: '1.5px solid rgba(210,255,0,0.38)',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            fontSize: 30, color: '#d2ff00',
-            boxShadow: '0 0 24px rgba(210,255,0,0.1), inset 0 1px 0 rgba(255,255,255,0.06)',
+            width: 68,
+            height: 68,
+            borderRadius: '50%',
+            marginBottom: 18,
+            background: '#d2ff00',
+            border: '1.5px solid #b8e000',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            fontSize: 30,
+            color: '#0a1200',
+            boxShadow: '0 6px 18px rgba(132,204,22,0.35)',
             cursor: 'pointer',
           }}
         >
@@ -130,20 +147,25 @@ function NoFileLoaded({ onClick, onUrlDownload }: {
         </motion.div>
 
         {/* Action label */}
-        <div style={{ fontSize: 13, color: 'rgba(148,163,184,0.7)', marginBottom: 16 }}>
+        <div style={{ fontSize: 13, color: '#334155', marginBottom: 16 }}>
           Click or drag a video file to get started
         </div>
 
         {/* URL input */}
-        <div style={{ width: '100%', maxWidth: 340, marginBottom: 20 }} onClick={(e) => e.stopPropagation()}>
+        {/* Clicks in the URL box must not open the file picker behind it */}
+        <div role="presentation" style={{ width: '100%', maxWidth: 340, marginBottom: 20 }} onClick={(e) => e.stopPropagation()}>
           <div style={{
-            display: 'flex', gap: 6, alignItems: 'center',
-            background: 'rgba(255,255,255,0.05)',
-            border: `1px solid ${urlFocused ? 'rgba(210,255,0,0.5)' : 'rgba(255,255,255,0.1)'}`,
-            borderRadius: 10, padding: '6px 8px',
+            display: 'flex',
+            gap: 6,
+            alignItems: 'center',
+            background: '#ffffff',
+            border: `1px solid ${urlFocused ? '#84cc16' : '#d0d5dd'}`,
+            borderRadius: 10,
+            padding: '6px 8px',
             transition: 'border-color 0.2s',
-          }}>
-            <FiLink style={{ color: 'rgba(210,255,0,0.72)' }} />
+          }}
+          >
+            <FiLink style={{ color: '#4d7c0f' }} />
             <input
               ref={inputRef}
               value={urlValue}
@@ -154,8 +176,13 @@ function NoFileLoaded({ onClick, onUrlDownload }: {
               onKeyDown={(e) => { if (e.key === 'Enter') handleUrlSubmit(); }}
               placeholder="Paste a YouTube / video URL…"
               style={{
-                flex: 1, background: 'none', border: 'none', outline: 'none',
-                color: '#e2e8f0', fontSize: 12.5, caretColor: '#d2ff00',
+                flex: 1,
+                background: 'none',
+                border: 'none',
+                outline: 'none',
+                color: '#0f172a',
+                fontSize: 12.5,
+                caretColor: '#4d7c0f',
               }}
             />
             <AnimatePresence>
@@ -168,10 +195,15 @@ function NoFileLoaded({ onClick, onUrlDownload }: {
                   type="button"
                   onClick={handleUrlSubmit}
                   style={{
-                    padding: '3px 12px', borderRadius: 7,
+                    padding: '3px 12px',
+                    borderRadius: 7,
                     background: '#d2ff00',
-                    border: '1px solid #d2ff00', color: '#071018',
-                    fontSize: 11.5, fontWeight: 700, cursor: 'pointer', whiteSpace: 'nowrap',
+                    border: '1px solid #d2ff00',
+                    color: '#071018',
+                    fontSize: 11.5,
+                    fontWeight: 700,
+                    cursor: 'pointer',
+                    whiteSpace: 'nowrap',
                   }}
                 >
                   Download ↓

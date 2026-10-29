@@ -1,11 +1,10 @@
 /**
- * ClipsPanel — Visual clips browser in the AI sidebar.
- * Shows every segment as a card with name, action badge, times, duration and controls.
- * Clicking a clip → seeks playhead to its start.
+ * ClipsPanel — the list of selected clips in the side panel.
+ * Each clip is a clean white card: name (click to rename), duration, play, favorite, delete.
+ * Clicking a card seeks the playhead to its start.
  */
-import { memo, useRef, useEffect, useState } from 'react';
-import { motion, AnimatePresence } from 'motion/react';
-import { FiPlay, FiScissors, FiTrash2 } from 'react-icons/fi';
+import { memo, useEffect, useRef, useState } from 'react';
+import { FiMaximize2, FiPlay, FiScissors, FiSquare, FiTrash2 } from 'react-icons/fi';
 
 interface Seg {
   segId?: string | undefined;
@@ -23,11 +22,19 @@ interface Seg {
 interface Props {
   segments: Seg[];
   currentSegIndex: number;
+  playingClipIndex?: number | null | undefined;
+  isPlayingAll: boolean;
+  // Same color as the clip's block on the timeline
+  getClipColor?: ((i: number) => string | undefined) | undefined;
   formatTimecode: (s: number) => string;
   onSegClick: (i: number) => void;
-  onPlayClip?: (i: number) => void;
+  onPlayClip: (i: number) => void;
   onDeleteSegment: (i: number) => void;
-  onToggleFavorite?: (i: number) => void;
+  onToggleFavorite: (i: number) => void;
+  onRenameSegment: (i: number, name: string) => void;
+  onPlayAll: () => void;
+  onStopPlayAll: () => void;
+  onOpenViewer: () => void;
 }
 
 const PALETTE = [
@@ -44,28 +51,27 @@ function fmtDuration(start: number, end: number | undefined): string {
   if (end == null) return '—';
   const s = end - start;
   if (s < 60) return `${s.toFixed(1)}s`;
-  const m = Math.floor(s / 60);
-  const sec = Math.floor(s % 60);
-  return `${m}m ${sec}s`;
+  return `${Math.floor(s / 60)}m ${Math.floor(s % 60)}s`;
 }
 
-// Secondary (negative) actions shown in a muted red tone
-const SECONDARY_ACTION_LABELS = new Set([
-  'Turnover', 'Poor pass', 'Late to ball', 'Defensive mistake',
-  'Wrong position', 'Poor decision', 'Unnecessary foul', 'Not relevant',
-]);
+const iconButton: React.CSSProperties = {
+  width: 28,
+  height: 28,
+  borderRadius: 8,
+  border: 'none',
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  cursor: 'pointer',
+  padding: 0,
+  fontSize: 13,
+  flexShrink: 0,
+};
 
-function actionBadgeStyle(actionType: string | undefined, isUncertain: boolean | undefined): React.CSSProperties {
-  if (!actionType) return {};
-  if (isUncertain) return { background: 'rgba(251,191,36,0.18)', color: 'rgba(253,224,71,0.9)', border: '1px solid rgba(251,191,36,0.3)' };
-  if (SECONDARY_ACTION_LABELS.has(actionType)) return { background: 'rgba(248,113,113,0.15)', color: 'rgba(252,165,165,0.9)', border: '1px solid rgba(248,113,113,0.25)' };
-  return { background: 'rgba(20,184,166,0.15)', color: 'rgba(94,234,212,0.95)', border: '1px solid rgba(20,184,166,0.3)' };
-}
-
-function ClipsPanel({ segments, currentSegIndex, formatTimecode, onSegClick, onPlayClip, onDeleteSegment, onToggleFavorite }: Props) {
-  const listRef = useRef<HTMLDivElement>(null);
+function ClipsPanel({ segments, currentSegIndex, playingClipIndex, isPlayingAll, getClipColor, formatTimecode, onSegClick, onPlayClip, onDeleteSegment, onToggleFavorite, onRenameSegment, onPlayAll, onStopPlayAll, onOpenViewer }: Props) {
   const activeRef = useRef<HTMLDivElement>(null);
-  const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
+  const [editingIndex, setEditingIndex] = useState<number | null>(null);
+  const [draftName, setDraftName] = useState('');
 
   useEffect(() => {
     activeRef.current?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
@@ -73,229 +79,154 @@ function ClipsPanel({ segments, currentSegIndex, formatTimecode, onSegClick, onP
 
   if (segments.length === 0) {
     return (
-      <div style={{ padding: '10px 14px' }}>
-        <div style={{ fontSize: 11, color: 'rgba(100,116,139,0.55)', textAlign: 'center', padding: '14px 0', lineHeight: 1.5 }}>
-          <FiScissors style={{ fontSize: 22, marginBottom: 6 }} />
-          Press the button below<br />to mark an important moment
-        </div>
+      <div style={{ padding: '22px 14px', textAlign: 'center', fontSize: 12, lineHeight: 1.5, color: '#64748b' }}>
+        <FiScissors style={{ fontSize: 22, marginBottom: 6 }} />
+        <div>Press the scissors on the video<br />to mark an important moment</div>
       </div>
     );
   }
 
+  const commitRename = (i: number) => {
+    const name = draftName.trim();
+    if (name.length > 0 && name !== segments[i]?.name) onRenameSegment(i, name);
+    setEditingIndex(null);
+  };
+
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 0, padding: '0 0 4px 0' }}>
-      {/* Header — no duplicate add button; the main ✂️ on the video is the only way to add */}
-      <div style={{ display: 'flex', alignItems: 'center', gap: 6, padding: '10px 14px 6px' }}>
-        <span style={{ fontSize: 11, color: 'rgba(148,163,184,0.6)', letterSpacing: '0.08em', textTransform: 'uppercase', flex: 1 }}>
+    <div style={{ display: 'flex', flexDirection: 'column', direction: 'ltr' }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '12px 14px 8px' }}>
+        <span style={{ flex: 1, fontSize: 13, fontWeight: 700, color: '#0f172a' }}>
           {segments.length} clip{segments.length !== 1 ? 's' : ''}
         </span>
+        <button
+          type="button"
+          onClick={isPlayingAll ? onStopPlayAll : onPlayAll}
+          style={{
+            display: 'inline-flex',
+            alignItems: 'center',
+            gap: 6,
+            borderRadius: 8,
+            border: isPlayingAll ? '1px solid #d0d5dd' : '1px solid #c2e600',
+            padding: '6px 12px',
+            fontSize: 12,
+            fontWeight: 700,
+            cursor: 'pointer',
+            background: isPlayingAll ? '#ffffff' : '#d2ff00',
+            color: '#0a1200',
+          }}
+        >
+          {isPlayingAll ? <><FiSquare /> Stop</> : <><FiPlay /> Play all</>}
+        </button>
+        <button
+          type="button"
+          aria-label="Watch all clips"
+          title="Watch all clips in a larger view"
+          onClick={onOpenViewer}
+          style={{ ...iconButton, width: 30, height: 30, border: '1px solid #d0d5dd', background: '#ffffff', color: '#0f172a' }}
+        >
+          <FiMaximize2 />
+        </button>
       </div>
 
-      {/* Clip list */}
-      <div ref={listRef} style={{ overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 4, padding: '0 8px 8px' }}>
-        <AnimatePresence initial={false}>
-          {segments.map((seg, i) => {
-            const isActive = i === currentSegIndex;
-            const color = segColor(seg.segColorIndex);
-            // Display name: use actionType if available, else fallback to seg.name or generic
-            const actionDisplay = seg.actionLabel || seg.actionType;
-            const displayName = seg.name || (actionDisplay ? `${seg.playerName ? `${seg.playerName} ` : ''}${actionDisplay} ${i + 1}` : `Clip ${i + 1}`);
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 8, padding: '0 12px 12px' }}>
+        {segments.map((seg, i) => {
+          const isActive = i === currentSegIndex;
+          const isPlaying = i === playingClipIndex;
+          const color = getClipColor?.(i) ?? segColor(seg.segColorIndex);
+          const displayName = seg.name || seg.actionLabel || seg.actionType || `Clip ${i + 1}`;
 
-            return (
-              <motion.div
-                key={seg.segId ?? `seg-${i}`}
-                ref={isActive ? activeRef : undefined}
-                initial={{ opacity: 0, y: -4 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, x: 10 }}
-                transition={{ duration: 0.15 }}
-                onClick={() => onSegClick(i)}
-                onMouseEnter={() => setHoveredIndex(i)}
-                onMouseLeave={() => setHoveredIndex(null)}
-                style={{
-                  display: 'flex',
-                  alignItems: 'stretch',
-                  gap: 0,
-                  borderRadius: 10,
-                  cursor: 'pointer',
-                  background: isActive ? `${color}1a` : (hoveredIndex === i ? 'rgba(255,255,255,0.07)' : 'rgba(255,255,255,0.04)'),
-                  border: `1px solid ${isActive ? `${color}60` : (hoveredIndex === i ? 'rgba(255,255,255,0.14)' : 'rgba(255,255,255,0.07)')}`,
-                  boxShadow: isActive ? `0 0 12px ${color}25` : 'none',
-                  transition: 'background 0.12s, border-color 0.12s, box-shadow 0.12s',
-                  userSelect: 'none',
-                  overflow: 'hidden',
-                  direction: 'ltr',
-                }}
-              >
-                {/* Color bar */}
-                <div style={{
-                  width: 4,
-                  flexShrink: 0,
-                  background: color,
-                  boxShadow: isActive ? `0 0 8px ${color}90` : 'none',
-                }}
-                />
+          return (
+            // eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions
+            <div
+              key={seg.segId ?? `seg-${i}`}
+              ref={isActive ? activeRef : undefined}
+              data-clip-card="true"
+              onClick={() => onSegClick(i)}
+              style={{
+                display: 'flex',
+                alignItems: 'stretch',
+                background: '#ffffff',
+                borderRadius: 10,
+                overflow: 'hidden',
+                cursor: 'pointer',
+                userSelect: 'none',
+                border: `1px solid ${isActive || isPlaying ? '#84cc16' : '#e4e7ec'}`,
+                boxShadow: isActive || isPlaying ? '0 0 0 2px rgba(132,204,22,0.35)' : '0 1px 2px rgba(15,23,42,0.06)',
+                transition: 'box-shadow 0.12s',
+              }}
+            >
+              <div style={{ width: 5, flexShrink: 0, background: color }} />
 
-                {/* Info */}
-                <div style={{ flex: 1, minWidth: 0, padding: '9px 10px 9px 6px' }}>
-                  {/* Top row: name + favorite */}
-                  <div style={{ display: 'flex', alignItems: 'center', gap: 5, marginBottom: 5 }}>
-                    <div style={{
-                      fontSize: 12.5,
-                      fontWeight: isActive ? 700 : 500,
-                      color: isActive ? '#f1f5f9' : 'rgba(203,213,225,0.9)',
-                      whiteSpace: 'nowrap',
-                      overflow: 'hidden',
-                      textOverflow: 'ellipsis',
-                      flex: 1,
-                      minWidth: 0,
+              <div style={{ flex: 1, minWidth: 0, padding: '9px 8px 9px 10px' }}>
+                {editingIndex === i ? (
+                  <input
+                    // eslint-disable-next-line jsx-a11y/no-autofocus
+                    autoFocus
+                    dir="auto"
+                    value={draftName}
+                    maxLength={80}
+                    aria-label="Clip name"
+                    onClick={(e) => e.stopPropagation()}
+                    onChange={(e) => setDraftName(e.target.value)}
+                    onBlur={() => commitRename(i)}
+                    onKeyDown={(e) => {
+                      e.stopPropagation();
+                      if (e.key === 'Enter') commitRename(i);
+                      if (e.key === 'Escape') setEditingIndex(null);
                     }}
-                    >
-                      {displayName}
-                    </div>
-                    {/* Favorite star */}
-                    {onToggleFavorite && (
-                      <button
-                        type="button"
-                        onClick={(e) => { e.stopPropagation(); onToggleFavorite(i); }}
-                        title={seg.isFavorite ? 'Remove from favorites' : 'Mark as favorite'}
-                        style={{
-                          background: 'none',
-                          border: 'none',
-                          cursor: 'pointer',
-                          padding: 0,
-                          fontSize: 13,
-                          lineHeight: 1,
-                          flexShrink: 0,
-                          color: seg.isFavorite ? '#fbbf24' : 'rgba(148,163,184,0.3)',
-                          transition: 'color 0.12s',
-                        }}
-                      >★
-                      </button>
-                    )}
+                    style={{ width: '100%', boxSizing: 'border-box', fontSize: 13, fontWeight: 600, color: '#0f172a', border: '1px solid #94a3b8', borderRadius: 6, padding: '3px 6px', outline: 'none' }}
+                  />
+                ) : (
+                  // eslint-disable-next-line jsx-a11y/click-events-have-key-events, jsx-a11y/no-static-element-interactions
+                  <div
+                    dir="auto"
+                    title="Click to rename"
+                    onClick={(e) => { e.stopPropagation(); setDraftName(seg.name ?? displayName); setEditingIndex(i); }}
+                    style={{ fontSize: 13, fontWeight: 650, color: '#0f172a', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', cursor: 'text' }}
+                  >
+                    {displayName}
                   </div>
-
-                  {/* Action badge + uncertain tag */}
-                  {seg.actionType && (
-                    <div style={{ marginBottom: 5, display: 'flex', gap: 4, flexWrap: 'wrap' }}>
-                      <span style={{
-                        fontSize: 10.5,
-                        fontWeight: 700,
-                        borderRadius: 6,
-                        padding: '2px 7px',
-                        ...actionBadgeStyle(seg.actionType, seg.isUncertain),
-                      }}
-                      >
-                        {seg.actionLabel || seg.actionType}
-                      </span>
-                      {seg.isUncertain && (
-                        <span style={{ fontSize: 10, color: 'rgba(251,191,36,0.7)', alignSelf: 'center' }}>❓</span>
-                      )}
-                    </div>
-                  )}
-
-                  {/* Time row */}
-                  <div style={{ display: 'flex', alignItems: 'baseline', gap: 5 }}>
-                    <span style={{
-                      fontSize: 12.5,
-                      fontWeight: 700,
-                      fontVariantNumeric: 'tabular-nums',
-                      color: isActive ? color : 'rgba(203,213,225,0.7)',
-                      letterSpacing: '0.02em',
-                    }}
-                    >
-                      {formatTimecode(seg.start)}
-                    </span>
-                    {seg.end != null && (
-                      <>
-                        <span style={{ fontSize: 10.5, color: 'rgba(100,116,139,0.5)' }}>→</span>
-                        <span style={{
-                          fontSize: 12.5,
-                          fontWeight: 700,
-                          fontVariantNumeric: 'tabular-nums',
-                          color: isActive ? color : 'rgba(203,213,225,0.7)',
-                          letterSpacing: '0.02em',
-                        }}
-                        >
-                          {formatTimecode(seg.end)}
-                        </span>
-                        <span style={{
-                          fontSize: 10.5,
-                          color: 'rgba(148,163,184,0.55)',
-                          background: 'rgba(0,0,0,0.25)',
-                          borderRadius: 4,
-                          padding: '1px 5px',
-                          fontVariantNumeric: 'tabular-nums',
-                        }}
-                        >
-                          {fmtDuration(seg.start, seg.end)}
-                        </span>
-                      </>
-                    )}
-                  </div>
+                )}
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 4, fontSize: 11, color: '#64748b', fontVariantNumeric: 'tabular-nums' }}>
+                  <span style={{ fontWeight: 700, color: '#334155', background: '#f1f5f9', borderRadius: 5, padding: '1px 6px' }}>{fmtDuration(seg.start, seg.end)}</span>
+                  <span>{formatTimecode(seg.start)}</span>
                 </div>
+              </div>
 
-                {/* Right-side actions */}
-                <div style={{ display: 'flex', alignItems: 'center', gap: 3, flexShrink: 0, paddingLeft: 4 }}>
-                  {/* ▶ play */}
-                  <motion.button
-                    type="button"
-                    initial={{ opacity: 0 }}
-                    animate={{ opacity: 1 }}
-                    onClick={(e) => { e.stopPropagation(); if (onPlayClip) onPlayClip(i); else onSegClick(i); }}
-                    title="Play clip"
-                    style={{
-                      background: isActive ? `${color}30` : 'rgba(255,255,255,0.07)',
-                      border: `1px solid ${isActive ? `${color}60` : 'rgba(255,255,255,0.12)'}`,
-                      borderRadius: 6,
-                      color: isActive ? color : 'rgba(203,213,225,0.6)',
-                      fontSize: 10,
-                      width: 22,
-                      height: 22,
-                      display: 'flex',
-                      alignItems: 'center',
-                      justifyContent: 'center',
-                      cursor: 'pointer',
-                      padding: 0,
-                      lineHeight: 1,
-                      transition: 'background 0.12s, border-color 0.12s, color 0.12s',
-                    }}
-                    onMouseEnter={(e) => { e.currentTarget.style.background = `${color}45`; e.currentTarget.style.color = color; }}
-                    onMouseLeave={(e) => { e.currentTarget.style.background = isActive ? `${color}30` : 'rgba(255,255,255,0.07)'; e.currentTarget.style.color = isActive ? color : 'rgba(203,213,225,0.6)'; }}
-                  ><FiPlay />
-                  </motion.button>
-
-                  {hoveredIndex === i && (
-                      <motion.button
-                        type="button"
-                        initial={{ opacity: 0, scale: 0.8 }}
-                        animate={{ opacity: 1, scale: 1 }}
-                        transition={{ duration: 0.1 }}
-                        onClick={(e) => { e.stopPropagation(); onDeleteSegment(i); }}
-                        title="Delete clip"
-                        style={{
-                          background: 'rgba(248,113,113,0.15)',
-                          border: '1px solid rgba(248,113,113,0.3)',
-                          borderRadius: 5,
-                          color: 'rgba(248,113,113,0.85)',
-                          fontSize: 11,
-                          width: 18,
-                          height: 18,
-                          display: 'flex',
-                          alignItems: 'center',
-                          justifyContent: 'center',
-                          cursor: 'pointer',
-                          padding: 0,
-                          lineHeight: 1,
-                        }}
-                      ><FiTrash2 />
-                      </motion.button>
-                  )}
-                </div>
-              </motion.div>
-            );
-          })}
-        </AnimatePresence>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 2, paddingRight: 8 }}>
+                <button
+                  type="button"
+                  aria-label="Play clip"
+                  title="Play clip"
+                  onClick={(e) => { e.stopPropagation(); onPlayClip(i); }}
+                  style={{ ...iconButton, background: '#0f172a', color: '#d2ff00' }}
+                >
+                  <FiPlay />
+                </button>
+                <button
+                  type="button"
+                  aria-label={seg.isFavorite ? 'Remove from favorites' : 'Mark as favorite'}
+                  title={seg.isFavorite ? 'Remove from favorites' : 'Mark as favorite'}
+                  onClick={(e) => { e.stopPropagation(); onToggleFavorite(i); }}
+                  style={{ ...iconButton, background: 'transparent', fontSize: 16, color: seg.isFavorite ? '#f59e0b' : '#cbd5e1' }}
+                >
+                  ★
+                </button>
+                <button
+                  type="button"
+                  aria-label="Delete clip"
+                  title="Delete clip"
+                  onClick={(e) => { e.stopPropagation(); onDeleteSegment(i); }}
+                  onMouseEnter={(e) => { e.currentTarget.style.color = '#dc2626'; }}
+                  onMouseLeave={(e) => { e.currentTarget.style.color = '#94a3b8'; }}
+                  style={{ ...iconButton, background: 'transparent', color: '#94a3b8' }}
+                >
+                  <FiTrash2 />
+                </button>
+              </div>
+            </div>
+          );
+        })}
       </div>
     </div>
   );
