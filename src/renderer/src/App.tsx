@@ -138,7 +138,7 @@ import type { AppEvent } from '../../main/index.js';
 import { appName } from '../../main/common.js';
 import type { ExportedPlayInput, ProjectPlayRating, ScoutRoleId, TrimoutProject } from './projectModel';
 import { addExportBatch, createTrimoutProject, reorderProjectPlays, updateProjectPlay } from './projectModel';
-import { loadTrimoutProject, saveTrimoutProject } from './projectStore';
+import { loadTrimoutProject, repairTrimoutProjectFiles, saveTrimoutProject } from './projectStore';
 import { SCOUT_ROLE_BY_ID, getScoutPhaseContext } from './scoutCatalog';
 import { getSuggestedScoutPlayIds } from './scoutLogic';
 import createClipFileLabel from './clipNaming';
@@ -228,7 +228,14 @@ function App() {
     const [projectPath] = result.filePaths;
     if (result.canceled || !projectPath) return;
     try {
-      const project = await loadTrimoutProject(projectPath);
+      let project = await loadTrimoutProject(projectPath);
+      // Fold re-exported copies of a play (and move the review off deleted files).
+      // Best effort: a project that cannot be saved still opens as it was.
+      try {
+        project = await repairTrimoutProjectFiles(projectPath, project);
+      } catch (repairErr) {
+        console.warn('Could not fold re-exported copies of plays', repairErr);
+      }
       setActiveProjectPath(projectPath);
       setActiveProject(project);
       setPlayerName(project.playerName);

@@ -267,6 +267,9 @@ async function prepareKickoHandoff(project: TrimoutProject, deps: KickoBridgeDep
       inspection = await deps.inspectFile(play.filePath);
     } catch (error) {
       const reason = error instanceof Error ? error.message : 'The exported clip is unavailable.';
+      if (/\bENOENT\b/.test(reason)) {
+        throw new KickoBridgeError(`"${play.fileName}" is no longer in its export folder — it was deleted or moved. Export it again, or unselect it in the review.`, { code: 'clip_file_missing' });
+      }
       throw new KickoBridgeError(`Could not check "${play.fileName}": ${reason}`, { code: 'clip_preflight_failed' });
     }
     const uploadInfo = getKickoUploadInfo(inspection.fileName);

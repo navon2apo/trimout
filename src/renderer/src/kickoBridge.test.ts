@@ -350,3 +350,13 @@ describe('paid KICKO handoff', () => {
     expect(() => getKickoUploadInfo('clip')).toThrow('without a file extension');
   });
 });
+
+it('names a selected clip whose file was deleted, instead of a raw ENOENT', async () => {
+  const deps = dependencies({
+    inspectFile: vi.fn(async () => { throw new Error("Error invoking remote method '__electron_rpc__': Error: ENOENT: no such file or directory, stat 'C:/exports/under-pressure.mp4'"); }),
+    requestJson: vi.fn(async () => { throw new Error('KICKO must not be called'); }),
+  });
+  const failure = connectToKicko({ project: makeProject(), baseUrl: 'https://kicko.example', dependencies: deps });
+  await expect(failure).rejects.toMatchObject({ code: 'clip_file_missing' });
+  await expect(failure).rejects.toThrow(/"under-pressure\.mp4" is no longer in its export folder.*Export it again, or unselect it/);
+});
