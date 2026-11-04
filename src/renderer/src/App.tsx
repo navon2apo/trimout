@@ -2663,7 +2663,7 @@ function App() {
     // Step B — list formats (works for both standard URLs and extracted m3u8).
     setFormatPickerLoading(true);
     try {
-      const info: VideoInfo = await ipcRenderer.invoke('ytdlpListFormats', effectiveUrl);
+      const info: VideoInfo = await ipcRenderer.invoke('ytdlpListFormats', effectiveUrl, pendingDownloadRefererRef.current ?? undefined);
       setFormatPickerInfo(info);
       setFormatPickerOpen(true);
     } catch (err) {

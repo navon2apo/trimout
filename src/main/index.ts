@@ -399,9 +399,10 @@ async function init() {
 
     // yt-dlp download with progress + bootstrap notification
     // List available video formats without downloading — fast (1 HTTP roundtrip)
-    ipcMain.handle('ytdlpListFormats', async (event, url: string) => listVideoFormats(
+    ipcMain.handle('ytdlpListFormats', async (event, url: string, referer?: string) => listVideoFormats(
       url,
       () => { event.sender.send('ytdlpBootstrap'); },
+      referer,
     ));
 
     ipcMain.handle('ytdlpDownload', async (event, url: string, outDir: string, formatSelector?: string, referer?: string) => downloadVideo(
