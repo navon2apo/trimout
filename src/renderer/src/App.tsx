@@ -149,6 +149,10 @@ const { parse: parsePath, join: pathJoin, basename, dirname } = window.require('
 
 const { pathToFileURL, lossyMode, isLinux } = window.require('@electron/remote').require('./index.js');
 
+// Sports platforms that yt-dlp doesn't have dedicated extractors for — we
+// handle them via a hidden-browser stream extraction instead.
+const SPORTS_PLATFORM_RE = /pixellot|veo\.co|hudl|trace\.video|playsight/i;
+
 
 const hevcPlaybackSupportedPromise = doesPlayerSupportHevcPlayback();
 // eslint-disable-next-line unicorn/prefer-top-level-await
@@ -1859,6 +1863,12 @@ function App() {
   const [formatPickerLoading, setFormatPickerLoading] = useState(false);
   // URL being processed — kept between the listFormats and download steps
   const pendingDownloadUrlRef = useRef<string | null>(null);
+  // For sports platforms (VEO/Pixellot/Hudl): we first extract the real m3u8
+  // via a hidden BrowserWindow. The ORIGINAL page URL is stored here and
+  // passed to yt-dlp as --referer at download time, since those CDNs enforce
+  // origin checks on manifest requests.
+  const pendingDownloadRefererRef = useRef<string | null>(null);
+  const [streamExtracting, setStreamExtracting] = useState(false);
   // ref so handleUrlDownload can call userOpenFiles even before it's declared
   const userOpenFilesRef = useRef<((paths: string[]) => void) | null>(null);
 
@@ -2606,22 +2616,61 @@ function App() {
 
   // Stage 1: User pastes URL → we fetch available formats (1 HTTP roundtrip, ~1-3 sec)
   // and open the FormatPickerDialog. The actual download happens in stage 2 (handleFormatPicked).
+  // For sports platforms (VEO/Pixellot/…) we first open a hidden browser to intercept
+  // the real .m3u8 URL, then hand THAT URL to yt-dlp with the original page as --referer.
   const handleUrlDownload = useCallback(async (url: string) => {
     pendingDownloadUrlRef.current = url;
-    setFormatPickerLoading(true);
+    pendingDownloadRefererRef.current = null;
     const { ipcRenderer } = window.require('electron');
+
+    // Step A — if it's a sports platform, extract the real stream URL first.
+    let effectiveUrl = url;
+    if (SPORTS_PLATFORM_RE.test(url)) {
+      setStreamExtracting(true);
+      try {
+        const extracted: { streamUrl: string; pageUrl: string; kind: string; elapsedMs: number } = await ipcRenderer.invoke('extractStreamUrl', url);
+        console.log('stream extracted', extracted);
+        effectiveUrl = extracted.streamUrl;
+        // Remember the original page URL — we pass it as Referer at download time
+        pendingDownloadRefererRef.current = url;
+        pendingDownloadUrlRef.current = effectiveUrl;
+      } catch (extractErr) {
+        console.error('stream extraction failed', extractErr);
+        const platform = url.match(SPORTS_PLATFORM_RE)?.[0] ?? 'This platform';
+        await getSwal().Swal.fire({
+          icon: 'error',
+          title: `Could not read the ${platform} video`,
+          html: `
+            <div style="text-align:left; direction:ltr; line-height:1.6; font-size:14px;">
+              <p>We opened the page in the background but could not find a streaming URL.</p>
+              <p style="margin-top:12px;"><b>Possible reasons:</b></p>
+              <ul style="text-align:left; padding-left:20px;">
+                <li>The video requires login (shared links are usually public — paid teams are not).</li>
+                <li>The player needs a manual "Play" click to start.</li>
+                <li>Network timeout — try again on a stable connection.</li>
+              </ul>
+            </div>
+          `,
+          confirmButtonText: 'Got it',
+          confirmButtonColor: '#82b300',
+        });
+        return;
+      } finally {
+        setStreamExtracting(false);
+      }
+    }
+
+    // Step B — list formats (works for both standard URLs and extracted m3u8).
+    setFormatPickerLoading(true);
     try {
-      const info: VideoInfo = await ipcRenderer.invoke('ytdlpListFormats', url);
+      const info: VideoInfo = await ipcRenderer.invoke('ytdlpListFormats', effectiveUrl);
       setFormatPickerInfo(info);
       setFormatPickerOpen(true);
     } catch (err) {
       console.error('ytdlp list formats error', err);
       const errMsg = err instanceof Error ? err.message : String(err);
       let userMsg = errMsg;
-      const sportsPattern = /pixellot|veo\.co|hudl|trace\.video|playsight/i;
-      if (sportsPattern.test(url)) {
-        userMsg = `${url.match(sportsPattern)?.[0] ?? 'This platform'} is not supported directly. Download from the official site or paste a direct .m3u8 link.`;
-      } else if (errMsg.includes('Unsupported URL')) {
+      if (errMsg.includes('Unsupported URL')) {
         userMsg = 'This site is not supported. Try YouTube, Vimeo, Facebook, or a direct video link.';
       } else if (errMsg.includes('Sign in') || errMsg.includes('private')) {
         userMsg = 'This video is private or requires sign-in. It cannot be downloaded.';
@@ -2660,10 +2709,12 @@ function App() {
     ipcRenderer.on('ytdlpBootstrap', onBootstrap);
     try {
       const outDir = outputDir || (window.require('@electron/remote').app.getPath('downloads') as string);
-      const outFile: string = await ipcRenderer.invoke('ytdlpDownload', url, outDir, formatSelector);
+      const referer = pendingDownloadRefererRef.current ?? undefined;
+      const outFile: string = await ipcRenderer.invoke('ytdlpDownload', url, outDir, formatSelector, referer);
       if (!outFile) {
         throw new Error('The download finished, but no output file was found');
       }
+      pendingDownloadRefererRef.current = null;
       userOpenFilesRef.current?.([outFile]);
       getSwal().toast.fire({ icon: 'success', title: 'Video downloaded and opened successfully', timer: 3000 });
     } catch (err) {
@@ -2674,18 +2725,21 @@ function App() {
       let userMsg = errMsg;
       let html: string | undefined;
 
-      // Detect sports/private platforms specifically — they often need special handling
-      const sportsPattern = /pixellot|veo\.co|hudl|trace\.video|playsight/i;
-      if (sportsPattern.test(url)) {
-        title = 'Sports platform not supported directly';
+      // By the time we're here, `url` is either the user's original URL OR the
+      // m3u8 we extracted for a sports platform. If we extracted a referer,
+      // the download failure is sports-platform-specific (expired token etc.).
+      const refererForError = pendingDownloadRefererRef.current;
+      const isSportsPlatformFailure = refererForError != null && SPORTS_PLATFORM_RE.test(refererForError);
+      if (isSportsPlatformFailure) {
+        title = 'Sports stream download failed';
         html = `
           <div style="text-align:left; direction:ltr; line-height:1.6; font-size:14px;">
-            <p><b>${url.match(sportsPattern)?.[0] ?? 'This platform'}</b> requires special authentication, and this link points to the viewer page rather than the video itself.</p>
-            <p style="margin-top:12px;"><b>Options:</b></p>
+            <p>We opened the page and found a stream URL, but the download itself failed. This usually means:</p>
             <ul style="text-align:left; padding-left:20px;">
-              <li>Download the video from the platform's official site using its Download button.</li>
-              <li>Find the direct <code>.m3u8</code> URL in the browser developer tools (F12 -> Network) and paste it here.</li>
+              <li>The stream token expired before the download could finish.</li>
+              <li>The source dropped the connection mid-transfer.</li>
             </ul>
+            <p style="margin-top:12px;">Try again — a fresh extraction gets a fresh token.</p>
           </div>
         `;
       } else if (errMsg.includes('Unsupported URL')) {
@@ -3333,6 +3387,33 @@ function App() {
                       </div>
                       <div style={{ fontSize: 11, color: 'rgba(148,163,184,0.7)' }}>
                         One site request - no download yet
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Hidden-browser stream extraction (VEO / Pixellot / Hudl / …) */}
+                  {streamExtracting && (
+                    <div style={{
+                      position: 'absolute',
+                      inset: 0,
+                      zIndex: 19,
+                      display: 'flex',
+                      flexDirection: 'column',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: 14,
+                      background: 'rgba(10,15,25,0.9)',
+                      backdropFilter: 'blur(6px)',
+                      direction: 'ltr',
+                    }}
+                    >
+                      <div style={{ fontSize: 30 }}>🎬</div>
+                      <div style={{ fontSize: 14, fontWeight: 700, color: '#f1f5f9' }}>
+                        Opening the match page in the background…
+                      </div>
+                      <div style={{ fontSize: 11, color: 'rgba(148,163,184,0.75)', textAlign: 'center', maxWidth: 360, lineHeight: 1.5 }}>
+                        We load the page like a real browser and intercept the stream.
+                        This can take 10-30 seconds depending on the site.
                       </div>
                     </div>
                   )}
@@ -4007,6 +4088,7 @@ function App() {
                   setFormatPickerOpen(false);
                   setFormatPickerInfo(null);
                   pendingDownloadUrlRef.current = null;
+                  pendingDownloadRefererRef.current = null;
                 }}
               />
 

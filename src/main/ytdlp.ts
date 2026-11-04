@@ -205,24 +205,31 @@ export async function downloadVideo(
   onProgress: (p: YtdlpProgress) => void,
   onBootstrap?: () => void,
   formatSelector?: string,
+  /** Optional Referer — required when downloading a raw m3u8 extracted from a site that enforces origin checks (VEO, Pixellot…). */
+  referer?: string,
 ): Promise<string> {
   const wrap = await getWrap(onBootstrap);
 
   // Output template: title.ext — sanitised
   const outTemplate = join(outDir, '%(title)s.%(ext)s');
-  logger.info('yt-dlp download', outDir, 'format:', formatSelector ?? 'default');
+  logger.info('yt-dlp download', outDir, 'format:', formatSelector ?? 'default', 'referer:', referer ?? '(none)');
 
   let lastFile = '';
 
   await new Promise<void>((resolve, reject) => {
-    const em = wrap.exec([
+    const args: string[] = [
       url,
       '-o', outTemplate,
       '--no-playlist',
       '--format', formatSelector ?? 'bestvideo+bestaudio/best',
       '--merge-output-format', 'mp4',
       '--newline',
-    ]);
+    ];
+    // Pass Referer + a sensible User-Agent — some CDNs reject requests without them
+    if (referer) {
+      args.push('--referer', referer, '--user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36');
+    }
+    const em = wrap.exec(args);
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     em.on('progress', (p: any) => {

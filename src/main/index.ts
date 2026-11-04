@@ -37,6 +37,7 @@ import * as ffmpeg from './ffmpeg.js';
 import * as compatPlayer from './compatPlayer.js';
 import { downloadMediaUrl } from './ffmpeg.js';
 import { downloadVideo, isSupportedUrl, listVideoFormats } from './ytdlp.js';
+import { extractStreamUrl } from './streamExtractor.js';
 import qrShare from './qrShare.js';
 import { cancelKickoFileUpload, inspectKickoFile, uploadKickoFile } from './kickoHandoffTransport.js';
 import { createKickoHandoffSessionStore } from './kickoHandoffSessionStore.js';
@@ -403,13 +404,19 @@ async function init() {
       () => { event.sender.send('ytdlpBootstrap'); },
     ));
 
-    ipcMain.handle('ytdlpDownload', async (event, url: string, outDir: string, formatSelector?: string) => downloadVideo(
+    ipcMain.handle('ytdlpDownload', async (event, url: string, outDir: string, formatSelector?: string, referer?: string) => downloadVideo(
       url,
       outDir,
       (p) => { event.sender.send('ytdlpProgress', p); },
       () => { event.sender.send('ytdlpBootstrap'); },
       formatSelector,
+      referer,
     ));
+
+    // Sports-platform stream extractor — opens a hidden BrowserWindow, intercepts
+    // the m3u8/mpd URL the site's player would load. Enables VEO/Pixellot/Hudl/etc.
+    // without a dedicated yt-dlp extractor.
+    ipcMain.handle('extractStreamUrl', async (_event, pageUrl: string, timeoutMs?: number) => extractStreamUrl(pageUrl, timeoutMs));
 
     // QR-share — start a local HTTP server for one file, return URL+token
     ipcMain.handle('qrShareStart', async (event, filePath: string, ttlMs?: number) => {
