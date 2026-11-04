@@ -2034,11 +2034,21 @@ function App() {
   }, []);
 
   // Click a segment in the list → select it AND jump the playhead to its start
+  // Picking a clip fits the timeline to it: the clip fills about two thirds, with context on both sides
+  const [timelineFocus, setTimelineFocus] = useState<{ start: number, end: number } | undefined>();
+  const fitTimelineToClip = useCallback((seg: { start: number, end?: number | undefined } | undefined) => {
+    if (seg?.end == null || !isDurationValid(fileDuration)) return;
+    const clipLength = Math.max(seg.end - seg.start, 1);
+    setZoom(Math.min(Math.max(Math.floor(fileDuration / (clipLength * 1.5)), 1), zoomMax));
+    setTimelineFocus({ start: seg.start, end: seg.end });
+  }, [fileDuration]);
+
   const handleSegClick = useCallback((index: number) => {
     setCurrentSegIndex(index);
     const seg = cutSegments[index];
     if (seg?.start != null) seekAbs(seg.start);
-  }, [setCurrentSegIndex, cutSegments, seekAbs]);
+    fitTimelineToClip(seg);
+  }, [setCurrentSegIndex, cutSegments, seekAbs, fitTimelineToClip]);
 
   // Toggle isFavorite on a clip
   const handleToggleFavorite = useCallback((index: number) => {
@@ -2054,10 +2064,11 @@ function App() {
     if (seg == null || seg.end == null) return;
     setCurrentSegIndex(index);
     seekAbs(seg.start);
+    fitTimelineToClip(seg);
     clipStopAtRef.current = seg.end;
     setPlayingClipIndex(index);
     setTimeout(() => { play(); }, 50);
-  }, [cutSegments, setCurrentSegIndex, seekAbs, play]);
+  }, [cutSegments, setCurrentSegIndex, seekAbs, play, fitTimelineToClip]);
 
   // "Play all": preview every clip back to back from the original video, no export needed.
   const handlePlayAll = useCallback(() => {
@@ -4143,6 +4154,7 @@ function App() {
                   setCutTime={setCutTime}
                   onTrimClip={handleTrimClip}
                   zoomAnchorTimes={zoomClip?.zoomAnchors?.map((a) => a.t)}
+                  focusRequest={timelineFocus}
                   playingClip={(() => {
                     if (playingClipIndex == null || !playing) return undefined;
                     const seg = cutSegments[playingClipIndex];

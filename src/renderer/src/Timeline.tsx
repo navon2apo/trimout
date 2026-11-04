@@ -127,6 +127,7 @@ function Timeline({
   onTrimClip,
   playingClip,
   zoomAnchorTimes,
+  focusRequest,
 } : {
   fileDurationNonZero: number,
   startTimeOffset: number,
@@ -168,6 +169,8 @@ function Timeline({
   playingClip?: { start: number; end: number; color: string } | undefined,
   /** Times (seconds) of the zoom anchors of the selected clip, drawn as diamonds */
   zoomAnchorTimes?: number[] | undefined,
+  /** Centre the timeline on this range (a new object = a new request) */
+  focusRequest?: { start: number, end: number } | undefined,
 }) {
   const { t } = useTranslation();
 
@@ -264,6 +267,20 @@ function Timeline({
       timelineScrollerRef.current.scrollLeft = scrollLeft;
     }
   }, [zoom, fileDurationNonZero, commandedTimeRef, scrollLeftMotion, isZoomed]);
+
+  // A clip was picked: put the middle of the clip in the middle of the timeline
+  useEffect(() => {
+    if (focusRequest == null || !isZoomed) return;
+    const scroller = timelineScrollerRef.current;
+    if (scroller == null) return;
+    suppressScrollerEvents();
+    const mid = (focusRequest.start + focusRequest.end) / 2;
+    const scrollLeft = Math.max((mid / fileDurationNonZero) * scroller.offsetWidth * zoom - scroller.offsetWidth / 2, 0);
+    scrollLeftMotion.set(scrollLeft);
+    scroller.scrollLeft = scrollLeft;
+    // Only a new request should move the timeline, not a zoom or duration change
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [focusRequest]);
 
 
   useEffect(() => {
