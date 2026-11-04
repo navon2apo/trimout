@@ -112,7 +112,7 @@ import { openSendReportDialog } from './reporting';
 import { sortSegments, convertSegmentsToChaptersWithGaps, hasAnySegmentOverlap, isDurationValid, getPlaybackAction, getSegmentTags, filterNonMarkers, isInitialSegment } from './segments';
 import type { GenerateMergedOutFileNamesParams, GeneratedOutFileNames } from './util/outputNameTemplate';
 import { generateCutFileNames as generateCutFileNamesRaw, generateCutMergedFileNames as generateCutMergedFileNamesRaw, generateMergedFileNames as generateMergedFileNamesRaw, defaultCutFileTemplate, defaultCutMergedFileTemplate, defaultMergedFileTemplate } from './util/outputNameTemplate';
-import { rightBarWidth, leftBarWidth, ffmpegExtractWindow, zoomMax } from './util/constants';
+import { rightBarWidth, leftBarWidth, ffmpegExtractWindow, zoomMax, DEFAULT_TIMELINE_ZOOM } from './util/constants';
 import BigWaveform from './components/BigWaveform';
 
 import type { BatchFile, Chapter, CustomTagsByFile, EdlExportType, EdlFileType, EdlImportType, FfmpegCommandLog, FilesMeta, FileStats, ParamsByStreamId, PlaybackMode, SegmentBase, SegmentColorIndex, SegmentTags, StateSegment, TunerType, ZoomAnchor } from './types';
@@ -317,7 +317,7 @@ function App() {
   const [mainFileMeta, setMainFileMeta] = useState<{ ffprobeMeta: FileFfprobeMeta, stats: FileStats }>();
   const [streamsSelectorShown, setStreamsSelectorShown] = useState(false);
   const [concatDialogOpen, setConcatDialogOpen] = useState(false);
-  const [zoomUnrounded, setZoom] = useState(1);
+  const [zoomUnrounded, setZoom] = useState(DEFAULT_TIMELINE_ZOOM);
   const [shortestFlag, setShortestFlag] = useState(false);
   const [zoomWindowStartTime, setZoomWindowStartTime] = useState(0);
   const [activeVideoStreamIndex, setActiveVideoStreamIndex] = useState<number>();
@@ -1002,7 +1002,7 @@ function App() {
     setMainFileMeta(undefined);
     setCopyStreamIdsByFile({});
     setStreamsSelectorShown(false);
-    setZoom(1);
+    setZoom(DEFAULT_TIMELINE_ZOOM);
     setThumbnails([]);
     setShortestFlag(false);
     setZoomWindowStartTime(0);
