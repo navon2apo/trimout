@@ -126,6 +126,8 @@ function Timeline({
   setCutTime,
   onTrimClip,
   playingClip,
+  zoomAnchorTimes,
+  focusRequest,
 } : {
   fileDurationNonZero: number,
   startTimeOffset: number,
@@ -165,6 +167,10 @@ function Timeline({
   setCutTime: UseSegments['setCutTime'];
   onTrimClip?: ((index: number, edge: 'start' | 'end', time: number) => void) | undefined,
   playingClip?: { start: number; end: number; color: string } | undefined,
+  /** Times (seconds) of the zoom anchors of the selected clip, drawn as diamonds */
+  zoomAnchorTimes?: number[] | undefined,
+  /** Centre the timeline on this range (a new object = a new request) */
+  focusRequest?: { start: number, end: number } | undefined,
 }) {
   const { t } = useTranslation();
 
@@ -261,6 +267,20 @@ function Timeline({
       timelineScrollerRef.current.scrollLeft = scrollLeft;
     }
   }, [zoom, fileDurationNonZero, commandedTimeRef, scrollLeftMotion, isZoomed]);
+
+  // A clip was picked: put the middle of the clip in the middle of the timeline
+  useEffect(() => {
+    if (focusRequest == null || !isZoomed) return;
+    const scroller = timelineScrollerRef.current;
+    if (scroller == null) return;
+    suppressScrollerEvents();
+    const mid = (focusRequest.start + focusRequest.end) / 2;
+    const scrollLeft = Math.max((mid / fileDurationNonZero) * scroller.offsetWidth * zoom - scroller.offsetWidth / 2, 0);
+    scrollLeftMotion.set(scrollLeft);
+    scroller.scrollLeft = scrollLeft;
+    // Only a new request should move the timeline, not a zoom or duration change
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [focusRequest]);
 
 
   useEffect(() => {
@@ -552,6 +572,28 @@ function Timeline({
               </div>
             );
           })()}
+
+          {/* Zoom anchors of the selected clip — a diamond at each anchor time */}
+          {zoomAnchorTimes?.map((anchorT) => (
+            <div
+              key={anchorT}
+              title="Zoom anchor"
+              style={{
+                position: 'absolute',
+                bottom: 2,
+                left: `${(anchorT / fileDurationNonZero) * 100}%`,
+                width: 11,
+                height: 11,
+                marginLeft: -5.5,
+                transform: 'rotate(45deg)',
+                background: '#d2ff00',
+                border: '2px solid #0f172a',
+                boxSizing: 'border-box',
+                pointerEvents: 'none',
+                zIndex: 6,
+              }}
+            />
+          ))}
 
           {currentTimePercent !== undefined && (
             <motion.div transition={springAnimation} animate={{ left: currentTimePercent }} style={{ position: 'absolute', bottom: 0, top: 0, backgroundColor: 'var(--gray-12)', width: currentTimeWidth, pointerEvents: 'none' }} />

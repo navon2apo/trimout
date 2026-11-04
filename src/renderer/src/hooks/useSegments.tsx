@@ -17,7 +17,7 @@ import { createSegment, sortSegments, invertSegments, combineOverlappingSegments
 import type { FfmpegDialog } from '../ffmpegParameters';
 import { parameters as allFfmpegParameters, getHint, getLabel } from '../ffmpegParameters';
 import { maxSegmentsAllowed } from '../util/constants';
-import type { DefiniteSegmentBase, ParseTimecode, SegmentBase, SegmentToExport, StateSegment, UpdateSegAtIndex } from '../types';
+import type { DefiniteSegmentBase, ParseTimecode, SegmentBase, SegmentToExport, StateSegment, UpdateSegAtIndex, ZoomAnchor } from '../types';
 import { segmentTagsSchema } from '../types';
 import safeishEval from '../worker/eval';
 import type { FFprobeFormat, FFprobeStream } from '../../../common/ffprobe';
@@ -595,7 +595,7 @@ function useSegments({ filePath, workingRef, setWorking, setProgress, videoStrea
   }, [getRelevantTime, fileDuration, cutSegments, simpleMode, createIndexedSegment, safeSetCutSegments]);
 
   // QuickCut: create a segment with explicit start+end (bypasses the +10s hardcode in addSegment)
-  const addClip = useCallback((start: number, end: number, meta?: { name?: string, actionType?: string, actionLabel?: string, playerName?: string, isFavorite?: boolean, isUncertain?: boolean }) => {
+  const addClip = useCallback((start: number, end: number, meta?: { name?: string, actionType?: string, actionLabel?: string, playerName?: string, isFavorite?: boolean, isUncertain?: boolean, zoomAnchors?: ZoomAnchor[] }) => {
     try {
       if (fileDuration == null || start >= fileDuration) return;
       const clampedEnd = Math.min(end, fileDuration);
@@ -608,6 +608,7 @@ function useSegments({ filePath, workingRef, setWorking, setProgress, videoStrea
         ...(meta?.playerName != null && { playerName: meta.playerName }),
         ...(meta?.isFavorite != null && { isFavorite: meta.isFavorite }),
         ...(meta?.isUncertain != null && { isUncertain: meta.isUncertain }),
+        ...(meta?.zoomAnchors != null && { zoomAnchors: meta.zoomAnchors }),
       };
       const cutSegmentsNew = initial ? [newSegment] : [...cutSegments, newSegment];
       safeSetCutSegments(cutSegmentsNew, fileDuration);

@@ -67,6 +67,28 @@ export interface SegmentColorIndex {
   segColorIndex: number,
 }
 
+/**
+ * A region of the video picture, normalized to 0..1 of the full frame
+ * (x/y = top-left corner, w/h = size). Resolution independent, so it survives
+ * proxy files and different encodes of the same video.
+ */
+export interface ZoomRect {
+  x: number,
+  y: number,
+  w: number,
+  h: number,
+}
+
+/**
+ * A zoom anchor: at source time `t` (seconds, absolute in the video) the picture shows `rect`.
+ * Between two anchors the zoom glides smoothly; before the first / after the last it holds.
+ * A clip with a single anchor has a fixed zoom for its whole length.
+ */
+export interface ZoomAnchor {
+  t: number,
+  rect: ZoomRect,
+}
+
 export interface StateSegment extends SegmentBase, SegmentColorIndex {
   name: string;
   segId: string;
@@ -79,6 +101,10 @@ export interface StateSegment extends SegmentBase, SegmentColorIndex {
   playerName?: string | undefined;
   isFavorite?: boolean | undefined;
   isUncertain?: boolean | undefined;
+  /** Zoom anchors on this clip (sorted by time) — the player follows them and the export renders them. */
+  zoomAnchors?: ZoomAnchor[] | undefined;
+  /** How the zoom glides between anchors (default smooth) */
+  zoomEase?: 'smooth' | 'linear' | 'dynamic' | undefined;
 }
 
 export interface SegmentToExport extends DefiniteSegmentBase {
