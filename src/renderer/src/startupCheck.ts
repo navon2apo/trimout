@@ -4,7 +4,7 @@ import { runFfmpegStartupCheck, getFfmpegPath } from './ffmpeg';
 import { openSendReportDialog } from './reporting';
 import { isMasBuild } from './util';
 
-export async function runStartupCheck({ onError }: { onError: (error: { title: string, message: string }) => void }) {
+export default async function runStartupCheck({ onError }: { onError: (error: { title: string, message: string }) => void }) {
   try {
     return await runFfmpegStartupCheck();
   } catch (err) {

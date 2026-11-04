@@ -3,7 +3,7 @@
   "productName": "KICKO TrimOut",
   "description": "Cut and organize soccer plays locally, then continue selected clips in KICKO.",
   "copyright": "Copyright © 2026 Navon Amos. Based on LosslessCut © Mikael Finstad (GPL-2.0)",
-  "version": "1.2.0",
+  "version": "1.4.0",
   "main": "./out/main/index.js",
   "homepage": "https://github.com/navon2apo/trimout",
   "type": "module",

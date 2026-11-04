@@ -105,6 +105,42 @@ export function isTrimoutProject(value: unknown): value is TrimoutProject {
     && Array.isArray(project.plays);
 }
 
+/** The same cut of the same game: its source, start/end to the millisecond, action and player. */
+function playSegmentKey({ sourcePath, startTime, endTime, actionType, playerName }: Pick<ProjectPlay, 'sourcePath' | 'startTime' | 'endTime' | 'actionType' | 'playerName'>): string | null {
+  if (startTime == null || endTime == null) return null;
+  return JSON.stringify([sourcePath, Math.round(startTime * 1000), Math.round(endTime * 1000), actionType, playerName]);
+}
+
+/** Plays by key, leaving out any key two plays share: a duplicated segment is two plays, not a copy. */
+function playsByUniqueKey(plays: Pick<ProjectPlay, 'sourcePath' | 'startTime' | 'endTime' | 'actionType' | 'playerName'>[]) {
+  const byKey = new Map<string, number>();
+  const shared = new Set<string>();
+  plays.forEach((play, index) => {
+    const key = playSegmentKey(play);
+    if (key == null) return;
+    if (byKey.has(key)) shared.add(key);
+    byKey.set(key, index);
+  });
+  for (const key of shared) byKey.delete(key);
+  return byKey;
+}
+
+/** The review a merged play keeps: the selected copy's, else a rated one's, else the first copy's. */
+function reviewOf(copies: ProjectPlay[]): ProjectPlay {
+  return copies.find((play) => play.selected) ?? copies.find((play) => play.rating !== 'normal') ?? copies[0]!;
+}
+
+function withoutPlays(project: TrimoutProject, playIds: Set<string>): TrimoutProject {
+  if (playIds.size === 0) return project;
+  return {
+    ...project,
+    plays: project.plays.filter((play) => !playIds.has(play.id)),
+    batches: project.batches
+      .map((batch) => ({ ...batch, playIds: batch.playIds.filter((id) => !playIds.has(id)) }))
+      .filter((batch) => batch.playIds.length > 0),
+  };
+}
+
 export function addExportBatch(project: TrimoutProject, {
   sourcePath,
   exportedPlays,
@@ -118,10 +154,12 @@ export function addExportBatch(project: TrimoutProject, {
 }): TrimoutProject {
   const batchId = nanoid();
   const sourceName = sourcePath.split(/[\\/]/).pop() || sourcePath;
-  const firstOrder = project.plays.length;
-  const plays = exportedPlays.map((play, index): ProjectPlay => {
+  const firstOrder = project.plays.reduce((max, play) => Math.max(max, play.order + 1), 0);
+  // Exporting the same game again replaces the plays it exports again: the new
+  // file takes over the old play's review (selected, rating, order) instead of
+  // landing next to it as a second copy.
+  const fresh = exportedPlays.map((play, index): ProjectPlay => {
     const fileName = play.filePath.split(/[\\/]/).pop() || play.filePath;
-    const actionType = String(play.actionType || 'free');
     return {
       id: nanoid(),
       batchId,
@@ -129,7 +167,7 @@ export function addExportBatch(project: TrimoutProject, {
       sourceName,
       filePath: play.filePath,
       fileName,
-      actionType,
+      actionType: String(play.actionType || 'free'),
       actionLabel: String(play.actionLabel || play.actionType || 'Free play'),
       playerName: play.playerName?.trim() || project.playerName || null,
       startTime: finiteOrNull(play.startTime),
@@ -143,6 +181,22 @@ export function addExportBatch(project: TrimoutProject, {
       createdAt: now,
     };
   });
+  const earlierByKey = playsByUniqueKey(project.plays);
+  const freshByKey = playsByUniqueKey(fresh);
+  const replacedIds = new Set<string>();
+  const plays = fresh.map((play): ProjectPlay => {
+    const key = playSegmentKey(play);
+    const earlierIndex = key != null && freshByKey.has(key) ? earlierByKey.get(key) : undefined;
+    const earlier = earlierIndex == null ? undefined : project.plays[earlierIndex];
+    if (!earlier) return play;
+    replacedIds.add(earlier.id);
+    return {
+      ...play,
+      selected: earlier.selected || play.selected,
+      rating: earlier.rating !== 'normal' ? earlier.rating : play.rating,
+      order: earlier.order,
+    };
+  });
   const batch: ProjectBatch = {
     id: batchId,
     sourcePath,
@@ -151,12 +205,45 @@ export function addExportBatch(project: TrimoutProject, {
     combinedFilePath,
     exportedAt: now,
   };
-  return {
+  return withoutPlays({
     ...project,
     updatedAt: now,
     batches: [...project.batches, batch],
     plays: [...project.plays, ...plays],
-  };
+  }, replacedIds);
+}
+
+/**
+ * Projects saved before re-export replaced plays hold one copy per export of the
+ * same cut, and the review stays on whichever copy the user marked — even after
+ * its file is deleted, which stops the KICKO transfer. Keep one play per cut: the
+ * newest copy whose file still exists, carrying the review of the copy that was
+ * selected. A missing play with no copy is kept, so the transfer names it. Plays
+ * from the same export are never copies of each other (a duplicated segment).
+ */
+export function consolidateProjectPlays(project: TrimoutProject, fileExists: (filePath: string) => boolean, now = new Date().toISOString()): TrimoutProject {
+  const groups = new Map<string, ProjectPlay[]>();
+  for (const play of project.plays) {
+    const key = playSegmentKey(play);
+    if (key != null) groups.set(key, [...(groups.get(key) ?? []), play]);
+  }
+  const dropIds = new Set<string>();
+  const patches = new Map<string, Partial<ProjectPlay>>();
+  for (const copies of groups.values()) {
+    const oneCopyPerExport = new Set(copies.map((play) => play.batchId)).size === copies.length;
+    const keeper = copies.length > 1 && oneCopyPerExport ? copies.findLast((play) => fileExists(play.filePath)) : undefined;
+    if (keeper) {
+      const reviewed = reviewOf(copies);
+      for (const play of copies) if (play.id !== keeper.id) dropIds.add(play.id);
+      patches.set(keeper.id, { selected: reviewed.selected, rating: reviewed.rating, order: reviewed.order });
+    }
+  }
+  if (dropIds.size === 0) return project;
+  return withoutPlays({
+    ...project,
+    updatedAt: now,
+    plays: project.plays.map((play) => ({ ...play, ...patches.get(play.id) })),
+  }, dropIds);
 }
 
 export function updateProjectPlay(project: TrimoutProject, playId: string, patch: Partial<Pick<ProjectPlay, 'selected' | 'rating' | 'actionType' | 'actionLabel'>>, now = new Date().toISOString()): TrimoutProject {

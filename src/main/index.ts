@@ -12,7 +12,6 @@ import remote from '@electron/remote/main/index.js';
 import { stat } from 'node:fs/promises';
 import assert from 'node:assert';
 import timers from 'node:timers/promises';
-import { z } from '../common/zod.js';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import electronUnhandled from 'electron-unhandled';
 import { fileTypeFromFile } from 'file-type/node';
@@ -20,6 +19,7 @@ import type { Asyncify } from 'type-fest';
 // eslint-disable-next-line import/no-extraneous-dependencies
 import { installExtension, REACT_DEVELOPER_TOOLS } from 'electron-devtools-installer';
 import mitt from 'mitt';
+import { z } from '../common/zod.js';
 
 import logger from './logger.js';
 import menu from './menu.js';
@@ -36,13 +36,12 @@ import type { ApiActionRequest } from '../common/types.js';
 import * as ffmpeg from './ffmpeg.js';
 import * as compatPlayer from './compatPlayer.js';
 import { downloadMediaUrl } from './ffmpeg.js';
-import { detectSpeechSegments, detectEnergyPeaks, detectSceneChanges } from './aiAnalysis.js';
 import { downloadVideo, isSupportedUrl, listVideoFormats } from './ytdlp.js';
+import { extractStreamUrl } from './streamExtractor.js';
 import qrShare from './qrShare.js';
 import { cancelKickoFileUpload, inspectKickoFile, uploadKickoFile } from './kickoHandoffTransport.js';
 import { createKickoHandoffSessionStore } from './kickoHandoffSessionStore.js';
-import { getApiKey, setApiKey } from './apiKeyStore.js';
-import { isTrustedRendererUrl } from './rendererSecurity.js';
+import isTrustedRendererUrl from './rendererSecurity.js';
 
 // Separate untyped store for API keys (not part of Config schema)
 // eslint-disable-next-line @typescript-eslint/no-require-imports
@@ -186,7 +185,9 @@ function createWindow() {
       // Navigation, permissions, webviews and renderer RPC are restricted below.
       contextIsolation: false,
       nodeIntegration: true,
-      webSecurity: true,
+      // Dev loads the renderer from http://localhost, which cannot read file:// media with web security on.
+      // Packaged builds load from file:// and keep it on.
+      webSecurity: !isDev,
       allowRunningInsecureContent: false,
       webviewTag: false,
       preload: fileURLToPath(new URL('../preload/index.cjs', import.meta.url)),
@@ -294,11 +295,11 @@ function parseCliArgs(rawArgv = process.argv) {
 
 const argv = parseCliArgs();
 
-const lossyModeSchema = z.object({ videoEncoder: z.union([z.literal('libx264'), z.literal('libx265'), z.literal('libsvtav1')]) });
+// Written out (not z.infer) so the exported type does not depend on zod's internal module paths.
+export interface LossyMode { videoEncoder: 'libx264' | 'libx265' | 'libsvtav1' }
+const lossyModeSchema: z.ZodType<LossyMode> = z.object({ videoEncoder: z.union([z.literal('libx264'), z.literal('libx265'), z.literal('libsvtav1')]) });
 // eslint-disable-next-line prefer-destructuring
-const lossyMode = argv['lossyMode'] ? lossyModeSchema.parse(JSON5.parse(argv['lossyMode'])) : undefined;
-
-export type LossyMode = z.infer<typeof lossyModeSchema>;
+const lossyMode: LossyMode | undefined = argv['lossyMode'] ? lossyModeSchema.parse(JSON5.parse(argv['lossyMode'])) : undefined;
 
 if (argv['localesPath'] != null) i18nCommon.setCustomLocalesPath(argv['localesPath']);
 
@@ -398,18 +399,25 @@ async function init() {
 
     // yt-dlp download with progress + bootstrap notification
     // List available video formats without downloading — fast (1 HTTP roundtrip)
-    ipcMain.handle('ytdlpListFormats', async (event, url: string) => listVideoFormats(
+    ipcMain.handle('ytdlpListFormats', async (event, url: string, referer?: string) => listVideoFormats(
       url,
       () => { event.sender.send('ytdlpBootstrap'); },
+      referer,
     ));
 
-    ipcMain.handle('ytdlpDownload', async (event, url: string, outDir: string, formatSelector?: string) => downloadVideo(
+    ipcMain.handle('ytdlpDownload', async (event, url: string, outDir: string, formatSelector?: string, referer?: string) => downloadVideo(
       url,
       outDir,
       (p) => { event.sender.send('ytdlpProgress', p); },
       () => { event.sender.send('ytdlpBootstrap'); },
       formatSelector,
+      referer,
     ));
+
+    // Sports-platform stream extractor — opens a hidden BrowserWindow, intercepts
+    // the m3u8/mpd URL the site's player would load. Enables VEO/Pixellot/Hudl/etc.
+    // without a dedicated yt-dlp extractor.
+    ipcMain.handle('extractStreamUrl', async (_event, pageUrl: string, timeoutMs?: number) => extractStreamUrl(pageUrl, timeoutMs));
 
     // QR-share — start a local HTTP server for one file, return URL+token
     ipcMain.handle('qrShareStart', async (event, filePath: string, ttlMs?: number) => {
@@ -468,7 +476,6 @@ async function init() {
     createWindow();
     // will also updateMenu and set about panel options
     await changeLanguage(language);
-
   } catch (err) {
     logger.error('Failed to initialize', err);
   }
@@ -504,14 +511,7 @@ const remoteApi = {
   quitApp,
   setProgressBar,
   sendOsNotification,
-  // AI analysis
-  detectSpeechSegments,
-  detectEnergyPeaks,
-  detectSceneChanges,
   isSupportedUrl,
-  // API key management
-  getApiKey,
-  setApiKey,
   // KICKO handoff files stay in the main process so large videos are streamed.
   inspectKickoFile,
   uploadKickoFile,
@@ -556,7 +556,7 @@ app.addListener('remote-require', (event: { returnValue: RemoteApiLegacy }, _web
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 ipcMain.handle('__electron_rpc__', async (event, method: keyof RemoteApi, args: any[]) => {
-  assert(mainWindow != null && event.sender === mainWindow.webContents && isTrustedAppRendererUrl(event.senderFrame.url), 'Untrusted renderer RPC request');
+  assert(mainWindow != null && event.sender === mainWindow.webContents && event.senderFrame != null && isTrustedAppRendererUrl(event.senderFrame.url), 'Untrusted renderer RPC request');
   const fn = remoteApi[method];
   assert(fn, `Unknown API method: ${method}`);
   // @ts-expect-error don't know how to type

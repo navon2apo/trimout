@@ -1,6 +1,6 @@
 import { pathToFileURL } from 'node:url';
 
-export function verifyWindowsSigningEnv(env: NodeJS.ProcessEnv = process.env) {
+export default function verifyWindowsSigningEnv(env: NodeJS.ProcessEnv = process.env) {
   const genericCertificate = env['CSC_LINK']?.trim();
   const genericPassword = env['CSC_KEY_PASSWORD']?.trim();
   const windowsCertificate = env['WIN_CSC_LINK']?.trim();

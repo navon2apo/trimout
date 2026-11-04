@@ -13,6 +13,7 @@ import {
   rollbackKickoHandoff,
   sendProjectToKicko,
   type KickoBridgeDependencies,
+  type KickoRequestInit,
 } from './kickoBridge';
 
 const NOW = Date.parse('2026-07-13T12:00:00.000Z');
@@ -59,9 +60,9 @@ function dependencies(overrides: Partial<KickoBridgeDependencies> = {}): Partial
 
 describe('paid KICKO handoff', () => {
   it('stops free preview before projects, grants, signed URLs, or uploads', async () => {
-    const calls: { url: string; init?: RequestInit }[] = [];
+    const calls: { url: string; init?: KickoRequestInit | undefined }[] = [];
     const deps = dependencies({
-      requestJson: vi.fn(async (url: string, init?: RequestInit) => {
+      requestJson: vi.fn(async (url: string, init?: KickoRequestInit) => {
         calls.push({ url, init });
         if (url.endsWith('/api/trimout/handoffs')) {
           return {
@@ -97,8 +98,8 @@ describe('paid KICKO handoff', () => {
   });
 
   it('uploads through one-time grants, validates, and finalizes in the selected order', async () => {
-    const calls: { url: string; init?: RequestInit }[] = [];
-    const requestJson = vi.fn(async (url: string, init?: RequestInit) => {
+    const calls: { url: string; init?: KickoRequestInit | undefined }[] = [];
+    const requestJson = vi.fn(async (url: string, init?: KickoRequestInit) => {
       calls.push({ url, init });
       if (url.endsWith('/api/trimout/handoffs')) {
         return {
@@ -157,7 +158,7 @@ describe('paid KICKO handoff', () => {
     );
     const finalizeCall = calls.find(({ url }) => url.endsWith('/api/trimout/handoffs/finalize'));
     expect(JSON.parse(String(finalizeCall?.init?.body))).toEqual({ destinationProjectId: null, title: 'Alex 2026' });
-    expect(calls.filter(({ init }) => String((init?.headers as Record<string, string> | undefined)?.Authorization || '').startsWith('TrimOut ')).length).toBeGreaterThan(0);
+    expect(calls.filter(({ init }) => String((init?.headers as Record<string, string> | undefined)?.['Authorization'] || '').startsWith('TrimOut ')).length).toBeGreaterThan(0);
     expect(deps.deleteSession).toHaveBeenCalledWith(project.id);
   });
 
@@ -348,4 +349,14 @@ describe('paid KICKO handoff', () => {
     expect(() => getKickoUploadInfo('clip.ts')).toThrow('KICKO cannot upload clips .ts');
     expect(() => getKickoUploadInfo('clip')).toThrow('without a file extension');
   });
+});
+
+it('names a selected clip whose file was deleted, instead of a raw ENOENT', async () => {
+  const deps = dependencies({
+    inspectFile: vi.fn(async () => { throw new Error("Error invoking remote method '__electron_rpc__': Error: ENOENT: no such file or directory, stat 'C:/exports/under-pressure.mp4'"); }),
+    requestJson: vi.fn(async () => { throw new Error('KICKO must not be called'); }),
+  });
+  const failure = connectToKicko({ project: makeProject(), baseUrl: 'https://kicko.example', dependencies: deps });
+  await expect(failure).rejects.toMatchObject({ code: 'clip_file_missing' });
+  await expect(failure).rejects.toThrow(/"under-pressure\.mp4" is no longer in its export folder.*Export it again, or unselect it/);
 });

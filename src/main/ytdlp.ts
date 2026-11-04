@@ -94,14 +94,33 @@ export interface VideoInfo {
  * List all available qualities for a URL without downloading anything.
  * Uses yt-dlp's --dump-json which makes one HTTP request and returns a manifest.
  */
-export async function listVideoFormats(url: string, onBootstrap?: () => void): Promise<VideoInfo> {
+const CHROME_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36';
+
+/** Best-effort file size of a direct file URL (HEAD request). Returns null if the server won't say. */
+async function headContentLength(url: string, referer?: string): Promise<number | null> {
+  try {
+    const res = await fetch(url, {
+      method: 'HEAD',
+      headers: { 'User-Agent': CHROME_UA, ...(referer ? { Referer: referer } : {}) },
+    });
+    const len = Number(res.headers.get('content-length'));
+    return Number.isFinite(len) && len > 0 ? len : null;
+  } catch {
+    return null;
+  }
+}
+
+export async function listVideoFormats(url: string, onBootstrap?: () => void, referer?: string): Promise<VideoInfo> {
   const wrap = await getWrap(onBootstrap);
-  logger.info('yt-dlp listing formats');
+  logger.info('yt-dlp listing formats', referer ? '(with referer)' : '');
 
   // Run yt-dlp --dump-json and capture stdout as JSON
   const stdout: string = await new Promise((resolve, reject) => {
     let buf = '';
-    const em = wrap.exec([url, '--dump-json', '--no-playlist', '--no-warnings']);
+    const em = wrap.exec([
+      url, '--dump-json', '--no-playlist', '--no-warnings',
+      ...(referer ? ['--referer', referer, '--user-agent', CHROME_UA] : []),
+    ]);
     em.ytDlpProcess?.stdout?.on('data', (d: Buffer) => { buf += d.toString(); });
     em.on('error', reject);
     em.on('close', () => resolve(buf));
@@ -130,7 +149,28 @@ export async function listVideoFormats(url: string, onBootstrap?: () => void): P
 
   // Keep only video-bearing formats (vcodec != 'none')
   const videoFormats = rawFormats.filter((f) => f.vcodec && f.vcodec !== 'none' && f.height);
-  if (videoFormats.length === 0) throw new Error('No video formats found for this URL');
+  if (videoFormats.length === 0) {
+    // Direct file link (e.g. a VEO .mp4 on its CDN): yt-dlp reports a single format with no
+    // height/codec. Offer it as one "Original" choice instead of failing.
+    const direct = rawFormats.find((f) => f.format_id);
+    if (!direct) throw new Error('No video formats found for this URL');
+    const size = direct.filesize ?? direct.filesize_approx ?? await headContentLength(url, referer);
+    return {
+      title,
+      durationSec,
+      thumbnail,
+      formats: [{
+        formatSelector: direct.format_id,
+        height: null,
+        label: 'Original',
+        filesize: size,
+        codec: 'MP4',
+        container: direct.ext ?? 'mp4',
+        fps: null,
+        recommended: true,
+      }],
+    };
+  }
 
   // Bucket by height — keep best per bucket (highest tbr / filesize)
   const byHeight = new Map<number, RawFormat>();
@@ -205,24 +245,31 @@ export async function downloadVideo(
   onProgress: (p: YtdlpProgress) => void,
   onBootstrap?: () => void,
   formatSelector?: string,
+  /** Optional Referer — required when downloading a raw m3u8 extracted from a site that enforces origin checks (VEO, Pixellot…). */
+  referer?: string,
 ): Promise<string> {
   const wrap = await getWrap(onBootstrap);
 
   // Output template: title.ext — sanitised
   const outTemplate = join(outDir, '%(title)s.%(ext)s');
-  logger.info('yt-dlp download', outDir, 'format:', formatSelector ?? 'default');
+  logger.info('yt-dlp download', outDir, 'format:', formatSelector ?? 'default', 'referer:', referer ?? '(none)');
 
   let lastFile = '';
 
   await new Promise<void>((resolve, reject) => {
-    const em = wrap.exec([
+    const args: string[] = [
       url,
       '-o', outTemplate,
       '--no-playlist',
       '--format', formatSelector ?? 'bestvideo+bestaudio/best',
       '--merge-output-format', 'mp4',
       '--newline',
-    ]);
+    ];
+    // Pass Referer + a sensible User-Agent — some CDNs reject requests without them
+    if (referer) {
+      args.push('--referer', referer, '--user-agent', 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36');
+    }
+    const em = wrap.exec(args);
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     em.on('progress', (p: any) => {

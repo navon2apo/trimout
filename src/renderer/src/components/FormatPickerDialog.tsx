@@ -67,7 +67,7 @@ function FormatPickerDialog({ visible, info, onConfirm, onCancel }: Props) {
             position: 'fixed',
             inset: 0,
             zIndex: 9999,
-            background: 'rgba(0,0,0,0.65)',
+            background: 'rgba(15,23,42,0.45)',
             backdropFilter: 'blur(8px)',
             display: 'flex',
             alignItems: 'center',
@@ -90,10 +90,10 @@ function FormatPickerDialog({ visible, info, onConfirm, onCancel }: Props) {
               width: 460,
               maxWidth: '94vw',
               maxHeight: '88vh',
-              background: 'rgba(13,17,27,0.97)',
-              border: '1px solid rgba(255,255,255,0.08)',
+              background: '#ffffff',
+              border: '1px solid #e4e7ec',
               borderRadius: 14,
-              boxShadow: '0 32px 80px rgba(0,0,0,0.6)',
+              boxShadow: '0 24px 64px rgba(15,23,42,0.22)',
               overflow: 'hidden',
               display: 'flex',
               flexDirection: 'column',
@@ -101,7 +101,7 @@ function FormatPickerDialog({ visible, info, onConfirm, onCancel }: Props) {
             }}
           >
             {/* Header */}
-            <div style={{ padding: '14px 18px 12px', borderBottom: '1px solid rgba(255,255,255,0.06)', display: 'flex', gap: 12, alignItems: 'flex-start' }}>
+            <div style={{ padding: '14px 18px 12px', borderBottom: '1px solid #e4e7ec', display: 'flex', gap: 12, alignItems: 'flex-start' }}>
               {info.thumbnail && (
                 <img
                   src={info.thumbnail}
@@ -111,7 +111,7 @@ function FormatPickerDialog({ visible, info, onConfirm, onCancel }: Props) {
                     height: 45,
                     objectFit: 'cover',
                     borderRadius: 6,
-                    border: '1px solid rgba(255,255,255,0.08)',
+                    border: '1px solid #e4e7ec',
                     flexShrink: 0,
                   }}
                 />
@@ -120,7 +120,7 @@ function FormatPickerDialog({ visible, info, onConfirm, onCancel }: Props) {
                 <div style={{
                   fontSize: 13,
                   fontWeight: 700,
-                  color: '#e2e8f0',
+                  color: '#0f172a',
                   marginBottom: 3,
                   overflow: 'hidden',
                   textOverflow: 'ellipsis',
@@ -133,7 +133,7 @@ function FormatPickerDialog({ visible, info, onConfirm, onCancel }: Props) {
                   {info.title}
                 </div>
                 {info.durationSec != null && (
-                  <div style={{ fontSize: 11, color: 'rgba(148,163,184,0.6)' }}>
+                  <div style={{ fontSize: 11, color: '#64748b' }}>
                     {formatDuration(info.durationSec)}
                   </div>
                 )}
@@ -143,7 +143,7 @@ function FormatPickerDialog({ visible, info, onConfirm, onCancel }: Props) {
             {/* Format list */}
             <div style={{ flex: 1, overflowY: 'auto', padding: '8px 12px' }}>
               {info.formats.length === 0 && (
-                <div style={{ padding: 20, textAlign: 'center', color: 'rgba(148,163,184,0.6)' }}>
+                <div style={{ padding: 20, textAlign: 'center', color: '#64748b' }}>
                   No available formats were found for this file.
                 </div>
               )}
@@ -162,10 +162,10 @@ function FormatPickerDialog({ visible, info, onConfirm, onCancel }: Props) {
                       gap: 10,
                       padding: '10px 12px',
                       marginBottom: 4,
-                      background: isSel ? 'rgba(20,184,166,0.15)' : 'rgba(255,255,255,0.03)',
-                      border: `1px solid ${isSel ? 'rgba(20,184,166,0.55)' : 'rgba(255,255,255,0.07)'}`,
+                      background: isSel ? '#f0fdfa' : '#f8fafc',
+                      border: `1px solid ${isSel ? '#14b8a6' : '#e4e7ec'}`,
                       borderRadius: 8,
-                      color: isSel ? '#e2e8f0' : 'rgba(203,213,225,0.85)',
+                      color: isSel ? '#0f172a' : '#334155',
                       cursor: 'pointer',
                       transition: 'background 0.1s, border-color 0.1s',
                       textAlign: 'left',
@@ -177,7 +177,7 @@ function FormatPickerDialog({ visible, info, onConfirm, onCancel }: Props) {
                       width: 16,
                       height: 16,
                       borderRadius: '50%',
-                      border: `2px solid ${isSel ? '#14b8a6' : 'rgba(255,255,255,0.2)'}`,
+                      border: `2px solid ${isSel ? '#14b8a6' : '#cbd5e1'}`,
                       display: 'flex',
                       alignItems: 'center',
                       justifyContent: 'center',
@@ -190,16 +190,16 @@ function FormatPickerDialog({ visible, info, onConfirm, onCancel }: Props) {
                     {/* Resolution */}
                     <div style={{ fontSize: 13.5, fontWeight: 700, minWidth: 50 }}>
                       {f.label}
-                      {f.fps && f.fps >= 50 && <span style={{ fontSize: 11, fontWeight: 500, color: 'rgba(148,163,184,0.6)', marginRight: 4 }}>{f.fps}fps</span>}
+                      {f.fps && f.fps >= 50 && <span style={{ fontSize: 11, fontWeight: 500, color: '#64748b', marginRight: 4 }}>{f.fps}fps</span>}
                     </div>
 
                     {/* Filesize */}
-                    <div style={{ fontSize: 12, color: 'rgba(148,163,184,0.85)', minWidth: 70, fontVariantNumeric: 'tabular-nums' }}>
+                    <div style={{ fontSize: 12, color: '#64748b', minWidth: 70, fontVariantNumeric: 'tabular-nums' }}>
                       {formatBytes(f.filesize)}
                     </div>
 
                     {/* Codec */}
-                    <div style={{ fontSize: 11, color: 'rgba(148,163,184,0.55)', flex: 1 }}>
+                    <div style={{ fontSize: 11, color: '#64748b', flex: 1 }}>
                       {f.codec} · {f.container.toUpperCase()}
                     </div>
 
@@ -208,11 +208,11 @@ function FormatPickerDialog({ visible, info, onConfirm, onCancel }: Props) {
                       <div style={{
                         fontSize: 10,
                         fontWeight: 700,
-                        background: 'rgba(20,184,166,0.2)',
-                        color: 'rgba(94,234,212,0.95)',
+                        background: '#ccfbf1',
+                        color: '#0f766e',
                         padding: '2px 7px',
                         borderRadius: 4,
-                        border: '1px solid rgba(20,184,166,0.3)',
+                        border: '1px solid #5eead4',
                       }}
                       >
                         Recommended
@@ -225,7 +225,7 @@ function FormatPickerDialog({ visible, info, onConfirm, onCancel }: Props) {
 
             {/* Footer */}
             <div style={{
-              borderTop: '1px solid rgba(255,255,255,0.06)',
+              borderTop: '1px solid #e4e7ec',
               padding: '12px 16px',
               display: 'flex',
               justifyContent: 'space-between',
@@ -237,9 +237,9 @@ function FormatPickerDialog({ visible, info, onConfirm, onCancel }: Props) {
                 onClick={onCancel}
                 style={{
                   background: 'none',
-                  border: '1px solid rgba(255,255,255,0.1)',
+                  border: '1px solid #d0d5dd',
                   borderRadius: 7,
-                  color: 'rgba(148,163,184,0.85)',
+                  color: '#64748b',
                   fontSize: 12.5,
                   padding: '7px 18px',
                   cursor: 'pointer',
@@ -256,7 +256,7 @@ function FormatPickerDialog({ visible, info, onConfirm, onCancel }: Props) {
                 disabled={info.formats.length === 0}
                 style={{
                   background: info.formats.length === 0
-                    ? 'rgba(255,255,255,0.05)'
+                    ? '#f8fafc'
                     : 'linear-gradient(135deg,#10b981,#14b8a6)',
                   border: 'none',
                   borderRadius: 7,

@@ -159,7 +159,7 @@ const defaults: Config = {
     trashTmpFiles: true, askForCleanup: true, closeFile: true, cleanupAfterExport: false,
   },
   allowMultipleInstances: false,
-  darkMode: true,
+  darkMode: false,
   preferStrongColors: false,
   outputFileNameMinZeroPadding: 1,
   cutFromAdjustmentFrames: 0,
@@ -248,8 +248,9 @@ export async function init({ customConfigDir }: { customConfigDir: string | unde
 
   await tryCreateStore({ customStoragePath });
 
-  // TrimOut: always enforce simple mode and disable invert segments
+  // TrimOut: always enforce simple mode, the light theme, and disable invert segments
   set('simpleMode', true);
+  set('darkMode', false);
   set('invertCutSegments', false);
 
   // migrate old configs:

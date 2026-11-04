@@ -2,7 +2,7 @@ import type { CSSProperties, ReactEventHandler, FocusEventHandler, DragEventHand
 import { memo, useEffect, useState, useCallback, useRef, useMemo } from 'react';
 import { FaRegTimesCircle } from 'react-icons/fa';
 import { MdRotate90DegreesCcw } from 'react-icons/md';
-import { FiFilm, FiScissors, FiSettings, FiSmartphone, FiUser } from 'react-icons/fi';
+import { FiCheck, FiFilm, FiScissors, FiSmartphone, FiUser } from 'react-icons/fi';
 import { AnimatePresence, MotionConfig } from 'motion/react';
 import i18n from 'i18next';
 import { useTranslation } from 'react-i18next';
@@ -38,15 +38,21 @@ import QrShareDialog from './components/QrShareDialog';
 import ProjectSetupDialog from './components/ProjectSetupDialog';
 import ProjectWorkspace from './components/ProjectWorkspace';
 import ProjectReviewDialog from './components/ProjectReviewDialog';
+import ClipsViewerDialog from './components/ClipsViewerDialog';
 import KickoBridgeDialog from './components/KickoBridgeDialog';
 import FinishDestinationDialog from './components/FinishDestinationDialog';
-import { compressClip, QUALITY_PRESETS, type QualityPreset, type AspectRatio, type FitMode } from './util/qualityPresets';
+import ExportOptions from './components/ExportOptions';
+import type { ExportMode } from './components/ExportOptions';
+import { getNextPlayableClipIndex, getUserClips, trimClipEdge } from './util/clipTrim';
+import { compressClip, type QualityPreset, type AspectRatio, type FitMode } from './util/qualityPresets';
 import MediaSourcePlayer from './MediaSourcePlayer';
 import TopMenu from './TopMenu';
 import LastCommands from './LastCommands';
 import StreamsSelector from './StreamsSelector';
 // SegmentList import removed — ClipsPanel in the AI sidebar is the primary clip browser
 import Settings from './components/Settings';
+import SimpleSettings from './components/SimpleSettings';
+import OutDirSelector from './components/OutDirSelector';
 import Timeline from './Timeline';
 import BottomBar from './BottomBar';
 import ExportConfirm from './components/ExportConfirm';
@@ -60,7 +66,7 @@ import Working from './components/Working';
 import OutputFormatSelect from './components/OutputFormatSelect';
 import * as Dialog from './components/Dialog';
 
-import { runStartupCheck } from './startupCheck';
+import runStartupCheck from './startupCheck';
 import { darkModeTransition } from './colors';
 import { getSegColor } from './util/colors';
 import type {
@@ -91,6 +97,7 @@ import {
   isMasBuild,
   readFileStats,
   makeSourceFileAccessError,
+  appVersion,
 } from './util';
 import getSwal, { errorToast, showPlaybackFailedMessage } from './swal';
 import { adjustRate } from './util/rate-calculator';
@@ -131,7 +138,7 @@ import type { AppEvent } from '../../main/index.js';
 import { appName } from '../../main/common.js';
 import type { ExportedPlayInput, ProjectPlayRating, ScoutRoleId, TrimoutProject } from './projectModel';
 import { addExportBatch, createTrimoutProject, reorderProjectPlays, updateProjectPlay } from './projectModel';
-import { loadTrimoutProject, saveTrimoutProject } from './projectStore';
+import { loadTrimoutProject, repairTrimoutProjectFiles, saveTrimoutProject } from './projectStore';
 import { SCOUT_ROLE_BY_ID, getScoutPhaseContext } from './scoutCatalog';
 import { getSuggestedScoutPlayIds } from './scoutLogic';
 import createClipFileLabel from './clipNaming';
@@ -141,6 +148,10 @@ const { lstat } = window.require('fs/promises');
 const { parse: parsePath, join: pathJoin, basename, dirname } = window.require('path');
 
 const { pathToFileURL, lossyMode, isLinux } = window.require('@electron/remote').require('./index.js');
+
+// Sports platforms that yt-dlp doesn't have dedicated extractors for — we
+// handle them via a hidden-browser stream extraction instead.
+const SPORTS_PLATFORM_RE = /pixellot|veo\.co|hudl|trace\.video|playsight/i;
 
 
 const hevcPlaybackSupportedPromise = doesPlayerSupportHevcPlayback();
@@ -167,6 +178,7 @@ function App() {
   const [projectSetupOpen, setProjectSetupOpen] = useState(false);
   const [projectSetupDefaultName, setProjectSetupDefaultName] = useState('');
   const [projectReviewOpen, setProjectReviewOpen] = useState(false);
+  const [clipsViewerOpen, setClipsViewerOpen] = useState(false);
   const [kickoBridgeOpen, setKickoBridgeOpen] = useState(false);
   // Pending clip range — set when ✂️ is pressed, consumed when action is picked
   const pendingClipRef = useRef<{ start: number; end: number } | null>(null);
@@ -177,6 +189,9 @@ function App() {
     await saveTrimoutProject(activeProjectPath, project);
     setActiveProject(project);
   }, [activeProjectPath]);
+
+  const [finishDestinationOpen, setFinishDestinationOpen] = useState(false);
+  const resumeFinishAfterProjectSetupRef = useRef(false);
 
   const handleCreateProject = useCallback(async ({ name, playerName: projectPlayerName, scoutRole }: {
     name: string;
@@ -217,7 +232,14 @@ function App() {
     const [projectPath] = result.filePaths;
     if (result.canceled || !projectPath) return;
     try {
-      const project = await loadTrimoutProject(projectPath);
+      let project = await loadTrimoutProject(projectPath);
+      // Fold re-exported copies of a play (and move the review off deleted files).
+      // Best effort: a project that cannot be saved still opens as it was.
+      try {
+        project = await repairTrimoutProjectFiles(projectPath, project);
+      } catch (repairErr) {
+        console.warn('Could not fold re-exported copies of plays', repairErr);
+      }
       setActiveProjectPath(projectPath);
       setActiveProject(project);
       setPlayerName(project.playerName);
@@ -274,6 +296,8 @@ function App() {
   const clipStopAtRef = useRef<number | null>(null);
   // State mirror so the timeline overlay renders while a clip is playing
   const [playingClipIndex, setPlayingClipIndex] = useState<number | null>(null);
+  const [isPlayingAll, setIsPlayingAll] = useState(false);
+  const playAllRef = useRef(false);
 
   const [ffmpegCommandLog, setFfmpegCommandLog] = useState<FfmpegCommandLog>([]);
   const [rotation, setRotation] = useState(360);
@@ -296,9 +320,7 @@ function App() {
   const [activeSubtitleStreamIndex, setActiveSubtitleStreamIndex] = useState<number>();
   const [hideCompatPlayer, setHideCompatPlayer] = useState(false);
   const [exportConfirmOpen, setExportConfirmOpen] = useState(false);
-  const [finishDestinationOpen, setFinishDestinationOpen] = useState(false);
   const pendingExportDestinationRef = useRef<'local' | 'kicko' | null>(null);
-  const resumeFinishAfterProjectSetupRef = useRef(false);
   const [cacheBuster, setCacheBuster] = useState(0);
   const [currentFileExportCount, setCurrentFileExportCount] = useState(0);
   // Track ranges that have already been exported — shown as "gaps" in the timeline
@@ -337,7 +359,7 @@ function App() {
 
   const allUserSettings = useUserSettingsRoot();
   const { captureFormat, keyframeCut, preserveMetadata, preserveMetadataOnMerge, preserveMovData, preserveChapters, movFastStart, avoidNegativeTs, autoMerge, timecodeFormat, invertCutSegments, autoExportExtraStreams, askBeforeClose, enableImportChapters, enableAskForFileOpenAction, playbackVolume, autoSaveProjectFile, wheelSensitivity, waveformHeight, invertTimelineScroll, language, ffmpegExperimental, hideNotifications, hideOsNotifications, autoLoadTimecode, autoDeleteMergedSegments, exportConfirmEnabled, segmentsToChapters, simpleMode, cutFileTemplate, cutMergedFileTemplate, mergedFileTemplate, keyboardSeekAccFactor, keyboardNormalSeekSpeed, keyboardSeekSpeed2, keyboardSeekSpeed3, treatInputFileModifiedTimeAsStart, treatOutputFileModifiedTimeAsStart, outFormatLocked, safeOutputFileName, enableAutoHtml5ify, segmentsToChaptersOnly, keyBindings, enableSmartCut, customFfPath, storeProjectInWorkingDir, enableOverwriteOutput, mouseWheelZoomModifierKey, mouseWheelFrameSeekModifierKey, mouseWheelKeyframeSeekModifierKey, captureFrameMethod, captureFrameQuality, captureFrameFileNameFormat, enableNativeHevc, cleanupChoices, darkMode, preferStrongColors, outputFileNameMinZeroPadding, cutFromAdjustmentFrames, cutToAdjustmentFrames, waveformMode: waveformModePreference, thumbnailsEnabled, keyframesEnabled, reducedMotion, ffmpegHwaccel } = allUserSettings.settings;
-  const { setCaptureFormat, setCustomOutDir, setKeyframeCut, setPlaybackVolume, setExportConfirmEnabled, setSimpleMode, setOutFormatLocked, setSafeOutputFileName, setKeyBindings, resetKeyBindings, setStoreProjectInWorkingDir, setCleanupChoices, toggleDarkMode, setWaveformMode, setThumbnailsEnabled, setKeyframesEnabled, prefersReducedMotion, customOutDir, setAutoMerge, setAutoDeleteMergedSegments } = allUserSettings;
+  const { setCaptureFormat, setCustomOutDir, setKeyframeCut, setPlaybackVolume, setExportConfirmEnabled, setSimpleMode, setOutFormatLocked, setSafeOutputFileName, setKeyBindings, resetKeyBindings, setStoreProjectInWorkingDir, setCleanupChoices, toggleDarkMode, setWaveformMode, setThumbnailsEnabled, setKeyframesEnabled, prefersReducedMotion, customOutDir, setAutoMerge, setAutoDeleteMergedSegments, setCaptureFrameQuality, setHideOsNotifications, setHideNotifications, setAskBeforeClose } = allUserSettings;
 
   const [showAdvancedSettings, setShowAdvancedSettings] = useState(!simpleMode);
 
@@ -549,36 +571,6 @@ function App() {
       isUncertain: action.isUncertain ?? false,
     });
   }, [addClip, cutSegments, playerName]);
-
-  // Trim window duration in seconds for simple mode
-  const trimWindowDuration = 15;
-
-  // Custom trim width persists across seeks (user can drag to 40s and it stays 40s)
-  const [customTrimDuration, setCustomTrimDuration] = useState(trimWindowDuration);
-  // Position override — cleared on seek so trim re-centers, but width stays
-  const [simpleTrimPositionOverride, setSimpleTrimPositionOverride] = useState<{ start: number; end: number } | null>(null);
-
-  // Actual trim start/end
-  const simpleTrimStart = simpleTrimPositionOverride?.start ?? Math.max(0, commandedTime - customTrimDuration / 2);
-  const simpleTrimEnd = simpleTrimPositionOverride?.end ?? Math.min(simpleTrimStart + customTrimDuration, fileDurationNonZero);
-
-  const seekAbsForTimeline = useCallback((time: number) => {
-    seekAbs(time);
-    // Re-center trim window when user clicks on timeline
-    if (simpleMode) setSimpleTrimPositionOverride(null);
-  }, [seekAbs, simpleMode]);
-
-  const onSimpleTrimAdjust = useCallback((newStart: number, newEnd: number) => {
-    setSimpleTrimPositionOverride({ start: newStart, end: newEnd });
-    setCustomTrimDuration(newEnd - newStart);
-  }, []);
-
-  // Re-center trim on current playhead (called from ⌖ button)
-  const onSimpleTrimReset = useCallback(() => {
-    const start = Math.max(0, commandedTime - customTrimDuration / 2);
-    const end = Math.min(start + customTrimDuration, fileDurationNonZero);
-    setSimpleTrimPositionOverride({ start, end });
-  }, [commandedTime, customTrimDuration, fileDurationNonZero]);
 
 
   const { getEdlFilePath, projectFileSavePath, getProjectFileSavePath } = useSegmentsAutoSave({ autoSaveProjectFile, storeProjectInWorkingDir, filePath, customOutDir, cutSegments });
@@ -983,6 +975,15 @@ function App() {
 
     // QuickCut clip playback — stop exactly at the clip end (ref-based, no stale closure)
     if (clipStopAtRef.current != null && currentTime >= clipStopAtRef.current) {
+      const nextIndex = playAllRef.current && playingClipIndex != null ? getNextPlayableClipIndex(getUserClips(cutSegments), playingClipIndex) : undefined;
+      const nextClip = nextIndex != null ? cutSegments[nextIndex] : undefined;
+      if (nextIndex != null && nextClip?.end != null) {
+        clipStopAtRef.current = nextClip.end;
+        setPlayingClipIndex(nextIndex);
+        setCurrentSegIndex(nextIndex);
+        seekAbs(nextClip.start);
+        return;
+      }
       clipStopAtRef.current = null;
       setPlayingClipIndex(null);
       pause();
@@ -1028,7 +1029,7 @@ function App() {
         }
       }
     }
-  }, [commandedTimeRef, cutSegments, findSegmentsAtCursor, pause, playbackModeRef, playerTime, playingRef, seekAbs, selectedSegments, setCurrentSegIndex, setPlaybackMode, setPlayerTime]);
+  }, [commandedTimeRef, cutSegments, findSegmentsAtCursor, pause, playbackModeRef, playerTime, playingClipIndex, playingRef, seekAbs, selectedSegments, setCurrentSegIndex, setPlaybackMode, setPlayerTime]);
 
   const closeFileWithConfirm = useCallback(async () => {
     if (!isFileOpened || workingRef.current) return;
@@ -1053,36 +1054,30 @@ function App() {
       ? `Close the current video?\n\nThis will remove the current, unexported work:\n- ${parts.join('\n- ')}\n\n${activeProject ? 'Plays already saved to the project will stay there.' : 'This action cannot be undone.'}`
       : 'Close the current video?';
 
-    // Native confirm — bulletproof, no library dependency, can't hang
-    const confirmed = window.confirm(message);
-    console.log('[CleanProject] confirmed?', confirmed);
-    if (!confirmed) return;
+    // Native confirm on purpose: it is synchronous and cannot hang, unlike the async dialog stack
+    // eslint-disable-next-line no-alert
+    if (!window.confirm(message)) return;
 
     try {
-      console.log('[CleanProject] wiping…');
       resetState();
       clearSegments();
       if (!activeProject) setPlayerName('');
       pendingClipRef.current = null;
       setActionPickerOpen(false);
       setExportConfirmOpen(false);
-      console.log('[CleanProject] done');
       // Non-blocking toast (if it fails, the clean still happened)
       try {
         getSwal().toast.fire({ icon: 'success', title: 'Video closed', timer: 2000 });
       } catch { /* ignore toast failure */ }
     } catch (err) {
-      console.error('[CleanProject] FAILED:', err);
-      window.alert(`Cleanup failed: ${err instanceof Error ? err.message : String(err)}`);
+      handleError({ title: 'Could not close the video', err });
     }
-  }, [activeProject, cutSegments, playerName, resetState, clearSegments]);
+  }, [activeProject, cutSegments, playerName, resetState, clearSegments, handleError]);
 
   // "Send to phone" opens the QR-share dialog for the most recent exported file.
   const handleSendToPhone = useCallback(() => {
-    if (!lastExportedFile) {
-      window.alert('There is no exported file to share yet. Export first, then try again.');
-      return;
-    }
+    // The button only appears after an export, so there is always a file here.
+    if (!lastExportedFile) return;
     setQrShareFilePath(lastExportedFile);
     setQrShareOpen(true);
   }, [lastExportedFile]);
@@ -1449,7 +1444,8 @@ function App() {
 
       if (!enableOverwriteOutput) warnings.add(i18n.t('Overwrite output setting is disabled and some files might have been skipped.'));
 
-      if (!exportConfirmEnabled) notices.add(i18n.t('Export options are not shown. You can enable export options by clicking the icon right next to the export button.'));
+      // TrimOut picks export settings in the Finish dialog, so there is no hidden options screen to point at.
+      if (!exportConfirmEnabled && !simpleMode) notices.add(i18n.t('Export options are not shown. You can enable export options by clicking the icon right next to the export button.'));
 
       invariant(mainFileFormat != null);
       // https://github.com/mifi/lossless-cut/issues/329
@@ -1470,7 +1466,7 @@ function App() {
         }
       }
 
-      if (areWeCutting) notices.add(i18n.t('Cutpoints may be inaccurate.'));
+      if (areWeCutting) notices.add(simpleMode ? 'Clips are cut without re-encoding, so a clip can start a moment before the mark.' : i18n.t('Cutpoints may be inaccurate.'));
 
       if (simpleMode && !prefersReducedMotion) shootConfetti({ ticks: 50 });
 
@@ -1673,7 +1669,7 @@ function App() {
                 await fsCopyFile(f.path, dest);
                 if (firstClipInPkg == null) firstClipInPkg = dest;
                 const outIndex = outFiles.findIndex((candidate) => candidate.path === f.path);
-                const exportedSegment = outIndex >= 0 ? segmentsToExport[outIndex] : undefined;
+                const exportedSegment = outIndex !== -1 ? segmentsToExport[outIndex] : undefined;
                 const segment = exportedSegment ? cutSegments[exportedSegment.originalIndex] : undefined;
                 projectExportedPlays.push({
                   filePath: dest,
@@ -1751,7 +1747,7 @@ function App() {
           }
           projectExportedPlays = existingOutFiles.map((f) => {
             const outIndex = outFiles.findIndex((candidate) => candidate.path === f.path);
-            const exportedSegment = outIndex >= 0 ? segmentsToExport[outIndex] : undefined;
+            const exportedSegment = outIndex !== -1 ? segmentsToExport[outIndex] : undefined;
             const segment = exportedSegment ? cutSegments[exportedSegment.originalIndex] : undefined;
             return {
               filePath: f.path,
@@ -1840,17 +1836,6 @@ function App() {
     }
   }, [filePath, exportConfirmEnabled, exportConfirmOpen, onExportConfirm]);
 
-  // Simple mode export: update the segment atomically (single setState call) then export
-  const onExportConfirmRef = useRef(onExportConfirm);
-  useEffect(() => { onExportConfirmRef.current = onExportConfirm; }, [onExportConfirm]);
-
-  const handleSimpleExport = useCallback(async () => {
-    // Use current trim window (auto-centered or manually dragged)
-    updateSegAtIndex(currentSegIndexSafe, { start: simpleTrimStart, end: simpleTrimEnd });
-    await new Promise<void>((resolve) => setTimeout(resolve, 50));
-    await onExportConfirmRef.current();
-  }, [simpleTrimStart, simpleTrimEnd, updateSegAtIndex, currentSegIndexSafe]);
-
   const handleFinishPress = useCallback(() => {
     if (!filePath || workingRef.current) return;
     setFinishDestinationOpen(true);
@@ -1864,8 +1849,9 @@ function App() {
       return;
     }
     pendingExportDestinationRef.current = destination;
-    await (simpleMode ? handleSimpleExport() : onExportPress());
-  }, [activeProject, handleSimpleExport, onExportPress, simpleMode]);
+    // TrimOut exports the clips exactly as marked and trimmed; settings were chosen in the Finish dialog.
+    await (simpleMode ? onExportConfirm() : onExportPress());
+  }, [activeProject, onExportConfirm, onExportPress, simpleMode]);
 
   // ---- yt-dlp download ----
   const [ytdlpDownloading, setYtdlpDownloading] = useState(false);
@@ -1877,6 +1863,12 @@ function App() {
   const [formatPickerLoading, setFormatPickerLoading] = useState(false);
   // URL being processed — kept between the listFormats and download steps
   const pendingDownloadUrlRef = useRef<string | null>(null);
+  // For sports platforms (VEO/Pixellot/Hudl): we first extract the real m3u8
+  // via a hidden BrowserWindow. The ORIGINAL page URL is stored here and
+  // passed to yt-dlp as --referer at download time, since those CDNs enforce
+  // origin checks on manifest requests.
+  const pendingDownloadRefererRef = useRef<string | null>(null);
+  const [streamExtracting, setStreamExtracting] = useState(false);
   // ref so handleUrlDownload can call userOpenFiles even before it's declared
   const userOpenFilesRef = useRef<((paths: string[]) => void) | null>(null);
 
@@ -1897,7 +1889,6 @@ function App() {
     setKickoBridgeOpen(true);
   }, []);
 
-  // ---- AI analysis → replace segments ----
   // Click a segment in the list → select it AND jump the playhead to its start
   const handleSegClick = useCallback((index: number) => {
     setCurrentSegIndex(index);
@@ -1924,11 +1915,47 @@ function App() {
     setTimeout(() => { play(); }, 50);
   }, [cutSegments, setCurrentSegIndex, seekAbs, play]);
 
+  // "Play all": preview every clip back to back from the original video, no export needed.
+  const handlePlayAll = useCallback(() => {
+    const first = getNextPlayableClipIndex(getUserClips(cutSegments), -1);
+    if (first == null) return;
+    playAllRef.current = true;
+    setIsPlayingAll(true);
+    handlePlayClip(first);
+  }, [cutSegments, handlePlayClip]);
+
+  const handleRenameClip = useCallback((index: number, name: string) => {
+    const label = createClipFileLabel([name]);
+    if (label.length > 0) updateSegAtIndex(index, { name: label });
+  }, [updateSegAtIndex]);
+
+  // Drag a clip edge on the timeline: the video follows the handle so the user sees the exact frame.
+  const handleTrimClip = useCallback((index: number, edge: 'start' | 'end', time: number) => {
+    const seg = cutSegments[index];
+    if (seg == null || seg.end == null) return;
+    const next = trimClipEdge({ start: seg.start, end: seg.end }, edge, time, fileDurationNonZero);
+    updateSegAtIndex(index, next);
+    seekAbs(edge === 'start' ? next.start : next.end);
+  }, [cutSegments, fileDurationNonZero, seekAbs, updateSegAtIndex]);
+
+  const exportMode: ExportMode = !autoMerge ? 'separate' : (autoDeleteMergedSegments ? 'merge' : 'both');
+  const handleExportModeChange = useCallback((mode: ExportMode) => {
+    setAutoMerge(mode !== 'separate');
+    setAutoDeleteMergedSegments(mode === 'merge');
+  }, [setAutoMerge, setAutoDeleteMergedSegments]);
+
+  const userClips = useMemo(() => getUserClips(cutSegments), [cutSegments]);
+  const hasFinishedClip = userClips.some((seg) => seg.end != null);
+  // Same color as the clip's block on the timeline
+  const getClipColor = useCallback((i: number) => { const seg = userClips[i]; return seg != null ? getSegColor(seg).hex() : undefined; }, [userClips]);
+
   // Clear the timeline overlay whenever playback stops (manual pause, seek, etc.)
   useEffect(() => {
     if (!playing) {
       setPlayingClipIndex(null);
       clipStopAtRef.current = null;
+      playAllRef.current = false;
+      setIsPlayingAll(false);
     }
   }, [playing]);
 
@@ -2589,22 +2616,61 @@ function App() {
 
   // Stage 1: User pastes URL → we fetch available formats (1 HTTP roundtrip, ~1-3 sec)
   // and open the FormatPickerDialog. The actual download happens in stage 2 (handleFormatPicked).
+  // For sports platforms (VEO/Pixellot/…) we first open a hidden browser to intercept
+  // the real .m3u8 URL, then hand THAT URL to yt-dlp with the original page as --referer.
   const handleUrlDownload = useCallback(async (url: string) => {
     pendingDownloadUrlRef.current = url;
-    setFormatPickerLoading(true);
+    pendingDownloadRefererRef.current = null;
     const { ipcRenderer } = window.require('electron');
+
+    // Step A — if it's a sports platform, extract the real stream URL first.
+    let effectiveUrl = url;
+    if (SPORTS_PLATFORM_RE.test(url)) {
+      setStreamExtracting(true);
+      try {
+        const extracted: { streamUrl: string; pageUrl: string; kind: string; elapsedMs: number } = await ipcRenderer.invoke('extractStreamUrl', url);
+        console.log('stream extracted', extracted);
+        effectiveUrl = extracted.streamUrl;
+        // Remember the original page URL — we pass it as Referer at download time
+        pendingDownloadRefererRef.current = url;
+        pendingDownloadUrlRef.current = effectiveUrl;
+      } catch (extractErr) {
+        console.error('stream extraction failed', extractErr);
+        const platform = url.match(SPORTS_PLATFORM_RE)?.[0] ?? 'This platform';
+        await getSwal().Swal.fire({
+          icon: 'error',
+          title: `Could not read the ${platform} video`,
+          html: `
+            <div style="text-align:left; direction:ltr; line-height:1.6; font-size:14px;">
+              <p>We opened the page in the background but could not find a streaming URL.</p>
+              <p style="margin-top:12px;"><b>Possible reasons:</b></p>
+              <ul style="text-align:left; padding-left:20px;">
+                <li>The video requires login (shared links are usually public — paid teams are not).</li>
+                <li>The player needs a manual "Play" click to start.</li>
+                <li>Network timeout — try again on a stable connection.</li>
+              </ul>
+            </div>
+          `,
+          confirmButtonText: 'Got it',
+          confirmButtonColor: '#82b300',
+        });
+        return;
+      } finally {
+        setStreamExtracting(false);
+      }
+    }
+
+    // Step B — list formats (works for both standard URLs and extracted m3u8).
+    setFormatPickerLoading(true);
     try {
-      const info: VideoInfo = await ipcRenderer.invoke('ytdlpListFormats', url);
+      const info: VideoInfo = await ipcRenderer.invoke('ytdlpListFormats', effectiveUrl, pendingDownloadRefererRef.current ?? undefined);
       setFormatPickerInfo(info);
       setFormatPickerOpen(true);
     } catch (err) {
       console.error('ytdlp list formats error', err);
       const errMsg = err instanceof Error ? err.message : String(err);
       let userMsg = errMsg;
-      const sportsPattern = /pixellot|veo\.co|hudl|trace\.video|playsight/i;
-      if (sportsPattern.test(url)) {
-        userMsg = `${url.match(sportsPattern)?.[0] ?? 'This platform'} is not supported directly. Download from the official site or paste a direct .m3u8 link.`;
-      } else if (errMsg.includes('Unsupported URL')) {
+      if (errMsg.includes('Unsupported URL')) {
         userMsg = 'This site is not supported. Try YouTube, Vimeo, Facebook, or a direct video link.';
       } else if (errMsg.includes('Sign in') || errMsg.includes('private')) {
         userMsg = 'This video is private or requires sign-in. It cannot be downloaded.';
@@ -2643,10 +2709,12 @@ function App() {
     ipcRenderer.on('ytdlpBootstrap', onBootstrap);
     try {
       const outDir = outputDir || (window.require('@electron/remote').app.getPath('downloads') as string);
-      const outFile: string = await ipcRenderer.invoke('ytdlpDownload', url, outDir, formatSelector);
+      const referer = pendingDownloadRefererRef.current ?? undefined;
+      const outFile: string = await ipcRenderer.invoke('ytdlpDownload', url, outDir, formatSelector, referer);
       if (!outFile) {
         throw new Error('The download finished, but no output file was found');
       }
+      pendingDownloadRefererRef.current = null;
       userOpenFilesRef.current?.([outFile]);
       getSwal().toast.fire({ icon: 'success', title: 'Video downloaded and opened successfully', timer: 3000 });
     } catch (err) {
@@ -2657,18 +2725,21 @@ function App() {
       let userMsg = errMsg;
       let html: string | undefined;
 
-      // Detect sports/private platforms specifically — they often need special handling
-      const sportsPattern = /pixellot|veo\.co|hudl|trace\.video|playsight/i;
-      if (sportsPattern.test(url)) {
-        title = 'Sports platform not supported directly';
+      // By the time we're here, `url` is either the user's original URL OR the
+      // m3u8 we extracted for a sports platform. If we extracted a referer,
+      // the download failure is sports-platform-specific (expired token etc.).
+      const refererForError = pendingDownloadRefererRef.current;
+      const isSportsPlatformFailure = refererForError != null && SPORTS_PLATFORM_RE.test(refererForError);
+      if (isSportsPlatformFailure) {
+        title = 'Sports stream download failed';
         html = `
           <div style="text-align:left; direction:ltr; line-height:1.6; font-size:14px;">
-            <p><b>${url.match(sportsPattern)?.[0] ?? 'This platform'}</b> requires special authentication, and this link points to the viewer page rather than the video itself.</p>
-            <p style="margin-top:12px;"><b>Options:</b></p>
+            <p>We opened the page and found a stream URL, but the download itself failed. This usually means:</p>
             <ul style="text-align:left; padding-left:20px;">
-              <li>Download the video from the platform's official site using its Download button.</li>
-              <li>Find the direct <code>.m3u8</code> URL in the browser developer tools (F12 -> Network) and paste it here.</li>
+              <li>The stream token expired before the download could finish.</li>
+              <li>The source dropped the connection mid-transfer.</li>
             </ul>
+            <p style="margin-top:12px;">Try again — a fresh extraction gets a fresh token.</p>
           </div>
         `;
       } else if (errMsg.includes('Unsupported URL')) {
@@ -3320,6 +3391,33 @@ function App() {
                     </div>
                   )}
 
+                  {/* Hidden-browser stream extraction (VEO / Pixellot / Hudl / …) */}
+                  {streamExtracting && (
+                    <div style={{
+                      position: 'absolute',
+                      inset: 0,
+                      zIndex: 19,
+                      display: 'flex',
+                      flexDirection: 'column',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      gap: 14,
+                      background: 'rgba(10,15,25,0.9)',
+                      backdropFilter: 'blur(6px)',
+                      direction: 'ltr',
+                    }}
+                    >
+                      <div style={{ fontSize: 30 }}>🎬</div>
+                      <div style={{ fontSize: 14, fontWeight: 700, color: '#f1f5f9' }}>
+                        Opening the match page in the background…
+                      </div>
+                      <div style={{ fontSize: 11, color: 'rgba(148,163,184,0.75)', textAlign: 'center', maxWidth: 360, lineHeight: 1.5 }}>
+                        We load the page like a real browser and intercept the stream.
+                        This can take 10-30 seconds depending on the site.
+                      </div>
+                    </div>
+                  )}
+
                   {/* yt-dlp download progress overlay — distinguishes bootstrap vs video download */}
                   {ytdlpDownloading && (
                     <div style={{
@@ -3559,8 +3657,8 @@ function App() {
                   overflowX: 'hidden',
                   display: 'flex',
                   flexDirection: 'column',
-                  borderLeft: '1px solid rgba(255,255,255,0.06)',
-                  background: 'rgba(0,0,0,0.15)',
+                  borderLeft: '1px solid #e4e7ec',
+                  background: '#f5f6f8',
                 }}
                 >
                   <ProjectWorkspace
@@ -3582,12 +3680,12 @@ function App() {
                   {filePath != null && (
                     <div style={{
                       padding: '10px 14px',
-                      borderBottom: '1px solid rgba(255,255,255,0.07)',
-                      background: 'rgba(210,255,0,0.035)',
+                      borderBottom: '1px solid #e4e7ec',
+                      background: '#ffffff',
                       flexShrink: 0,
                     }}
                     >
-                      <div style={{ fontSize: 10, color: 'rgba(148,163,184,0.55)', letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 5 }}>
+                      <div style={{ fontSize: 10, color: '#64748b', letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 5 }}>
                         <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}><FiFilm /> Current video</span>
                       </div>
                       <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
@@ -3596,7 +3694,8 @@ function App() {
                             flex: 1,
                             minWidth: 0,
                             fontSize: 12,
-                            color: 'rgba(203,213,225,0.9)',
+                            color: '#0f172a',
+                            fontWeight: 600,
                             whiteSpace: 'nowrap',
                             overflow: 'hidden',
                             textOverflow: 'ellipsis',
@@ -3612,10 +3711,10 @@ function App() {
                           onClick={handleFinishedWithVideo}
                           title="Close the current video and discard unexported cuts"
                           style={{
-                            background: 'rgba(239,68,68,0.12)',
-                            border: '1px solid rgba(239,68,68,0.28)',
+                            background: '#ffffff',
+                            border: '1px solid #fecaca',
                             borderRadius: 6,
-                            color: 'rgba(252,165,165,0.95)',
+                            color: '#dc2626',
                             fontSize: 11,
                             fontWeight: 600,
                             padding: '4px 10px',
@@ -3624,8 +3723,8 @@ function App() {
                             transition: 'background 0.12s, border-color 0.12s',
                             whiteSpace: 'nowrap',
                           }}
-                          onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(239,68,68,0.24)'; e.currentTarget.style.borderColor = 'rgba(239,68,68,0.55)'; }}
-                          onMouseLeave={(e) => { e.currentTarget.style.background = 'rgba(239,68,68,0.12)'; e.currentTarget.style.borderColor = 'rgba(239,68,68,0.28)'; }}
+                          onMouseEnter={(e) => { e.currentTarget.style.background = '#fef2f2'; e.currentTarget.style.borderColor = '#f87171'; }}
+                          onMouseLeave={(e) => { e.currentTarget.style.background = '#ffffff'; e.currentTarget.style.borderColor = '#fecaca'; }}
                         >
                           Close video
                         </button>
@@ -3635,8 +3734,8 @@ function App() {
 
                   {/* The project owns the global player name, so do not ask for it twice. */}
                   {activeProject == null && (
-                  <div style={{ padding: '10px 14px 8px', borderBottom: '1px solid rgba(255,255,255,0.07)', flexShrink: 0 }}>
-                    <div style={{ fontSize: 10, color: 'rgba(148,163,184,0.55)', letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 5 }}>
+                  <div style={{ padding: '10px 14px 8px', borderBottom: '1px solid #e4e7ec', flexShrink: 0 }}>
+                    <div style={{ fontSize: 10, color: '#64748b', letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 5 }}>
                       <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}><FiUser /> Player name</span>
                     </div>
                     <input
@@ -3648,10 +3747,10 @@ function App() {
                       style={{
                         width: '100%',
                         boxSizing: 'border-box',
-                        background: 'rgba(255,255,255,0.06)',
-                        border: `1px solid ${playerName ? 'rgba(210,255,0,0.42)' : 'rgba(255,255,255,0.12)'}`,
+                        background: '#ffffff',
+                        border: `1px solid ${playerName ? '#84cc16' : '#d0d5dd'}`,
                         borderRadius: 8,
-                        color: '#f1f5f9',
+                        color: '#0f172a',
                         fontSize: 13,
                         fontWeight: 600,
                         padding: '6px 10px',
@@ -3661,243 +3760,91 @@ function App() {
                       }}
                     />
                     {!playerName && isFileOpened && (
-                      <div style={{ fontSize: 10, color: 'rgba(251,191,36,0.7)', marginTop: 4, direction: 'ltr' }}>
+                      <div style={{ fontSize: 10, color: '#b45309', marginTop: 4, direction: 'ltr' }}>
                         Add a player name to keep exported files organized
                       </div>
                     )}
                   </div>
                   )}
 
-                  {/* ── Clips list — scrollable, below transcript toggle ── */}
+                  {/* ── Before a video is open: how TrimOut works, in three steps ── */}
+                  {!isFileOpened && (
+                    <ol style={{ listStyle: 'none', margin: 0, padding: '18px 16px', display: 'flex', flexDirection: 'column', gap: 14, direction: 'ltr' }}>
+                      {[
+                        ['Open a game video', 'Drag it in, or paste a link.'],
+                        ['Mark the moments', 'Press the scissors at each play and name it.'],
+                        ['Trim and finish', 'Drag the clip edges on the timeline, then Finish.'],
+                      ].map(([title, text], i) => (
+                        <li key={title} style={{ display: 'flex', gap: 10, alignItems: 'flex-start' }}>
+                          <span style={{ flexShrink: 0, width: 22, height: 22, borderRadius: '50%', background: '#0f172a', color: '#d2ff00', fontSize: 11, fontWeight: 800, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{i + 1}</span>
+                          <span style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+                            <strong style={{ fontSize: 13, color: '#0f172a' }}>{title}</strong>
+                            <span style={{ fontSize: 12, color: '#64748b', lineHeight: 1.4 }}>{text}</span>
+                          </span>
+                        </li>
+                      ))}
+                    </ol>
+                  )}
+
+                  {/* ── Clips list ── */}
                   {isFileOpened && filePath != null && (
                     <div style={{ flex: 1, overflowY: 'auto', minHeight: 0 }}>
                       <ClipsPanel
-                        segments={cutSegments}
+                        segments={userClips}
                         currentSegIndex={currentSegIndexSafe}
+                        playingClipIndex={playingClipIndex}
+                        isPlayingAll={isPlayingAll}
+                        getClipColor={getClipColor}
                         formatTimecode={(s: number) => formatTimecode({ seconds: s })}
                         onSegClick={handleSegClick}
                         onPlayClip={handlePlayClip}
                         onDeleteSegment={removeSegment}
                         onToggleFavorite={handleToggleFavorite}
+                        onRenameSegment={handleRenameClip}
+                        onPlayAll={handlePlayAll}
+                        onStopPlayAll={pause}
+                        onOpenViewer={() => {
+                          // The viewer has its own player; don't let the main one play underneath
+                          pause();
+                          setClipsViewerOpen(true);
+                        }}
                       />
                     </div>
                   )}
 
-                  {/* ── Export quality + package — pinned at bottom ── */}
+                  {/* ── Finish + phone + legal, pinned at bottom. Export settings live in the Finish dialog. ── */}
                   {isFileOpened && (
                     <div style={{
-                      borderTop: '1px solid rgba(255,255,255,0.07)',
-                      padding: '10px 14px 12px',
+                      borderTop: '1px solid #e4e7ec',
+                      padding: '12px 14px',
                       flexShrink: 0,
-                      background: 'rgba(0,0,0,0.18)',
+                      background: '#ffffff',
                       direction: 'ltr',
                     }}
                     >
-                      <div style={{ fontSize: 10, color: 'rgba(148,163,184,0.55)', letterSpacing: '0.08em', textTransform: 'uppercase', marginBottom: 6 }}>
-                        <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}><FiSettings /> Export</span>
-                      </div>
-
-                      {/* Export mode selector — separate / merged / both */}
-                      <div style={{ fontSize: 10, color: 'rgba(148,163,184,0.7)', marginBottom: 3 }}>Mode</div>
-                      <div style={{ display: 'flex', gap: 4, marginBottom: 8 }}>
-                        {([
-                          { v: 'separate' as const, label: 'Separate', title: 'Each clip as a separate file' },
-                          { v: 'merge' as const, label: 'Merged', title: 'One clip that combines everything' },
-                          { v: 'both' as const, label: 'Both', title: 'Separate clips plus one merged clip' },
-                        ]).map(({ v, label, title }) => {
-                          const active = (v === 'separate' && !autoMerge)
-                            || (v === 'merge' && autoMerge && autoDeleteMergedSegments)
-                            || (v === 'both' && autoMerge && !autoDeleteMergedSegments);
-                          return (
-                            <button
-                              key={v}
-                              type="button"
-                              title={title}
-                              onClick={() => {
-                                if (v === 'separate') { setAutoMerge(false); setAutoDeleteMergedSegments(false); } else if (v === 'merge') { setAutoMerge(true); setAutoDeleteMergedSegments(true); } else { setAutoMerge(true); setAutoDeleteMergedSegments(false); }
-                              }}
-                              style={{
-                                flex: 1,
-                                background: active ? 'rgba(99,102,241,0.18)' : 'rgba(255,255,255,0.04)',
-                                border: `1px solid ${active ? 'rgba(99,102,241,0.5)' : 'rgba(255,255,255,0.08)'}`,
-                                borderRadius: 6,
-                                color: active ? 'rgba(199,210,254,0.95)' : 'rgba(148,163,184,0.75)',
-                                fontSize: 11,
-                                fontWeight: 600,
-                                padding: '5px 0',
-                                cursor: 'pointer',
-                                transition: 'background 0.1s, border-color 0.1s, color 0.1s',
-                              }}
-                            >
-                              {label}
-                            </button>
-                          );
-                        })}
-                      </div>
-
-                      {/* Quality preset selector */}
-                      <div style={{ fontSize: 10, color: 'rgba(148,163,184,0.7)', marginBottom: 3 }}>Quality</div>
-                      <div style={{ display: 'flex', gap: 4, marginBottom: 8 }}>
-                        {([
-                          { v: 'lossless' as const, label: 'Original' },
-                          { v: 'high' as const, label: 'High' },
-                          { v: 'balanced' as const, label: 'Balanced' },
-                          { v: 'small' as const, label: 'Small' },
-                        ]).map(({ v, label }) => {
-                          const active = qualityPreset === v;
-                          return (
-                            <button
-                              key={v}
-                              type="button"
-                              onClick={() => setQualityPreset(v)}
-                              title={v !== 'lossless' ? QUALITY_PRESETS[v].description : 'No re-encoding, fast'}
-                              style={{
-                                flex: 1,
-                                background: active ? 'rgba(210,255,0,0.14)' : 'rgba(255,255,255,0.04)',
-                                border: `1px solid ${active ? 'rgba(210,255,0,0.45)' : 'rgba(255,255,255,0.08)'}`,
-                                borderRadius: 6,
-                                color: active ? '#d2ff00' : 'rgba(148,163,184,0.75)',
-                                fontSize: 11,
-                                fontWeight: 600,
-                                padding: '5px 0',
-                                cursor: 'pointer',
-                                transition: 'background 0.1s, border-color 0.1s, color 0.1s',
-                              }}
-                            >
-                              {label}
-                            </button>
-                          );
-                        })}
-                      </div>
-
-                      {/* Aspect ratio selector */}
-                      <div style={{ fontSize: 10, color: 'rgba(148,163,184,0.7)', marginBottom: 3 }}>Format</div>
-                      <div style={{ display: 'flex', gap: 4, marginBottom: 8 }}>
-                        {([
-                          { v: 'original' as const, label: 'Original', title: 'No geometry changes' },
-                          { v: '16:9' as const, label: '16:9', title: 'Landscape - TV / YouTube (1920x1080)' },
-                          { v: '9:16' as const, label: '9:16', title: 'Vertical - Reels / TikTok / Shorts (1080x1920)' },
-                          { v: '1:1' as const, label: '1:1', title: 'Square - Instagram Feed (1080x1080)' },
-                        ]).map(({ v, label, title }) => {
-                          const active = exportAspectRatio === v;
-                          return (
-                            <button
-                              key={v}
-                              type="button"
-                              title={title}
-                              onClick={() => setExportAspectRatio(v)}
-                              style={{
-                                flex: 1,
-                                background: active ? 'rgba(236,72,153,0.18)' : 'rgba(255,255,255,0.04)',
-                                border: `1px solid ${active ? 'rgba(236,72,153,0.5)' : 'rgba(255,255,255,0.08)'}`,
-                                borderRadius: 6,
-                                color: active ? 'rgba(251,207,232,0.95)' : 'rgba(148,163,184,0.75)',
-                                fontSize: 11,
-                                fontWeight: 600,
-                                padding: '5px 0',
-                                cursor: 'pointer',
-                                transition: 'background 0.1s, border-color 0.1s, color 0.1s',
-                              }}
-                            >
-                              {label}
-                            </button>
-                          );
-                        })}
-                      </div>
-
-                      {/* Fit mode — only relevant when aspect ratio ≠ original */}
-                      {exportAspectRatio !== 'original' && (
-                        <>
-                          <div style={{ fontSize: 10, color: 'rgba(148,163,184,0.7)', marginBottom: 3 }}>Fit</div>
-                          <div style={{ display: 'flex', gap: 4, marginBottom: 8 }}>
-                            {([
-                              { v: 'crop' as const, label: 'Center crop', title: 'Crops from the center - no black bars, but edges may be lost' },
-                              { v: 'pad' as const, label: 'Black bars', title: 'Keeps all content and adds black bars where needed' },
-                            ]).map(({ v, label, title }) => {
-                              const active = exportFitMode === v;
-                              return (
-                                <button
-                                  key={v}
-                                  type="button"
-                                  title={title}
-                                  onClick={() => setExportFitMode(v)}
-                                  style={{
-                                    flex: 1,
-                                    background: active ? 'rgba(168,85,247,0.18)' : 'rgba(255,255,255,0.04)',
-                                    border: `1px solid ${active ? 'rgba(168,85,247,0.5)' : 'rgba(255,255,255,0.08)'}`,
-                                    borderRadius: 6,
-                                    color: active ? 'rgba(216,180,254,0.95)' : 'rgba(148,163,184,0.75)',
-                                    fontSize: 10.5,
-                                    fontWeight: 600,
-                                    padding: '5px 0',
-                                    cursor: 'pointer',
-                                    transition: 'background 0.1s, border-color 0.1s, color 0.1s',
-                                  }}
-                                >
-                                  {label}
-                                </button>
-                              );
-                            })}
-                          </div>
-                          {/* Helper note when user picked aspect != original but quality is lossless */}
-                          {qualityPreset === 'lossless' && (
-                            <div style={{ fontSize: 10, color: 'rgba(251,191,36,0.7)', marginBottom: 8, lineHeight: 1.4 }}>
-                              Format changes require re-encoding. Quality will switch to &quot;Balanced&quot; automatically.
-                            </div>
-                          )}
-                        </>
-                      )}
-
-                      {/* Auto-folder ON/OFF toggle */}
-                      <div style={{ marginTop: 4 }}>
-                        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
-                          <div style={{ display: 'flex', flexDirection: 'column', minWidth: 0 }}>
-                            <span style={{
-                              fontSize: 11.5,
-                              fontWeight: 600,
-                              color: createExportPackage ? '#e2e8f0' : 'rgba(148,163,184,0.7)',
-                              lineHeight: 1.2,
-                            }}
-                            >
-                              Folder per export
-                            </span>
-                            <span style={{ fontSize: 9.5, color: 'rgba(100,116,139,0.65)', marginTop: 2 }}>
-                              {createExportPackage ? 'Each export gets its own folder' : 'All files go to the destination folder'}
-                            </span>
-                          </div>
-                          <button
-                            type="button"
-                            role="switch"
-                            aria-checked={createExportPackage}
-                            onClick={() => setCreateExportPackage((v) => !v)}
-                            style={{
-                              flexShrink: 0,
-                              width: 36,
-                              height: 20,
-                              borderRadius: 10,
-                              background: createExportPackage ? '#d2ff00' : 'rgba(255,255,255,0.12)',
-                              border: `1px solid ${createExportPackage ? '#d2ff00' : 'rgba(255,255,255,0.15)'}`,
-                              position: 'relative',
-                              cursor: 'pointer',
-                              transition: 'background 0.18s, border-color 0.18s',
-                              padding: 0,
-                            }}
-                          >
-                            <span style={{
-                              position: 'absolute',
-                              top: 1,
-                              left: createExportPackage ? 17 : 1,
-                              width: 16,
-                              height: 16,
-                              borderRadius: '50%',
-                              background: '#fff',
-                              boxShadow: '0 1px 3px rgba(0,0,0,0.3)',
-                              transition: 'left 0.18s ease',
-                            }}
-                            />
-                          </button>
-                        </div>
-                      </div>
+                      <button
+                        type="button"
+                        onClick={handleFinishPress}
+                        disabled={!hasFinishedClip}
+                        style={{
+                          width: '100%',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          gap: 8,
+                          background: '#d2ff00',
+                          border: 'none',
+                          borderRadius: 10,
+                          color: '#0a1200',
+                          fontSize: 14,
+                          fontWeight: 800,
+                          padding: '11px 12px',
+                          cursor: hasFinishedClip ? 'pointer' : 'default',
+                          opacity: hasFinishedClip ? 1 : 0.4,
+                        }}
+                      >
+                        <FiCheck /> Finish
+                      </button>
 
                       {/* 📱 Send to phone — visible only after at least one successful export */}
                       {lastExportedFile && (
@@ -3907,11 +3854,11 @@ function App() {
                           title={`Send ${basename(lastExportedFile)} to phone with a local QR code`}
                           style={{
                             width: '100%',
-                            marginTop: 10,
-                            background: 'rgba(210,255,0,0.1)',
-                            border: '1px solid rgba(210,255,0,0.36)',
+                            marginTop: 8,
+                            background: '#ffffff',
+                            border: '1px solid #d0d5dd',
                             borderRadius: 8,
-                            color: '#d2ff00',
+                            color: '#0f172a',
                             fontSize: 12,
                             fontWeight: 700,
                             padding: '8px 10px',
@@ -3920,33 +3867,21 @@ function App() {
                             alignItems: 'center',
                             justifyContent: 'center',
                             gap: 6,
-                            transition: 'background 0.12s, border-color 0.12s',
                           }}
-                          onMouseEnter={(e) => { e.currentTarget.style.background = 'rgba(210,255,0,0.18)'; }}
-                          onMouseLeave={(e) => { e.currentTarget.style.background = 'rgba(210,255,0,0.1)'; }}
                         >
                           <FiSmartphone /> Send to phone
                         </button>
                       )}
 
-                      {/* Legal links */}
-                      <div style={{ marginTop: 10, paddingTop: 8, borderTop: '1px solid rgba(255,255,255,0.05)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                      <div style={{ marginTop: 10, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                         <button
                           type="button"
                           onClick={() => setLegalDialogOpen(true)}
-                          style={{
-                            background: 'none',
-                            border: 'none',
-                            cursor: 'pointer',
-                            color: 'rgba(100,116,139,0.65)',
-                            fontSize: 10.5,
-                            padding: 0,
-                            textDecoration: 'underline',
-                          }}
+                          style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#64748b', fontSize: 10.5, padding: 0, textDecoration: 'underline' }}
                         >
                           Terms · Privacy
                         </button>
-                        <span style={{ fontSize: 10, color: 'rgba(100,116,139,0.4)' }}>v1.1.1</span>
+                        <span style={{ fontSize: 10, color: '#94a3b8' }}>v{appVersion}</span>
                       </div>
                     </div>
                   )}
@@ -3972,14 +3907,10 @@ function App() {
                   commandedTimeRef={commandedTimeRef}
                   startTimeOffset={startTimeOffset}
                   zoom={zoom}
-                  seekAbs={seekAbsForTimeline}
+                  seekAbs={seekAbs}
                   fileDurationNonZero={fileDurationNonZero}
                   exportedRanges={exportedRanges}
                   simpleMode={simpleMode}
-                  simpleTrimStart={simpleTrimStart}
-                  simpleTrimEnd={simpleTrimEnd}
-                  onSimpleTrimAdjust={onSimpleTrimAdjust}
-                  onSimpleTrimReset={onSimpleTrimReset}
                   cutSegments={cutSegments}
                   setCurrentSegIndex={setCurrentSegIndex}
                   currentSegIndexSafe={currentSegIndexSafe}
@@ -3997,6 +3928,7 @@ function App() {
                   goToTimecode={goToTimecode}
                   darkMode={darkMode}
                   setCutTime={setCutTime}
+                  onTrimClip={handleTrimClip}
                   playingClip={(() => {
                     if (playingClipIndex == null || !playing) return undefined;
                     const seg = cutSegments[playingClipIndex];
@@ -4065,6 +3997,20 @@ function App() {
                 visible={finishDestinationOpen}
                 clipCount={Math.max(1, segmentsToExport.length)}
                 hasProject={activeProject != null}
+                downloadOptions={(
+                  <ExportOptions
+                    quality={qualityPreset}
+                    onQualityChange={setQualityPreset}
+                    aspectRatio={exportAspectRatio}
+                    onAspectRatioChange={setExportAspectRatio}
+                    fitMode={exportFitMode}
+                    onFitModeChange={setExportFitMode}
+                    mode={exportMode}
+                    onModeChange={handleExportModeChange}
+                    folderPerExport={createExportPackage}
+                    onFolderPerExportChange={setCreateExportPackage}
+                  />
+                )}
                 onDownload={() => handleFinishDestination('local')}
                 onContinueInKicko={() => handleFinishDestination('kicko')}
                 onClose={() => setFinishDestinationOpen(false)}
@@ -4089,19 +4035,35 @@ function App() {
                   resumeFinishAfterProjectSetupRef.current = false;
                   setProjectSetupOpen(false);
                 }}
-                onCreate={(value) => { void handleCreateProject(value); }}
+                onCreate={(value) => { handleCreateProject(value).catch((err: unknown) => handleError({ title: 'Could not create the project', err })); }}
               />
 
               <ProjectReviewDialog
                 visible={projectReviewOpen}
                 project={activeProject}
                 onClose={() => setProjectReviewOpen(false)}
-                onToggleSelected={(playId, selected) => { void handleToggleProjectPlay(playId, selected); }}
-                onRatingChange={(playId, rating) => { void handleProjectRatingChange(playId, rating); }}
-                onMove={(playId, direction) => { void handleMoveProjectPlay(playId, direction); }}
+                onToggleSelected={(playId, selected) => { handleToggleProjectPlay(playId, selected).catch((err: unknown) => handleError({ err })); }}
+                onRatingChange={(playId, rating) => { handleProjectRatingChange(playId, rating).catch((err: unknown) => handleError({ err })); }}
+                onMove={(playId, direction) => { handleMoveProjectPlay(playId, direction).catch((err: unknown) => handleError({ err })); }}
                 onApplyScoutOrder={handleApplyScoutOrder}
                 onContinueInKicko={handleContinueInKicko}
                 getFileUrl={(path) => pathToFileURL(path).href}
+              />
+
+              <ClipsViewerDialog
+                visible={clipsViewerOpen}
+                videoUrl={fileUri}
+                canPreview={!compatPlayerEnabled}
+                clips={userClips}
+                getClipColor={getClipColor}
+                formatTimecode={(s: number) => formatTimecode({ seconds: s })}
+                onClose={() => setClipsViewerOpen(false)}
+                onToggleFavorite={handleToggleFavorite}
+                onDeleteClip={removeSegment}
+                onEditClip={(i) => {
+                  setClipsViewerOpen(false);
+                  handleSegClick(i);
+                }}
               />
 
               <KickoBridgeDialog
@@ -4126,6 +4088,7 @@ function App() {
                   setFormatPickerOpen(false);
                   setFormatPickerInfo(null);
                   pendingDownloadUrlRef.current = null;
+                  pendingDownloadRefererRef.current = null;
                 }}
               />
 
@@ -4190,18 +4153,39 @@ function App() {
               <Dialog.Root open={settingsVisible} onOpenChange={toggleSettings}>
                 <Dialog.Portal>
                   <Dialog.Overlay />
-                  <Dialog.Content style={{ width: '60em' }}>
+                  <Dialog.Content style={{ width: simpleMode ? '34em' : '60em' }}>
                     <Dialog.Title>{t('Settings')}</Dialog.Title>
-                    <Dialog.Description>{t('Hover mouse over buttons in the main interface to see which function they have')}</Dialog.Description>
-
-                    <Settings
-                      onTunerRequested={onTunerRequested}
-                      onKeyboardShortcutsDialogRequested={toggleKeyboardShortcuts}
-                      askForCleanupChoices={askForCleanupChoices}
-                      toggleStoreProjectInWorkingDir={toggleStoreProjectInWorkingDir}
-                      showAdvancedSettings={showAdvancedSettings}
-                      setShowAdvancedSettings={setShowAdvancedSettings}
-                    />
+                    {simpleMode ? (
+                      <SimpleSettings
+                        outDir={customOutDir}
+                        outDirControl={<OutDirSelector><button type="button" className="secondary-button compact">Change folder</button></OutDirSelector>}
+                        keyframeCut={keyframeCut}
+                        onKeyframeCutChange={setKeyframeCut}
+                        captureFormat={captureFormat}
+                        onCaptureFormatChange={setCaptureFormat}
+                        captureFrameQuality={captureFrameQuality}
+                        onCaptureFrameQualityChange={setCaptureFrameQuality}
+                        showOsNotifications={!hideOsNotifications}
+                        onShowOsNotificationsChange={(show) => setHideOsNotifications(show ? undefined : 'all')}
+                        showInAppNotifications={!hideNotifications}
+                        onShowInAppNotificationsChange={(show) => setHideNotifications(show ? undefined : 'all')}
+                        askBeforeClose={askBeforeClose}
+                        onAskBeforeCloseChange={setAskBeforeClose}
+                        onOpenKeyboardShortcuts={toggleKeyboardShortcuts}
+                      />
+                    ) : (
+                      <>
+                        <Dialog.Description>{t('Hover mouse over buttons in the main interface to see which function they have')}</Dialog.Description>
+                        <Settings
+                          onTunerRequested={onTunerRequested}
+                          onKeyboardShortcutsDialogRequested={toggleKeyboardShortcuts}
+                          askForCleanupChoices={askForCleanupChoices}
+                          toggleStoreProjectInWorkingDir={toggleStoreProjectInWorkingDir}
+                          showAdvancedSettings={showAdvancedSettings}
+                          setShowAdvancedSettings={setShowAdvancedSettings}
+                        />
+                      </>
+                    )}
                     <Dialog.CloseButton />
                   </Dialog.Content>
                 </Dialog.Portal>

@@ -1,7 +1,7 @@
 import { readFileSync } from 'node:fs';
 import { describe, expect, it } from 'vitest';
 
-type ExtraResource = { from: string, to: string };
+interface ExtraResource { from: string, to: string }
 
 const packageJson = JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')) as {
   productName: string,
@@ -10,7 +10,7 @@ const packageJson = JSON.parse(readFileSync(new URL('../package.json', import.me
   build: {
     appId: string,
     extraResources: ExtraResource[],
-    win: { target: Array<{ arch: string, target: string }> },
+    win: { target: { arch: string, target: string }[] },
     nsis: { license: string },
   },
 };
@@ -18,7 +18,7 @@ const packageJson = JSON.parse(readFileSync(new URL('../package.json', import.me
 describe('Windows release configuration', () => {
   it('uses the KICKO TrimOut Windows identity and installer target', () => {
     expect(packageJson.productName).toBe('KICKO TrimOut');
-    expect(packageJson.version).toBe('1.2.0');
+    expect(packageJson.version).toBe('1.3.0');
     expect(packageJson.build.appId).toBe('com.kicko.trimout');
     expect(packageJson.build.win.target).toEqual([{ arch: 'x64', target: 'nsis' }]);
   });
