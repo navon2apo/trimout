@@ -30,6 +30,8 @@ import type { FormatTimecode, ParseTimecode, PlaybackMode, SegmentColorIndex, Se
 import type { WaveformMode } from '../../common/types';
 import type { Frame } from './ffmpeg';
 
+const skipButtonStyle: React.CSSProperties = { flexShrink: 0, margin: '0 2px', padding: '2px 6px', fontSize: 11, fontWeight: 700, borderRadius: 6, border: '1px solid var(--gray-7, #cbd5e1)', background: 'transparent', color: 'inherit', cursor: 'pointer', fontVariantNumeric: 'tabular-nums' };
+
 const { clipboard } = window.require('electron');
 
 
@@ -255,7 +257,7 @@ function BottomBar({
   seekAbs, currentSegIndexSafe, cutSegments, currentCutSeg, setCutStart, setCutEnd,
   setCurrentSegIndex,
   jumpTimelineStart, jumpTimelineEnd, jumpCutEnd, jumpCutStart, startTimeOffset, setCutTime,
-  playing, shortStep, togglePlay, toggleLoopSelectedSegments, hasAudio,
+  playing, shortStep, seekRel, togglePlay, toggleLoopSelectedSegments, hasAudio,
   keyframesEnabled, toggleShowKeyframes, seekClosestKeyframe, detectedFps, isFileOpened, selectedSegments,
   darkMode,
   toggleShowThumbnails, toggleWaveformMode, waveformMode, showThumbnails,
@@ -290,6 +292,7 @@ function BottomBar({
   setCutTime: (type: 'start' | 'end', v: number | undefined) => void,
   playing: boolean,
   shortStep: (a: number) => void,
+  seekRel: (seconds: number) => void,
   togglePlay: () => void,
   toggleLoopSelectedSegments: () => void,
   hasAudio: boolean,
@@ -476,6 +479,24 @@ function BottomBar({
             />
           )}
 
+          <button
+            type="button"
+            title="Back 10s"
+            aria-label="Back 10s"
+            onClick={() => seekRel(-10)}
+            style={skipButtonStyle}
+          >
+            -10
+          </button>
+          <button
+            type="button"
+            title="Back 5s"
+            aria-label="Back 5s"
+            onClick={() => seekRel(-5)}
+            style={skipButtonStyle}
+          >
+            -5
+          </button>
           {!simpleMode && (
             <FaCaretLeft
               style={{ flexShrink: 0, marginLeft: -6, marginRight: -4 }}
@@ -499,6 +520,25 @@ function BottomBar({
               onClick={() => shortStep(1)}
             />
           )}
+
+          <button
+            type="button"
+            title="Forward 5s"
+            aria-label="Forward 5s"
+            onClick={() => seekRel(5)}
+            style={skipButtonStyle}
+          >
+            +5
+          </button>
+          <button
+            type="button"
+            title="Forward 10s"
+            aria-label="Forward 10s"
+            onClick={() => seekRel(10)}
+            style={skipButtonStyle}
+          >
+            +10
+          </button>
 
           {keyframesEnabled && !simpleMode && (
             <IoMdKey

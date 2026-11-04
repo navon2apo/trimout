@@ -126,6 +126,7 @@ function Timeline({
   setCutTime,
   onTrimClip,
   playingClip,
+  zoomAnchorTimes,
 } : {
   fileDurationNonZero: number,
   startTimeOffset: number,
@@ -165,6 +166,8 @@ function Timeline({
   setCutTime: UseSegments['setCutTime'];
   onTrimClip?: ((index: number, edge: 'start' | 'end', time: number) => void) | undefined,
   playingClip?: { start: number; end: number; color: string } | undefined,
+  /** Times (seconds) of the zoom anchors of the selected clip, drawn as diamonds */
+  zoomAnchorTimes?: number[] | undefined,
 }) {
   const { t } = useTranslation();
 
@@ -552,6 +555,28 @@ function Timeline({
               </div>
             );
           })()}
+
+          {/* Zoom anchors of the selected clip — a diamond at each anchor time */}
+          {zoomAnchorTimes?.map((anchorT) => (
+            <div
+              key={anchorT}
+              title="Zoom anchor"
+              style={{
+                position: 'absolute',
+                bottom: 2,
+                left: `${(anchorT / fileDurationNonZero) * 100}%`,
+                width: 11,
+                height: 11,
+                marginLeft: -5.5,
+                transform: 'rotate(45deg)',
+                background: '#d2ff00',
+                border: '2px solid #0f172a',
+                boxSizing: 'border-box',
+                pointerEvents: 'none',
+                zIndex: 6,
+              }}
+            />
+          ))}
 
           {currentTimePercent !== undefined && (
             <motion.div transition={springAnimation} animate={{ left: currentTimePercent }} style={{ position: 'absolute', bottom: 0, top: 0, backgroundColor: 'var(--gray-12)', width: currentTimeWidth, pointerEvents: 'none' }} />

@@ -19,6 +19,10 @@ import useTimelineScroll from './hooks/useTimelineScroll';
 import useUserSettingsRoot from './hooks/useUserSettingsRoot';
 import useFfmpegOperations, { maybeMkDeepOutDir, OutputNotWritableError } from './hooks/useFfmpegOperations';
 import useKeyframes from './hooks/useKeyframes';
+import useVideoZoom from './hooks/useVideoZoom';
+import { buildMotionAnchors, rectAt, sortAnchors, type ZoomMotionMode } from './util/zoomAnchors';
+import ZoomMotionPanel from './components/ZoomMotionPanel';
+import ZoomRectOverlay from './components/ZoomRectOverlay';
 import useWaveform from './hooks/useWaveform';
 import useKeyboard from './hooks/useKeyboard';
 import useFileFormatState from './hooks/useFileFormatState';
@@ -111,7 +115,7 @@ import { generateCutFileNames as generateCutFileNamesRaw, generateCutMergedFileN
 import { rightBarWidth, leftBarWidth, ffmpegExtractWindow, zoomMax } from './util/constants';
 import BigWaveform from './components/BigWaveform';
 
-import type { BatchFile, Chapter, CustomTagsByFile, EdlExportType, EdlFileType, EdlImportType, FfmpegCommandLog, FilesMeta, FileStats, ParamsByStreamId, PlaybackMode, SegmentBase, SegmentColorIndex, SegmentTags, StateSegment, TunerType } from './types';
+import type { BatchFile, Chapter, CustomTagsByFile, EdlExportType, EdlFileType, EdlImportType, FfmpegCommandLog, FilesMeta, FileStats, ParamsByStreamId, PlaybackMode, SegmentBase, SegmentColorIndex, SegmentTags, StateSegment, TunerType, ZoomAnchor } from './types';
 import { goToTimecodeDirectArgsSchema, openFilesActionArgsSchema } from './types';
 import type { CaptureFormat, KeyboardAction, ApiActionRequest } from '../../common/types.js';
 import type { FFprobeChapter, FFprobeStream } from '../../common/ffprobe.js';
@@ -168,6 +172,7 @@ function App() {
   // Per project state
   // ─── QuickCut (✂️ button) ─────────────────────────────────────────────────
   const [quickCutDuration, setQuickCutDuration] = useState(20); // default 20s forward
+  const [quickCutVisible, setQuickCutVisible] = useState(true); // ✂️ + duration pills over the video (hideable for screen recordings)
 
   // ─── Soccer player & action ────────────────────────────────────────────────
   const [playerName, setPlayerName] = useState('');
@@ -519,6 +524,116 @@ function App() {
     cutSegments, cutSegmentsHistory, createSegmentsFromKeyframes, shuffleSegments, detectBlackScenes, detectSilentScenes, detectSceneChanges, removeSegment, invertAllSegments, fillSegmentsGaps, combineOverlappingSegments, combineSelectedSegments, shiftAllSegmentTimes, alignSegmentTimesToKeyframes, reorderSegsByStartTime, addSegment, addClip, setCutStart, setCutEnd, labelSegment, splitCurrentSegment, focusSegmentAtCursor, selectSegmentsAtCursor, createNumSegments, createFixedDurationSegments, createFixedByteSizedSegments, createRandomSegments, haveInvalidSegs, currentSegIndexSafe, currentCutSeg, inverseCutSegments, clearSegments, clearSegColorCounter, loadCutSegments, setCutTime, setCurrentSegIndex, labelSelectedSegments, deselectAllSegments, selectAllSegments, selectOnlyCurrentSegment, toggleCurrentSegmentSelected, invertSelectedSegments, removeSelectedSegments, selectSegmentsByLabel, selectSegmentsByExpr, selectAllMarkers, mutateSegmentsByExpr, selectedSegments, segmentsOrInverse, segmentsToExport, duplicateCurrentSegment, updateSegAtIndex, findSegmentsAtCursor, maybeCreateFullLengthSegment, currentCutSegOrWholeTimeline, segColorCounter,
   } = useSegments({ filePath, workingRef, setWorking, setProgress, videoStream: activeVideoStream, fileDuration, getRelevantTime, maxLabelLength, checkFileOpened, invertCutSegments, segmentsToChaptersOnly, timecodePlaceholder, parseTimecode, appendFfmpegCommandLog, fileDurationNonZero, mainFileMeta: mainFileMeta?.ffprobeMeta, seekAbs, activeVideoStreamIndex, activeAudioStreamIndexes, handleError, showGenericDialog, simpleMode, ffmpegHwaccel });
 
+  // ─── Picture zoom (view only until saved to a clip) ─────────────────────────
+  const videoZoomBoxRef = useRef<HTMLDivElement>(null);
+  const videoZoomLayerRef = useRef<HTMLDivElement>(null);
+  const videoZoom = useVideoZoom({ containerRef: videoZoomBoxRef, layerRef: videoZoomLayerRef, videoRef });
+  const { applyRect: applyZoomRect, applyRectFast: applyZoomRectFast, syncState: syncZoomState, getVisibleRect: getVisibleZoomRect, reset: resetVideoZoom } = videoZoom;
+  // Latest segments, readable from effects without re-running them on every segment edit
+  const cutSegmentsForZoomRef = useRef(cutSegments);
+  useEffect(() => { cutSegmentsForZoomRef.current = cutSegments; }, [cutSegments]);
+
+  // Which zoom point is being edited on the picture (tied to its clip so switching clips clears it)
+  const [zoomSelection, setZoomSelection] = useState<{ clipKey: string, index: number } | null>(null);
+  const zoomClipKey = String(cutSegments[currentSegIndexSafe]?.segId ?? currentSegIndexSafe);
+  // The zoom tools belong to a clip only while the playhead is inside it (click the clip on the right to enter it)
+  const zoomSeg = cutSegments[currentSegIndexSafe];
+  const playheadInsideClip = zoomSeg != null && !zoomSeg.initial && zoomSeg.end != null && playerTime != null && playerTime >= zoomSeg.start && playerTime <= zoomSeg.end;
+  const zoomEditingIndex = playheadInsideClip && zoomSelection != null && zoomSelection.clipKey === zoomClipKey ? zoomSelection.index : null;
+
+  // The picture shows what the selected clip will export: its zoom at the clip start, or the whole frame.
+  // Only reacts to the selection / file changing, so manual zooming is never overridden.
+  useEffect(() => {
+    const seg = cutSegmentsForZoomRef.current[currentSegIndexSafe];
+    applyZoomRect(seg != null ? rectAt(seg.zoomAnchors, seg.start) : null);
+  }, [currentSegIndexSafe, filePath, applyZoomRect]);
+
+  const currentClipZoomAnchors = cutSegments[currentSegIndexSafe]?.zoomAnchors;
+  // Paused: scrubbing inside a clip with several anchors shows the zoom at that moment
+  useEffect(() => {
+    if (playing || playerTime == null) return;
+    // Editing a point: show the whole picture so the frame can be dragged over it
+    if (zoomEditingIndex != null) { applyZoomRect(null); return; }
+    const seg = cutSegmentsForZoomRef.current[currentSegIndexSafe];
+    if (seg?.zoomAnchors == null || seg.zoomAnchors.length === 0 || seg.end == null) return;
+    if (playerTime < seg.start || playerTime > seg.end) return;
+    applyZoomRect(rectAt(seg.zoomAnchors, playerTime, seg.zoomEase));
+  }, [playerTime, playing, currentSegIndexSafe, applyZoomRect, zoomEditingIndex, currentClipZoomAnchors]);
+
+  // Playing: the picture glides along the anchors, frame by frame (no React render per frame)
+  useEffect(() => {
+    if (!playing) return undefined;
+    let raf = 0;
+    let lastSync = 0;
+    const tick = (now: number) => {
+      const seg = cutSegmentsForZoomRef.current[currentSegIndexSafe];
+      const video = videoRef.current;
+      if (video != null && seg?.zoomAnchors != null && seg.zoomAnchors.length > 0 && seg.end != null && video.currentTime >= seg.start && video.currentTime <= seg.end) {
+        applyZoomRectFast(rectAt(seg.zoomAnchors, video.currentTime, seg.zoomEase));
+        if (now - lastSync > 300) { lastSync = now; syncZoomState(); }
+      }
+      raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => { cancelAnimationFrame(raf); syncZoomState(); };
+  }, [playing, currentSegIndexSafe, videoRef, applyZoomRectFast, syncZoomState]);
+
+  const zoomClip = cutSegments[currentSegIndexSafe];
+
+  const setClipZoomAnchors = useCallback((anchors: ZoomAnchor[]) => {
+    updateSegAtIndex(currentSegIndexSafe, { zoomAnchors: anchors.length > 0 ? anchors : undefined });
+  }, [currentSegIndexSafe, updateSegAtIndex]);
+
+  const handleZoomSelect = useCallback((index: number | null, seekTo?: number) => {
+    setZoomSelection(index == null ? null : { clipKey: zoomClipKey, index });
+    if (seekTo != null) seekAbs(seekTo);
+  }, [zoomClipKey, seekAbs]);
+
+  // Ready-made movement: builds the points; they can then be dragged on the graph
+  const handleZoomPreset = useCallback((mode: ZoomMotionMode) => {
+    const seg = cutSegments[currentSegIndexSafe];
+    if (seg == null || seg.initial || seg.end == null) return;
+    const view = getVisibleZoomRect();
+    const center = view != null ? { x: view.x + view.w / 2, y: view.y + view.h / 2 } : { x: 0.5, y: 0.5 };
+    const playhead = getRelevantTime();
+    const beginAt = playhead >= seg.start && playhead < seg.end - 1 ? playhead - seg.start : 0.5;
+    const anchors = buildMotionAnchors({ mode, level: view != null ? Math.max(1.5, 1 / view.w) : 2, center, beginAt, inDur: 1, hold: 1.5, outDur: 1 }, seg.start, seg.end);
+    setClipZoomAnchors(anchors);
+    setZoomSelection(null);
+  }, [cutSegments, currentSegIndexSafe, getVisibleZoomRect, getRelevantTime, setClipZoomAnchors]);
+
+  // Remove one point. With fewer than two left there is no movement any more, so the clip goes back to no zoom.
+  const handleZoomDeletePoint = useCallback((index: number) => {
+    const seg = cutSegments[currentSegIndexSafe];
+    if (seg?.zoomAnchors == null) return;
+    const remaining = sortAnchors(seg.zoomAnchors).filter((_a, i) => i !== index);
+    setZoomSelection(null);
+    if (remaining.length < 2) {
+      updateSegAtIndex(currentSegIndexSafe, { zoomAnchors: undefined });
+      resetVideoZoom();
+      return;
+    }
+    setClipZoomAnchors(remaining);
+  }, [cutSegments, currentSegIndexSafe, updateSegAtIndex, resetVideoZoom, setClipZoomAnchors]);
+
+  const handleZoomEaseChange = useCallback((ease: 'smooth' | 'linear' | 'dynamic') => {
+    updateSegAtIndex(currentSegIndexSafe, { zoomEase: ease });
+  }, [currentSegIndexSafe, updateSegAtIndex]);
+
+  // Dragging the frame on the picture changes the selected point
+  const handleZoomFrameChange = useCallback((rect: { x: number, y: number, w: number, h: number }) => {
+    const seg = cutSegments[currentSegIndexSafe];
+    if (seg?.zoomAnchors == null || zoomEditingIndex == null) return;
+    const sorted = sortAnchors(seg.zoomAnchors);
+    setClipZoomAnchors(sorted.map((a, i) => (i === zoomEditingIndex ? { ...a, rect } : a)));
+  }, [cutSegments, currentSegIndexSafe, zoomEditingIndex, setClipZoomAnchors]);
+
+  const handleClearZoomAnchors = useCallback(() => {
+    setZoomSelection(null);
+    updateSegAtIndex(currentSegIndexSafe, { zoomAnchors: undefined });
+    resetVideoZoom();
+  }, [currentSegIndexSafe, updateSegAtIndex, resetVideoZoom]);
+
   const scoutActionCounts = useMemo(() => {
     const counts: Record<string, number> = {};
     for (const collectedPlay of activeProject?.plays ?? []) {
@@ -563,14 +678,18 @@ function App() {
     const clipNumber = cutSegments.filter((s) => !s.initial).length + 1;
     const nameBase = createClipFileLabel([playerName.trim(), action.label, clipNumber]);
 
+    // Zoomed in on the action when pressing ✂️? The new clip starts with that zoom as its first anchor.
+    const zoomRect = getVisibleZoomRect();
+
     addClip(range.start, range.end, {
       name: nameBase,
       actionType: action.id,
       actionLabel: action.label,
       ...(playerName.trim() ? { playerName: playerName.trim() } : {}),
       isUncertain: action.isUncertain ?? false,
+      ...(zoomRect != null ? { zoomAnchors: [{ t: range.start, rect: zoomRect }] } : {}),
     });
-  }, [addClip, cutSegments, playerName]);
+  }, [addClip, cutSegments, playerName, getVisibleZoomRect]);
 
 
   const { getEdlFilePath, projectFileSavePath, getProjectFileSavePath } = useSegmentsAutoSave({ autoSaveProjectFile, storeProjectInWorkingDir, filePath, customOutDir, cutSegments });
@@ -1529,7 +1648,22 @@ function App() {
         // Lossless export can't change geometry, so aspect != 'original' forces re-encode with
         // a sensible default quality ('balanced'); the user's quality choice is respected if set.
         const needsAspectChange = exportAspectRatio !== 'original';
-        const needsCompress = qualityPreset !== 'lossless' || needsAspectChange;
+        // Each separate clip file → the zoom anchors on its clip (if any).
+        const zoomByPath = new Map<string, { anchors: ZoomAnchor[], start: number, end: number, ease: 'smooth' | 'linear' | 'dynamic' }>();
+        outFiles.forEach((f, idx) => {
+          const seg = cutSegments[segmentsToExport[idx]?.originalIndex ?? idx];
+          if (seg?.zoomAnchors != null && seg.zoomAnchors.length > 0 && seg.end != null) {
+            zoomByPath.set(f.path, { anchors: seg.zoomAnchors, start: seg.start, end: seg.end, ease: seg.zoomEase ?? 'smooth' });
+          }
+        });
+        const hasZoom = zoomByPath.size > 0;
+        // Zoom changes the picture, so it also forces a re-encode (a lossless copy can't).
+        const needsCompress = qualityPreset !== 'lossless' || needsAspectChange || hasZoom;
+        if (hasZoom && mergedOutFilePath != null) {
+          warnings.add('Saved zooms are applied to the separate clips, not to the merged video.');
+        }
+        const sourceWidth = activeVideoStream?.width ?? 0;
+        const sourceHeight = activeVideoStream?.height ?? 0;
         if (needsCompress) {
           // When the user chose 'lossless' but also picked an aspect ratio, fall back to 'balanced'
           // (CRF 23) — visually transparent and reasonable file size.
@@ -1551,6 +1685,13 @@ function App() {
                 preset: effectivePreset,
                 aspectRatio: exportAspectRatio,
                 fitMode: exportFitMode,
+                // One anchor = fixed zoom (a crop). Two or more = moving zoom, rendered from the source.
+                ...(() => {
+                  const clipZoom = zoomByPath.get(losslessPath);
+                  if (clipZoom == null) return {};
+                  if (clipZoom.anchors.length === 1 || !filePath || !sourceWidth || !sourceHeight) return { zoomRect: clipZoom.anchors[0]!.rect };
+                  return { zoomMotion: { sourcePath: filePath, start: clipZoom.start, end: clipZoom.end, anchors: clipZoom.anchors, width: sourceWidth, height: sourceHeight, fps: detectedFps ?? 30, ease: clipZoom.ease } };
+                })(),
                 appendCommandLog: appendFfmpegCommandLog,
               });
               // Swap: compressed must replace lossless. On Windows, `rename` can fail
@@ -1600,6 +1741,7 @@ function App() {
               duration: seg?.end != null && seg?.start != null ? seg.end - seg.start : null,
               isFavorite: seg?.isFavorite ?? false,
               isUncertain: seg?.isUncertain ?? false,
+              zoomAnchors: seg?.zoomAnchors ?? null,
               exportStatus: 'exported',
             };
           }),
@@ -1730,6 +1872,8 @@ function App() {
                 playerName: s.playerName ?? null,
                 isFavorite: s.isFavorite ?? false,
                 isUncertain: s.isUncertain ?? false,
+                zoomAnchors: s.zoomAnchors ?? null,
+                zoomEase: s.zoomEase ?? null,
               })),
             }, null, 2));
             // catalog.csv + index.html — clips live in the clips/ subfolder
@@ -1823,7 +1967,7 @@ function App() {
       setWorking(undefined);
       setProgress(undefined);
     }
-  }, [filePath, numStreamsToCopy, haveInvalidSegs, workingRef, setWorking, segmentsToChaptersOnly, cutFileTemplateOrDefault, generateCutFileNames, cutMultiple, outputDir, customOutDir, fileFormat, fileDuration, isRotationSet, effectiveRotation, copyFileStreams, allFilesMeta, keyframeCut, segmentsToExport, shortestFlag, ffmpegExperimental, preserveMetadata, preserveMetadataOnMerge, preserveMovData, preserveChapters, movFastStart, avoidNegativeTs, customTagsByFile, paramsByStreamId, detectedFps, willMerge, enableOverwriteOutput, exportConfirmEnabled, mainFileFormat, mainStreams, exportExtraStreams, areWeCutting, simpleMode, prefersReducedMotion, cleanupChoices, hideAllNotifications, segmentsOrInverse.selected, t, cutMergedFileTemplateOrDefault, segmentsToChapters, invertCutSegments, generateCutMergedFileNames, concatCutSegments, autoDeleteMergedSegments, tryDeleteFiles, nonCopiedExtraStreams, extractStreams, askForCleanupChoices, cleanupFiles, showOsNotification, openCutFinishedDialog, handleExportFailed, setExportedRanges, qualityPreset, createExportPackage, playerName, cutSegments, quickCutDuration, appendFfmpegCommandLog, exportAspectRatio, exportFitMode, activeProject, persistActiveProject]);
+  }, [filePath, numStreamsToCopy, haveInvalidSegs, workingRef, setWorking, segmentsToChaptersOnly, cutFileTemplateOrDefault, generateCutFileNames, cutMultiple, outputDir, customOutDir, fileFormat, fileDuration, isRotationSet, effectiveRotation, copyFileStreams, allFilesMeta, keyframeCut, segmentsToExport, shortestFlag, ffmpegExperimental, preserveMetadata, preserveMetadataOnMerge, preserveMovData, preserveChapters, movFastStart, avoidNegativeTs, customTagsByFile, paramsByStreamId, detectedFps, willMerge, enableOverwriteOutput, exportConfirmEnabled, mainFileFormat, mainStreams, exportExtraStreams, areWeCutting, simpleMode, prefersReducedMotion, cleanupChoices, hideAllNotifications, segmentsOrInverse.selected, t, cutMergedFileTemplateOrDefault, segmentsToChapters, invertCutSegments, generateCutMergedFileNames, concatCutSegments, autoDeleteMergedSegments, tryDeleteFiles, nonCopiedExtraStreams, extractStreams, askForCleanupChoices, cleanupFiles, showOsNotification, openCutFinishedDialog, handleExportFailed, setExportedRanges, qualityPreset, createExportPackage, playerName, cutSegments, quickCutDuration, appendFfmpegCommandLog, exportAspectRatio, exportFitMode, activeProject, persistActiveProject, activeVideoStream?.width, activeVideoStream?.height]);
 
   const onExportPress = useCallback(async () => {
     if (!filePath) return;
@@ -3465,31 +3609,56 @@ function App() {
                     </div>
                   )}
 
-                  <div className="no-user-select" style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, visibility: !isFileOpened || !hasVideo || bigWaveformEnabled ? 'hidden' : undefined }} onWheel={onTimelineWheel}>
-                    {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
-                    <video
-                      className={styles['video']}
-                      tabIndex={-1}
-                      muted={playbackVolume === 0 || compatPlayerEnabled}
-                      ref={videoRef}
-                      style={videoStyle}
-                      src={fileUri}
-                      onPlay={onStartPlaying}
-                      onPause={onStopPlaying}
-                      onAbort={onVideoAbort}
-                      onDurationChange={onDurationChange}
-                      onTimeUpdate={onTimeUpdate}
-                      onError={onVideoError}
-                      onClick={onVideoClick}
-                      onDoubleClick={toggleFullscreenVideo}
-                      onFocusCapture={onVideoFocus}
-                      onSeeked={onSeeked}
+                  <div ref={videoZoomBoxRef} className="no-user-select" style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, overflow: 'hidden', visibility: !isFileOpened || !hasVideo || bigWaveformEnabled ? 'hidden' : undefined }} onWheel={onTimelineWheel}>
+                    {/* Zoom layer: the picture is scaled/panned inside the fixed viewport above */}
+                    <div
+                      ref={videoZoomLayerRef}
+                      style={{
+                        position: 'absolute',
+                        inset: 0,
+                        transformOrigin: '0 0',
+                        cursor: videoZoom.isZoomed ? 'grab' : undefined,
+                        touchAction: 'none',
+                      }}
+                      onWheel={videoZoom.handlers.onWheel}
+                      onPointerDown={videoZoom.handlers.onPointerDown}
+                      onPointerMove={videoZoom.handlers.onPointerMove}
+                      onPointerUp={videoZoom.handlers.onPointerUp}
+                      onClickCapture={videoZoom.handlers.onClickCapture}
                     >
-                      {renderSubtitles()}
-                    </video>
+                      {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
+                      <video
+                        className={styles['video']}
+                        tabIndex={-1}
+                        muted={playbackVolume === 0 || compatPlayerEnabled}
+                        ref={videoRef}
+                        style={videoStyle}
+                        src={fileUri}
+                        onPlay={onStartPlaying}
+                        onPause={onStopPlaying}
+                        onAbort={onVideoAbort}
+                        onDurationChange={onDurationChange}
+                        onTimeUpdate={onTimeUpdate}
+                        onError={onVideoError}
+                        onClick={onVideoClick}
+                        onDoubleClick={toggleFullscreenVideo}
+                        onFocusCapture={onVideoFocus}
+                        onSeeked={onSeeked}
+                      >
+                        {renderSubtitles()}
+                      </video>
 
-                    {filePath != null && compatPlayerEnabled && <MediaSourcePlayer rotate={effectiveRotation} filePath={filePath} videoStream={activeVideoStream} audioStreams={activeAudioStreams} masterVideoRef={videoRef} mediaSourceQuality={mediaSourceQuality} ffmpegHwaccel={ffmpegHwaccel} />}
+                      {filePath != null && compatPlayerEnabled && <MediaSourcePlayer rotate={effectiveRotation} filePath={filePath} videoStream={activeVideoStream} audioStreams={activeAudioStreams} masterVideoRef={videoRef} mediaSourceQuality={mediaSourceQuality} ffmpegHwaccel={ffmpegHwaccel} />}
+                    </div>
                   </div>
+
+                  {playheadInsideClip && zoomClip != null && zoomEditingIndex != null && !playing && sortAnchors(zoomClip.zoomAnchors ?? [])[zoomEditingIndex] != null && (
+                    <ZoomRectOverlay
+                      videoRef={videoRef}
+                      rect={sortAnchors(zoomClip.zoomAnchors ?? [])[zoomEditingIndex]!.rect}
+                      onChange={handleZoomFrameChange}
+                    />
+                  )}
 
                   {bigWaveformEnabled && <BigWaveform waveforms={waveforms} relevantTime={relevantTime} playing={playing} fileDurationNonZero={fileDurationNonZero} zoom={zoomUnrounded} seekRel={seekRel} darkMode={darkMode} />}
 
@@ -3523,6 +3692,7 @@ function App() {
                       </div>
 
                       {/* ✂️ QuickCut — bottom center */}
+                      {quickCutVisible && (
                       <div
                         className="no-user-select"
                         style={{
@@ -3642,7 +3812,17 @@ function App() {
                         >
                           +{quickCutDuration}s clip
                         </span>
+                        <button
+                          type="button"
+                          aria-label="Hide the clip buttons"
+                          title="Hide these buttons (bring them back from the zoom bar below)"
+                          onClick={() => setQuickCutVisible(false)}
+                          style={{ position: 'absolute', top: -6, right: -26, width: 20, height: 20, borderRadius: '50%', border: '1px solid rgba(255,255,255,0.3)', background: 'rgba(0,0,0,0.62)', color: '#ffffff', fontSize: 12, lineHeight: 1, cursor: 'pointer', padding: 0 }}
+                        >
+                          ×
+                        </button>
                       </div>
+                      )}
                     </>
                   )}
                 </div>
@@ -3891,6 +4071,39 @@ function App() {
               </div>
 
               <div className="no-user-select" style={bottomStyle}>
+                {isFileOpened && hasVideo && (
+                  <ZoomMotionPanel
+                    key={zoomClipKey}
+                    hasClip={playheadInsideClip}
+                    clipStart={zoomClip?.start ?? 0}
+                    clipEnd={zoomClip?.end ?? zoomClip?.start ?? 0}
+                    playerTime={playerTime}
+                    anchors={zoomClip?.zoomAnchors ?? []}
+                    ease={zoomClip?.zoomEase ?? 'smooth'}
+                    selectedIndex={zoomEditingIndex}
+                    onSelect={handleZoomSelect}
+                    onChange={setClipZoomAnchors}
+                    onDeletePoint={handleZoomDeletePoint}
+                    onEaseChange={handleZoomEaseChange}
+                    onPreset={handleZoomPreset}
+                    onClear={handleClearZoomAnchors}
+                    onPreview={() => handlePlayClip(currentSegIndexSafe)}
+                    playing={playing}
+                    onTogglePlay={() => togglePlay()}
+                    onSeekBy={seekRel}
+                    onRestart={() => seekAbs(zoomClip?.start ?? 0)}
+                    frameSeconds={1 / (detectedFps ?? 30)}
+                    scale={videoZoom.view.scale}
+                    wheelZoom={videoZoom.wheelZoom}
+                    onToggleWheelZoom={() => videoZoom.setWheelZoom((v) => !v)}
+                    onZoomIn={videoZoom.zoomIn}
+                    onZoomOut={videoZoom.zoomOut}
+                    onFit={videoZoom.reset}
+                    clipButtonsVisible={quickCutVisible}
+                    onToggleClipButtons={() => setQuickCutVisible((v) => !v)}
+                  />
+                )}
+
                 <Timeline
                   shouldShowKeyframes={shouldShowKeyframes}
                   waveforms={waveforms}
@@ -3929,6 +4142,7 @@ function App() {
                   darkMode={darkMode}
                   setCutTime={setCutTime}
                   onTrimClip={handleTrimClip}
+                  zoomAnchorTimes={zoomClip?.zoomAnchors?.map((a) => a.t)}
                   playingClip={(() => {
                     if (playingClipIndex == null || !playing) return undefined;
                     const seg = cutSegments[playingClipIndex];
@@ -3966,6 +4180,7 @@ function App() {
                   setCutTime={setCutTime}
                   playing={playing}
                   shortStep={shortStep}
+                  seekRel={seekRel}
                   seekClosestKeyframe={seekClosestKeyframe}
                   togglePlay={togglePlay}
                   showThumbnails={showThumbnails}
