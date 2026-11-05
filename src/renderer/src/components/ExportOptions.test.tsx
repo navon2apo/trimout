@@ -16,6 +16,8 @@ function render(extra: Partial<Parameters<typeof ExportOptions>[0]> = {}) {
     onModeChange: () => undefined,
     folderPerExport: true,
     onFolderPerExportChange: () => undefined,
+    transition: 'none',
+    onTransitionChange: () => undefined,
     ...extra,
   }));
 }
@@ -38,5 +40,17 @@ describe('ExportOptions', () => {
   it('asks how to fit only when the format changes the shape', () => {
     expect(render()).not.toContain('Center crop');
     expect(render({ aspectRatio: '9:16' })).toContain('Center crop');
+  });
+
+  it('offers blended transitions only when the clips are merged into one video', () => {
+    expect(render({ mode: 'separate' })).not.toContain('Transitions');
+    expect(render({ mode: 'merge' })).toContain('Transitions');
+    expect(render({ mode: 'both' })).toContain('Crossfade');
+  });
+
+  it('shows the transitions next to the files choice, not hidden under More options', () => {
+    const html = render({ mode: 'merge' });
+    expect(html.indexOf('Transitions')).toBeGreaterThan(-1);
+    expect(html.indexOf('Transitions')).toBeLessThan(html.indexOf('More options'));
   });
 });

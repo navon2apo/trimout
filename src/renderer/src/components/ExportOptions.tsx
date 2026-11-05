@@ -1,14 +1,17 @@
 // Type-only import: the presets module pulls in FFmpeg, which this view does not need.
 import { useId } from 'react';
 
+import type { ExportTransition } from '../util/crossfade';
 import type { AspectRatio, FitMode, QualityPreset } from '../util/qualityPresets';
 import Choice from './ChoiceRow';
 
 export type ExportMode = 'separate' | 'merge' | 'both';
 
 export default function ExportOptions({
-  quality, onQualityChange, aspectRatio, onAspectRatioChange, fitMode, onFitModeChange, mode, onModeChange, folderPerExport, onFolderPerExportChange,
+  quality, onQualityChange, aspectRatio, onAspectRatioChange, fitMode, onFitModeChange, mode, onModeChange, folderPerExport, onFolderPerExportChange, transition, onTransitionChange,
 }: {
+  transition: ExportTransition,
+  onTransitionChange: (next: ExportTransition) => void,
   quality: QualityPreset,
   onQualityChange: (next: QualityPreset) => void,
   aspectRatio: AspectRatio,
@@ -61,6 +64,24 @@ export default function ExportOptions({
           />
           {quality === 'lossless' && (
             <div className="export-option-note">Changing the format needs re-encoding, so quality switches to Balanced automatically.</div>
+          )}
+        </>
+      )}
+
+      {mode !== 'separate' && (
+        <>
+          <Choice
+            label="Transitions"
+            value={transition}
+            onChange={onTransitionChange}
+            options={[
+              { value: 'none', label: 'Cut', title: 'Clips follow each other with a plain cut' },
+              { value: 'fade-short', label: 'Crossfade 0.5s', title: 'Each clip blends into the next over half a second' },
+              { value: 'fade-long', label: 'Crossfade 1s', title: 'Each clip blends into the next over one second' },
+            ]}
+          />
+          {transition !== 'none' && quality === 'lossless' && (
+            <div className="export-option-note">Blended transitions need re-encoding, so the merged video is made in Balanced quality.</div>
           )}
         </>
       )}

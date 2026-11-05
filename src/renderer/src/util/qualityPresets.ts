@@ -4,8 +4,9 @@
  * an aspect-ratio change (9:16 / 16:9 / 1:1) using either center-crop or
  * black-bar padding.
  */
-import { runFfmpeg, getFfCommandLine } from '../ffmpeg';
+import { runFfmpeg, getFfCommandLine, readFileFfprobeMeta } from '../ffmpeg';
 import type { ZoomAnchor, ZoomRect } from '../types';
+import { buildCrossfadeArgs } from './crossfade';
 import { buildZoompanFilter, toClipRelative, type ZoomEase } from './zoomAnchors';
 
 export type QualityPreset = 'lossless' | 'high' | 'balanced' | 'small';
@@ -124,5 +125,38 @@ export async function compressClip({
 
   appendCommandLog?.(args);
   console.log('[compressClip]', getFfCommandLine('ffmpeg', args));
+  await runFfmpeg(args);
+}
+
+/** Size of the merged video: the picked format, or the source video's own size. */
+export function mergedVideoSize(aspectRatio: AspectRatio, sourceWidth: number, sourceHeight: number): { width: number, height: number } {
+  if (aspectRatio !== 'original') return { width: ASPECT_DIMENSIONS[aspectRatio].w, height: ASPECT_DIMENSIONS[aspectRatio].h };
+  return { width: sourceWidth, height: sourceHeight };
+}
+
+/**
+ * One video from the finished clip files, each clip blending into the next over `fade` seconds.
+ * The clips already carry their zoom / format, so the merged video shows them too.
+ */
+export async function mergeWithCrossfade({ clipPaths, outPath, fade, preset, width, height, fps, appendCommandLog }: {
+  clipPaths: string[],
+  outPath: string,
+  fade: number,
+  preset: Exclude<QualityPreset, 'lossless'>,
+  width: number,
+  height: number,
+  fps: number,
+  appendCommandLog?: (args: string[]) => void,
+}): Promise<void> {
+  const clips = await Promise.all(clipPaths.map(async (path) => {
+    const { format, streams } = await readFileFfprobeMeta(path);
+    return { path, duration: Number(format.duration ?? 0), hasAudio: streams.some((s) => s.codec_type === 'audio') };
+  }));
+  const unreadable = clips.find((c) => !(c.duration > 0));
+  if (unreadable != null) throw new Error(`Could not read the length of ${unreadable.path}`);
+  const { crf, preset: ffPreset } = QUALITY_PRESETS[preset];
+  const args = buildCrossfadeArgs({ clips, fade, width, height, fps, crf, preset: ffPreset, outPath });
+  appendCommandLog?.(args);
+  console.log('[mergeWithCrossfade]', getFfCommandLine('ffmpeg', args));
   await runFfmpeg(args);
 }
