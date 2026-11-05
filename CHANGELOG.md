@@ -1,5 +1,12 @@
 # KICKO TrimOut - Changelog
 
+## 1.6.0
+
+### Merged export and playback
+- Crossfade transitions between clips when exporting a merged video (option in the export dialog).
+- In simple mode, the selected clips play one after the other, in order.
+- Fixed the release-config test, which still expected an old version number.
+
 ## 1.5.0
 
 ### Zoom motion for clips
