@@ -649,7 +649,8 @@ function BottomBar({
           </div>
         )}
 
-        {isFileOpened && !simpleMode && (
+        {/* TrimOut: shown in simple mode too, to watch the picked clips one after the other */}
+        {isFileOpened && (
           <div role="button" onClick={toggleLoopSelectedSegments} title={t('Play selected segments in order')} style={loopSelectedSegmentsButtonStyle}>
             <PlayPauseMode />
           </div>

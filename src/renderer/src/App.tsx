@@ -48,7 +48,8 @@ import FinishDestinationDialog from './components/FinishDestinationDialog';
 import ExportOptions from './components/ExportOptions';
 import type { ExportMode } from './components/ExportOptions';
 import { getNextPlayableClipIndex, getUserClips, trimClipEdge } from './util/clipTrim';
-import { compressClip, type QualityPreset, type AspectRatio, type FitMode } from './util/qualityPresets';
+import { compressClip, mergeWithCrossfade, mergedVideoSize, type QualityPreset, type AspectRatio, type FitMode } from './util/qualityPresets';
+import { TRANSITION_SECONDS, type ExportTransition } from './util/crossfade';
 import MediaSourcePlayer from './MediaSourcePlayer';
 import TopMenu from './TopMenu';
 import LastCommands from './LastCommands';
@@ -287,6 +288,8 @@ function App() {
   // Aspect ratio output — when not 'original', re-encode is forced (lossless ignored).
   const [exportAspectRatio, setExportAspectRatio] = useState<AspectRatio>('original');
   const [exportFitMode, setExportFitMode] = useState<FitMode>('crop');
+  // Transition between the clips of the merged video ('none' = the plain lossless join).
+  const [exportTransition, setExportTransition] = useState<ExportTransition>('none');
 
   // ─── Legal dialog (Terms + Privacy) ────────────────────────────────────────
   const [legalDialogOpen, setLegalDialogOpen] = useState(false);
@@ -1558,7 +1561,8 @@ function App() {
 
         // don't delete existing files that were not created by losslesscut now (due to overwrite disabled) https://github.com/mifi/lossless-cut/issues/2436
         const createdOutFiles = outFiles.flatMap((f) => (f.created ? [f.path] : []));
-        if (autoDeleteMergedSegments && activeProject == null) await tryDeleteFiles(createdOutFiles);
+        // With blended transitions the merged video is rebuilt from the clip files later, so they stay until then.
+        if (autoDeleteMergedSegments && activeProject == null && exportTransition === 'none') await tryDeleteFiles(createdOutFiles);
       }
 
       if (!enableOverwriteOutput) warnings.add(i18n.t('Overwrite output setting is disabled and some files might have been skipped.'));
@@ -1657,23 +1661,46 @@ function App() {
           }
         });
         const hasZoom = zoomByPath.size > 0;
+        // Blended transitions: the merged video is rebuilt from the finished clip files (so it gets their zooms too).
+        const fadeSeconds = TRANSITION_SECONDS[exportTransition];
+        const crossfade = fadeSeconds > 0 && mergedOutFilePath != null && existingOutFiles.length > 1;
         // Zoom changes the picture, so it also forces a re-encode (a lossless copy can't).
         const needsCompress = qualityPreset !== 'lossless' || needsAspectChange || hasZoom;
-        if (hasZoom && mergedOutFilePath != null) {
+        if (hasZoom && mergedOutFilePath != null && !crossfade) {
           warnings.add('Saved zooms are applied to the separate clips, not to the merged video.');
         }
         const sourceWidth = activeVideoStream?.width ?? 0;
         const sourceHeight = activeVideoStream?.height ?? 0;
+        // When the user chose 'lossless' but also picked an aspect ratio, fall back to 'balanced'
+        // (CRF 23) — visually transparent and reasonable file size.
+        const effectivePreset: Exclude<QualityPreset, 'lossless'> = qualityPreset === 'lossless' ? 'balanced' : qualityPreset;
+        const fsUnlinkSafe = async (p: string) => { try { await (window.require('fs/promises') as { unlink: (s: string) => Promise<void> }).unlink(p); } catch { /* ignore */ } };
+        // Swap: the re-encoded file must replace the original. On Windows, `rename` can fail
+        // if the original file is held by Explorer thumbnail cache or antivirus.
+        // Try the simple swap first; if it fails, delete the original and retry;
+        // as a last resort, copy + unlink (slower but works through locks).
+        const replaceFile = async (tmpPath: string, destPath: string) => {
+          try {
+            await fsRename(tmpPath, destPath);
+          } catch (renameErr) {
+            console.warn('Direct rename failed, trying delete-then-rename', renameErr);
+            await fsUnlinkSafe(destPath);
+            try {
+              await fsRename(tmpPath, destPath);
+            } catch (rename2Err) {
+              console.warn('Rename still failing, falling back to copy+delete', rename2Err);
+              await fsCopyFile(tmpPath, destPath);
+              await fsUnlinkSafe(tmpPath);
+            }
+          }
+        };
         if (needsCompress) {
-          // When the user chose 'lossless' but also picked an aspect ratio, fall back to 'balanced'
-          // (CRF 23) — visually transparent and reasonable file size.
-          const effectivePreset: Exclude<QualityPreset, 'lossless'> = qualityPreset === 'lossless' ? 'balanced' : qualityPreset;
           setWorking({ text: i18n.t('Compressing') });
           const allFiles = [
             ...existingOutFiles.map((f) => f.path),
-            ...(mergedOutFilePath != null && await fileExists(mergedOutFilePath) ? [mergedOutFilePath] : []),
+            // With transitions the merged video is made again below, so compressing the plain one is wasted work
+            ...(!crossfade && mergedOutFilePath != null && await fileExists(mergedOutFilePath) ? [mergedOutFilePath] : []),
           ];
-          const fsUnlinkSafe = async (p: string) => { try { await (window.require('fs/promises') as { unlink: (s: string) => Promise<void> }).unlink(p); } catch { /* ignore */ } };
 
           for (const losslessPath of allFiles) {
             const ext = pathExtname(losslessPath) || '.mp4';
@@ -1694,29 +1721,45 @@ function App() {
                 })(),
                 appendCommandLog: appendFfmpegCommandLog,
               });
-              // Swap: compressed must replace lossless. On Windows, `rename` can fail
-              // if the original file is held by Explorer thumbnail cache or antivirus.
-              // Try the simple swap first; if it fails, delete the original and retry;
-              // as a last resort, copy + unlink (slower but works through locks).
-              try {
-                await fsRename(tmpPath, losslessPath);
-              } catch (renameErr) {
-                console.warn('Direct rename failed, trying delete-then-rename', renameErr);
-                await fsUnlinkSafe(losslessPath);
-                try {
-                  await fsRename(tmpPath, losslessPath);
-                } catch (rename2Err) {
-                  console.warn('Rename still failing, falling back to copy+delete', rename2Err);
-                  await fsCopyFile(tmpPath, losslessPath);
-                  await fsUnlinkSafe(tmpPath);
-                }
-              }
+              await replaceFile(tmpPath, losslessPath);
             } catch (compressErr) {
               console.warn('Compression failed for', losslessPath, compressErr);
               warnings.add(`${t('Compression failed')}: ${basename(losslessPath)}`);
               // Best-effort cleanup of the leftover .compressing.mp4
               await fsUnlinkSafe(tmpPath);
             }
+          }
+        }
+
+        // 1b. Merged video with blended transitions, from the finished clips
+        if (crossfade && mergedOutFilePath != null) {
+          setWorking({ text: i18n.t('Merging') });
+          const tmpPath = `${mergedOutFilePath}.crossfade${pathExtname(mergedOutFilePath) || '.mp4'}`;
+          const { width, height } = mergedVideoSize(exportAspectRatio, sourceWidth, sourceHeight);
+          try {
+            if (!width || !height) throw new Error('Unknown video size');
+            await mergeWithCrossfade({
+              clipPaths: existingOutFiles.map((f) => f.path),
+              outPath: tmpPath,
+              fade: fadeSeconds,
+              preset: effectivePreset,
+              width,
+              height,
+              fps: detectedFps ?? 30,
+              appendCommandLog: appendFfmpegCommandLog,
+            });
+            await replaceFile(tmpPath, mergedOutFilePath);
+          } catch (crossfadeErr) {
+            console.warn('Blended transitions failed', crossfadeErr);
+            warnings.add('Blended transitions failed, so the merged video has plain cuts.');
+            await fsUnlinkSafe(tmpPath);
+          }
+          // "Merged" only: the clip files were kept just for this, now they go (as without transitions)
+          if (autoDeleteMergedSegments && activeProject == null) {
+            const created = new Set(outFiles.flatMap((f) => (f.created ? [f.path] : [])));
+            const toDelete = existingOutFiles.filter((f) => created.has(f.path));
+            await tryDeleteFiles(toDelete.map((f) => f.path));
+            for (const f of toDelete) existingOutFiles.splice(existingOutFiles.indexOf(f), 1);
           }
         }
 
@@ -1967,7 +2010,7 @@ function App() {
       setWorking(undefined);
       setProgress(undefined);
     }
-  }, [filePath, numStreamsToCopy, haveInvalidSegs, workingRef, setWorking, segmentsToChaptersOnly, cutFileTemplateOrDefault, generateCutFileNames, cutMultiple, outputDir, customOutDir, fileFormat, fileDuration, isRotationSet, effectiveRotation, copyFileStreams, allFilesMeta, keyframeCut, segmentsToExport, shortestFlag, ffmpegExperimental, preserveMetadata, preserveMetadataOnMerge, preserveMovData, preserveChapters, movFastStart, avoidNegativeTs, customTagsByFile, paramsByStreamId, detectedFps, willMerge, enableOverwriteOutput, exportConfirmEnabled, mainFileFormat, mainStreams, exportExtraStreams, areWeCutting, simpleMode, prefersReducedMotion, cleanupChoices, hideAllNotifications, segmentsOrInverse.selected, t, cutMergedFileTemplateOrDefault, segmentsToChapters, invertCutSegments, generateCutMergedFileNames, concatCutSegments, autoDeleteMergedSegments, tryDeleteFiles, nonCopiedExtraStreams, extractStreams, askForCleanupChoices, cleanupFiles, showOsNotification, openCutFinishedDialog, handleExportFailed, setExportedRanges, qualityPreset, createExportPackage, playerName, cutSegments, quickCutDuration, appendFfmpegCommandLog, exportAspectRatio, exportFitMode, activeProject, persistActiveProject, activeVideoStream?.width, activeVideoStream?.height]);
+  }, [filePath, numStreamsToCopy, haveInvalidSegs, workingRef, setWorking, segmentsToChaptersOnly, cutFileTemplateOrDefault, generateCutFileNames, cutMultiple, outputDir, customOutDir, fileFormat, fileDuration, isRotationSet, effectiveRotation, copyFileStreams, allFilesMeta, keyframeCut, segmentsToExport, shortestFlag, ffmpegExperimental, preserveMetadata, preserveMetadataOnMerge, preserveMovData, preserveChapters, movFastStart, avoidNegativeTs, customTagsByFile, paramsByStreamId, detectedFps, willMerge, enableOverwriteOutput, exportConfirmEnabled, mainFileFormat, mainStreams, exportExtraStreams, areWeCutting, simpleMode, prefersReducedMotion, cleanupChoices, hideAllNotifications, segmentsOrInverse.selected, t, cutMergedFileTemplateOrDefault, segmentsToChapters, invertCutSegments, generateCutMergedFileNames, concatCutSegments, autoDeleteMergedSegments, tryDeleteFiles, nonCopiedExtraStreams, extractStreams, askForCleanupChoices, cleanupFiles, showOsNotification, openCutFinishedDialog, handleExportFailed, setExportedRanges, qualityPreset, createExportPackage, playerName, cutSegments, quickCutDuration, appendFfmpegCommandLog, exportAspectRatio, exportFitMode, activeProject, persistActiveProject, activeVideoStream?.width, activeVideoStream?.height, exportTransition]);
 
   const onExportPress = useCallback(async () => {
     if (!filePath) return;
@@ -4236,6 +4279,8 @@ function App() {
                     onModeChange={handleExportModeChange}
                     folderPerExport={createExportPackage}
                     onFolderPerExportChange={setCreateExportPackage}
+                    transition={exportTransition}
+                    onTransitionChange={setExportTransition}
                   />
                 )}
                 onDownload={() => handleFinishDestination('local')}
