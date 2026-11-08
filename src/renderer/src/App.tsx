@@ -34,6 +34,8 @@ import type { UserSettingsContextType, AppContextType, SegColorsContextType } fr
 import { UserSettingsContext, SegColorsContext, AppContext } from './contexts';
 
 import NoFileLoaded from './NoFileLoaded';
+import { upsertRecentProject, removeRecentProject } from './util/recentProjects';
+import type { RecentProject } from './util/recentProjects';
 import ClipsPanel from './components/ClipsPanel';
 import ActionPickerModal, { type SoccerAction } from './components/ActionPickerModal';
 import LegalDialog from './components/LegalDialog';
@@ -366,8 +368,8 @@ function App() {
   const [selectedBatchFiles, setSelectedBatchFiles] = useState<string[]>([]);
 
   const allUserSettings = useUserSettingsRoot();
-  const { captureFormat, keyframeCut, preserveMetadata, preserveMetadataOnMerge, preserveMovData, preserveChapters, movFastStart, avoidNegativeTs, autoMerge, timecodeFormat, invertCutSegments, autoExportExtraStreams, askBeforeClose, enableImportChapters, enableAskForFileOpenAction, playbackVolume, autoSaveProjectFile, wheelSensitivity, waveformHeight, invertTimelineScroll, language, ffmpegExperimental, hideNotifications, hideOsNotifications, autoLoadTimecode, autoDeleteMergedSegments, exportConfirmEnabled, segmentsToChapters, simpleMode, cutFileTemplate, cutMergedFileTemplate, mergedFileTemplate, keyboardSeekAccFactor, keyboardNormalSeekSpeed, keyboardSeekSpeed2, keyboardSeekSpeed3, treatInputFileModifiedTimeAsStart, treatOutputFileModifiedTimeAsStart, outFormatLocked, safeOutputFileName, enableAutoHtml5ify, segmentsToChaptersOnly, keyBindings, enableSmartCut, customFfPath, storeProjectInWorkingDir, enableOverwriteOutput, mouseWheelZoomModifierKey, mouseWheelFrameSeekModifierKey, mouseWheelKeyframeSeekModifierKey, captureFrameMethod, captureFrameQuality, captureFrameFileNameFormat, enableNativeHevc, cleanupChoices, darkMode, preferStrongColors, outputFileNameMinZeroPadding, cutFromAdjustmentFrames, cutToAdjustmentFrames, waveformMode: waveformModePreference, thumbnailsEnabled, keyframesEnabled, reducedMotion, ffmpegHwaccel } = allUserSettings.settings;
-  const { setCaptureFormat, setCustomOutDir, setKeyframeCut, setPlaybackVolume, setExportConfirmEnabled, setSimpleMode, setOutFormatLocked, setSafeOutputFileName, setKeyBindings, resetKeyBindings, setStoreProjectInWorkingDir, setCleanupChoices, toggleDarkMode, setWaveformMode, setThumbnailsEnabled, setKeyframesEnabled, prefersReducedMotion, customOutDir, setAutoMerge, setAutoDeleteMergedSegments, setCaptureFrameQuality, setHideOsNotifications, setHideNotifications, setAskBeforeClose } = allUserSettings;
+  const { captureFormat, keyframeCut, preserveMetadata, preserveMetadataOnMerge, preserveMovData, preserveChapters, movFastStart, avoidNegativeTs, autoMerge, timecodeFormat, invertCutSegments, autoExportExtraStreams, askBeforeClose, enableImportChapters, enableAskForFileOpenAction, playbackVolume, autoSaveProjectFile, wheelSensitivity, waveformHeight, invertTimelineScroll, language, ffmpegExperimental, hideNotifications, hideOsNotifications, autoLoadTimecode, autoDeleteMergedSegments, exportConfirmEnabled, segmentsToChapters, simpleMode, cutFileTemplate, cutMergedFileTemplate, mergedFileTemplate, keyboardSeekAccFactor, keyboardNormalSeekSpeed, keyboardSeekSpeed2, keyboardSeekSpeed3, treatInputFileModifiedTimeAsStart, treatOutputFileModifiedTimeAsStart, outFormatLocked, safeOutputFileName, enableAutoHtml5ify, segmentsToChaptersOnly, keyBindings, enableSmartCut, customFfPath, storeProjectInWorkingDir, enableOverwriteOutput, mouseWheelZoomModifierKey, mouseWheelFrameSeekModifierKey, mouseWheelKeyframeSeekModifierKey, captureFrameMethod, captureFrameQuality, captureFrameFileNameFormat, enableNativeHevc, cleanupChoices, darkMode, preferStrongColors, outputFileNameMinZeroPadding, cutFromAdjustmentFrames, cutToAdjustmentFrames, waveformMode: waveformModePreference, thumbnailsEnabled, keyframesEnabled, reducedMotion, ffmpegHwaccel, recentProjects, reopenLastProject } = allUserSettings.settings;
+  const { setCaptureFormat, setCustomOutDir, setKeyframeCut, setPlaybackVolume, setExportConfirmEnabled, setSimpleMode, setOutFormatLocked, setSafeOutputFileName, setKeyBindings, resetKeyBindings, setStoreProjectInWorkingDir, setCleanupChoices, toggleDarkMode, setWaveformMode, setThumbnailsEnabled, setKeyframesEnabled, prefersReducedMotion, customOutDir, setAutoMerge, setAutoDeleteMergedSegments, setCaptureFrameQuality, setHideOsNotifications, setHideNotifications, setAskBeforeClose, setRecentProjects, setReopenLastProject } = allUserSettings;
 
   const [showAdvancedSettings, setShowAdvancedSettings] = useState(!simpleMode);
 
@@ -2495,6 +2497,76 @@ function App() {
     await loadMedia({ filePath: path, projectPath });
   }, [ensureAccessToSourceDir, loadMedia]);
 
+  // ---- Recent projects: remember what we worked on, and come back to the same spot
+  const recentRealClipCount = cutSegments.filter((seg) => !seg.initial).length;
+  const playerTimeForRecentRef = useRef(playerTime ?? 0);
+  playerTimeForRecentRef.current = playerTime ?? 0;
+  // Moves every 5 seconds, so the list is not rewritten on every frame
+  const recentTimeBucket = Math.floor((playerTime ?? 0) / 5);
+
+  useEffect(() => {
+    if (!filePath || !projectFileSavePath || !autoSaveProjectFile || recentRealClipCount === 0) return undefined;
+    const timer = setTimeout(() => {
+      setRecentProjects((prev) => upsertRecentProject(prev ?? [], {
+        projectPath: projectFileSavePath,
+        mediaPath: filePath,
+        clipCount: recentRealClipCount,
+        updatedAt: Date.now(),
+        playerTime: playerTimeForRecentRef.current,
+      }));
+    }, 1500);
+    return () => clearTimeout(timer);
+  }, [filePath, projectFileSavePath, autoSaveProjectFile, recentRealClipCount, recentTimeBucket, setRecentProjects]);
+
+  // After opening a recent project, jump to where we stopped (once the video is ready)
+  const pendingSeekRef = useRef<{ mediaPath: string, time: number } | undefined>();
+  useEffect(() => {
+    const pending = pendingSeekRef.current;
+    if (!pending || filePath !== pending.mediaPath || !isDurationValid(fileDuration)) return;
+    pendingSeekRef.current = undefined;
+    seekAbs(Math.min(pending.time, fileDuration));
+  }, [filePath, fileDuration, seekAbs]);
+
+  const openRecentProject = useCallback(async (recent: RecentProject) => {
+    if (workingRef.current) return;
+    setWorking({ text: i18n.t('Opening') });
+    try {
+      await withErrorHandling(async () => {
+        if (!(await mainApi.pathExists(recent.mediaPath))) {
+          setRecentProjects((prev) => removeRecentProject(prev ?? [], recent.mediaPath));
+          errorToast(i18n.t('The video was moved or deleted, so it was removed from the list'));
+          return;
+        }
+        const hasProjectFile = await mainApi.pathExists(recent.projectPath);
+        pendingSeekRef.current = { mediaPath: recent.mediaPath, time: recent.playerTime };
+        await loadMedia({ filePath: recent.mediaPath, projectPath: hasProjectFile ? recent.projectPath : undefined });
+      }, i18n.t('Failed to open file'));
+    } finally {
+      setWorking(undefined);
+    }
+  }, [workingRef, setWorking, withErrorHandling, loadMedia, setRecentProjects]);
+
+  const forgetRecentProject = useCallback((mediaPath: string) => {
+    setRecentProjects((prev) => removeRecentProject(prev ?? [], mediaPath));
+  }, [setRecentProjects]);
+
+  // On start: open the last project again (unless a file was already opened, e.g. from Explorer)
+  const isFileOpenedRef = useRef(isFileOpened);
+  isFileOpenedRef.current = isFileOpened;
+  const startupReopenDone = useRef(false);
+  useEffect(() => {
+    if (startupReopenDone.current) return undefined;
+    startupReopenDone.current = true;
+    const last = recentProjects?.[0];
+    if (!reopenLastProject || last == null) return undefined;
+    const timer = setTimeout(() => {
+      if (!isFileOpenedRef.current) openRecentProject(last).catch(console.error);
+    }, 900);
+    return () => clearTimeout(timer);
+    // Only once, when the app starts
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   // todo merge with userOpenFiles?
   const batchOpenSingleFile = useCallback(async (path: string) => {
     if (workingRef.current) return;
@@ -3558,6 +3630,11 @@ function App() {
                     <NoFileLoaded
                       currentCutSeg={currentCutSeg}
                       onClick={openFilesDialog}
+                      recentProjects={recentProjects ?? []}
+                      onOpenRecent={openRecentProject}
+                      onForgetRecent={forgetRecentProject}
+                      reopenLast={reopenLastProject}
+                      onReopenLastChange={setReopenLastProject}
                       darkMode={darkMode}
                       keyBindingByAction={keyBindingByAction}
                       onUrlDownload={handleUrlDownload}

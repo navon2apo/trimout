@@ -52,6 +52,10 @@ export default function useUserSettingsRoot() {
 
   const [lastAppVersion, setLastAppVersion] = useState(safeGetConfigInitial('lastAppVersion'));
   useEffect(() => safeSetConfig({ lastAppVersion }), [lastAppVersion]);
+  const [recentProjects, setRecentProjects] = useState(safeGetConfigInitial('recentProjects'));
+  useEffect(() => safeSetConfig({ recentProjects }), [recentProjects]);
+  const [reopenLastProject, setReopenLastProject] = useState(safeGetConfigInitial('reopenLastProject'));
+  useEffect(() => safeSetConfig({ reopenLastProject }), [reopenLastProject]);
   const [captureFormat, setCaptureFormat] = useState(safeGetConfigInitial('captureFormat'));
   useEffect(() => safeSetConfig({ captureFormat }), [captureFormat]);
   const [recentCustomOutDirs, setRecentCustomOutDirs] = useState(safeGetConfigInitial('recentCustomOutDirs'));
@@ -242,6 +246,8 @@ export default function useUserSettingsRoot() {
   // 🚨 Must be JSON-serializable!
   const settings = {
     lastAppVersion,
+    recentProjects,
+    reopenLastProject,
     captureFormat,
     recentCustomOutDirs,
     enableCustomOutDir,
@@ -341,6 +347,8 @@ export default function useUserSettingsRoot() {
     setEnableAskForFileOpenAction,
     setPlaybackVolume,
     setAutoSaveProjectFile,
+    setRecentProjects,
+    setReopenLastProject,
     setWheelSensitivity,
     setWaveformHeight,
     setInvertTimelineScroll,

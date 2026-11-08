@@ -47,6 +47,16 @@ export const llcProjectV2Schema = z.object({
     name: z.string(),
     tags: segmentTagsSchema.optional(),
     selected: z.boolean().optional(),
+    actionType: z.string().optional(),
+    actionLabel: z.string().optional(),
+    playerName: z.string().optional(),
+    isFavorite: z.boolean().optional(),
+    isUncertain: z.boolean().optional(),
+    zoomAnchors: z.object({
+      t: z.number(),
+      rect: z.object({ x: z.number(), y: z.number(), w: z.number(), h: z.number() }),
+    }).array().optional(),
+    zoomEase: z.enum(['smooth', 'linear', 'dynamic']).optional(),
   }).array(),
 });
 

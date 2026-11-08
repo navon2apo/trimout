@@ -1,9 +1,11 @@
 import { memo, useState, useRef, useCallback } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { FiLink, FiPlus } from 'react-icons/fi';
+import { FiLink, FiPlus, FiX } from 'react-icons/fi';
 import type { StateSegment } from './types';
 import type { KeyBinding } from '../../common/types';
 import trimOutLogoUrl from './trimout-logo.png';
+import { projectTitle } from './util/recentProjects';
+import type { RecentProject } from './util/recentProjects';
 
 const container: React.CSSProperties = {
   position: 'absolute',
@@ -17,9 +19,17 @@ const container: React.CSSProperties = {
   userSelect: 'none',
 };
 
-function NoFileLoaded({ onClick, onUrlDownload }: {
+const formatWhen = (ms: number) => new Date(ms).toLocaleString(undefined, { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' });
+const formatPos = (sec: number) => `${Math.floor(sec / 60)}:${String(Math.floor(sec % 60)).padStart(2, '0')}`;
+
+function NoFileLoaded({ onClick, onUrlDownload, recentProjects, onOpenRecent, onForgetRecent, reopenLast, onReopenLastChange }: {
   currentCutSeg: StateSegment | undefined,
   onClick: () => void,
+  recentProjects: RecentProject[],
+  onOpenRecent: (project: RecentProject) => void,
+  onForgetRecent: (mediaPath: string) => void,
+  reopenLast: boolean,
+  onReopenLastChange: (value: boolean) => void,
   darkMode?: boolean,
   keyBindingByAction: Record<string, KeyBinding>,
   onUrlDownload?: (url: string) => void,
@@ -212,6 +222,46 @@ function NoFileLoaded({ onClick, onUrlDownload }: {
             </AnimatePresence>
           </div>
         </div>
+
+        {/* Recent projects: click to continue where we stopped */}
+        {recentProjects.length > 0 && (
+          <div role="presentation" style={{ width: '100%', maxWidth: 420 }} onClick={(e) => e.stopPropagation()}>
+            <div style={{ fontSize: 12, fontWeight: 700, color: '#334155', marginBottom: 6 }}>Recent projects</div>
+            <div style={{ maxHeight: 190, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 4 }}>
+              {recentProjects.map((project) => (
+                <div
+                  key={project.mediaPath}
+                  style={{ display: 'flex', alignItems: 'center', gap: 6, background: '#ffffff', border: '1px solid #e4e7ec', borderRadius: 8 }}
+                >
+                  <button
+                    type="button"
+                    onClick={() => onOpenRecent(project)}
+                    title={project.mediaPath}
+                    style={{ flex: 1, minWidth: 0, textAlign: 'left', background: 'none', border: 'none', padding: '6px 10px', cursor: 'pointer', color: '#0f172a' }}
+                  >
+                    <div style={{ fontSize: 12.5, fontWeight: 600, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{projectTitle(project)}</div>
+                    <div style={{ fontSize: 11, color: '#64748b' }}>
+                      {project.clipCount} {project.clipCount === 1 ? 'clip' : 'clips'} · {formatWhen(project.updatedAt)} · continue at {formatPos(project.playerTime)}
+                    </div>
+                  </button>
+                  <button
+                    type="button"
+                    aria-label="Remove from the list"
+                    title="Remove from the list (the files stay)"
+                    onClick={() => onForgetRecent(project.mediaPath)}
+                    style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#94a3b8', padding: '6px 8px' }}
+                  >
+                    <FiX />
+                  </button>
+                </div>
+              ))}
+            </div>
+            <label htmlFor="reopen-last-project" style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 8, fontSize: 11.5, color: '#475569', cursor: 'pointer' }}>
+              <input id="reopen-last-project" type="checkbox" checked={reopenLast} onChange={(e) => onReopenLastChange(e.target.checked)} />
+              <span>Open the last project when the app starts</span>
+            </label>
+          </div>
+        )}
 
       </motion.div>
     </div>

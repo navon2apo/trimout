@@ -23,9 +23,24 @@ export type WaveformMode = 'big-waveform' | 'waveform';
 
 export type EnableImportChapters = 'always' | 'never' | 'ask'
 
+/** A project the user worked on lately (kept in the settings so it survives restarts) */
+export interface RecentProject {
+  /** The saved clips file (proj.llc) next to the video, or in the working folder */
+  projectPath: string,
+  mediaPath: string,
+  clipCount: number,
+  /** ms since epoch */
+  updatedAt: number,
+  /** Where the player was, in seconds, so work continues from the same spot */
+  playerTime: number,
+}
+
 export interface Config {
   version: number,
   lastAppVersion: string,
+  recentProjects: RecentProject[],
+  /** Open the last project again when the app starts */
+  reopenLastProject: boolean,
   captureFormat: CaptureFormat,
   enableCustomOutDir: boolean,
   recentCustomOutDirs: string[],
