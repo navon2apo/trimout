@@ -98,6 +98,8 @@ const defaultKeyBindings: KeyBinding[] = [
 const defaults: Config = {
   version: 2,
   lastAppVersion: app.getVersion(),
+  recentProjects: [],
+  reopenLastProject: true,
   captureFormat: 'jpeg',
   enableCustomOutDir: false,
   recentCustomOutDirs: [],

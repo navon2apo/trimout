@@ -4,7 +4,7 @@ import minBy from 'lodash/minBy';
 import maxBy from 'lodash/maxBy';
 import invariant from 'tiny-invariant';
 
-import type { DefiniteSegmentBase, PlaybackMode, SegmentBase, SegmentTags, SegmentToExport, StateSegment } from './types';
+import type { DefiniteSegmentBase, PlaybackMode, SegmentBase, SegmentTags, SegmentToExport, StateSegment, ZoomAnchor } from './types';
 
 
 export const isDurationValid = (duration?: number): duration is number => duration != null && Number.isFinite(duration) && duration > 0;
@@ -16,6 +16,13 @@ export const createSegment = (props?: {
   tags?: unknown | undefined,
   initial?: true,
   selected?: boolean,
+  actionType?: string | undefined,
+  actionLabel?: string | undefined,
+  playerName?: string | undefined,
+  isFavorite?: boolean | undefined,
+  isUncertain?: boolean | undefined,
+  zoomAnchors?: ZoomAnchor[] | undefined,
+  zoomEase?: 'smooth' | 'linear' | 'dynamic' | undefined,
 }): Omit<StateSegment, 'segColorIndex'> => ({
   start: props?.start ?? 0,
   end: props?.end,
@@ -30,6 +37,13 @@ export const createSegment = (props?: {
     : undefined,
 
   ...(props?.initial && { initial: true }),
+  ...(props?.actionType != null && { actionType: props.actionType }),
+  ...(props?.actionLabel != null && { actionLabel: props.actionLabel }),
+  ...(props?.playerName != null && { playerName: props.playerName }),
+  ...(props?.isFavorite != null && { isFavorite: props.isFavorite }),
+  ...(props?.isUncertain != null && { isUncertain: props.isUncertain }),
+  ...(props?.zoomAnchors != null && props.zoomAnchors.length > 0 && { zoomAnchors: props.zoomAnchors }),
+  ...(props?.zoomEase != null && { zoomEase: props.zoomEase }),
 });
 
 export const addSegmentColorIndex = (segment: Omit<StateSegment, 'segColorIndex'>, segColorIndex: number): StateSegment => ({
@@ -38,9 +52,21 @@ export const addSegmentColorIndex = (segment: Omit<StateSegment, 'segColorIndex'
 });
 
 export const mapSaveableSegments = (segments: StateSegment[]) => segments.map(({
-  start, end, name, tags, selected,
+  start, end, name, tags, selected, actionType, actionLabel, playerName, isFavorite, isUncertain, zoomAnchors, zoomEase,
 }) => ({
-  start, end, name, tags, selected,
+  start,
+  end,
+  name,
+  tags,
+  selected,
+  // Soccer details and zoom movement: only written when set, so plain clips stay as before
+  ...(actionType != null && { actionType }),
+  ...(actionLabel != null && { actionLabel }),
+  ...(playerName != null && { playerName }),
+  ...(isFavorite != null && { isFavorite }),
+  ...(isUncertain != null && { isUncertain }),
+  ...(zoomAnchors != null && zoomAnchors.length > 0 && { zoomAnchors }),
+  ...(zoomEase != null && { zoomEase }),
 }));
 
 // in the past we had non-string tags
