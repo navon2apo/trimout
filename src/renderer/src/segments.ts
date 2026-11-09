@@ -16,7 +16,7 @@ export const createSegment = (props?: {
   name?: string | undefined,
   tags?: unknown | undefined,
   initial?: true,
-  selected?: boolean,
+  selected?: boolean | undefined,
   actionType?: string | undefined,
   actionLabel?: string | undefined,
   playerName?: string | undefined,
