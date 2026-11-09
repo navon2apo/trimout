@@ -18,7 +18,7 @@ const packageJson = JSON.parse(readFileSync(new URL('../package.json', import.me
 describe('Windows release configuration', () => {
   it('uses the KICKO TrimOut Windows identity and installer target', () => {
     expect(packageJson.productName).toBe('KICKO TrimOut');
-    expect(packageJson.version).toBe('1.6.0');
+    expect(packageJson.version).toBe('1.7.0');
     expect(packageJson.build.appId).toBe('com.kicko.trimout');
     expect(packageJson.build.win.target).toEqual([{ arch: 'x64', target: 'nsis' }]);
   });
