@@ -504,6 +504,8 @@ function sendOsNotification(options: NotificationConstructorOptions) {
 }
 
 const remoteApi = {
+  // The recent projects list changed, so the File menu must be rebuilt
+  refreshMenu: () => { if (mainWindow) updateMenu(); },
   pathExists,
   downloadMediaUrl,
   fileTypeFromFile,

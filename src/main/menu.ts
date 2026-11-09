@@ -5,7 +5,7 @@ import { t } from 'i18next';
 
 import { licensesUrl } from '../common/constants.js';
 import { logFilePath } from './logger.js';
-import { getConfigPath } from './configStore.js';
+import { getConfigPath, get as getConfig } from './configStore.js';
 
 
 // menu-safe i18n.t:
@@ -14,9 +14,16 @@ const esc = (val: string) => val.replaceAll('&', '&&');
 
 const { Menu } = electron;
 
+const projectTitle = (mediaPath: string) => {
+  const name = mediaPath.split(/[\\/]/).pop() ?? mediaPath;
+  const dot = name.lastIndexOf('.');
+  return dot > 0 ? name.slice(0, dot) : name;
+};
+
 export default ({ app, mainWindow }: {
   app: Electron.App, mainWindow: BrowserWindow,
 }) => {
+  const recentProjects = getConfig('recentProjects') ?? [];
   // todo TS mainWindow.webContents.send
   const menu: (MenuItemConstructorOptions | MenuItem)[] = [
     ...(process.platform === 'darwin' ? [{ role: 'appMenu' as const }] : []),
@@ -30,6 +37,16 @@ export default ({ app, mainWindow }: {
           async click() {
             mainWindow.webContents.send('openFilesDialog');
           },
+        },
+        {
+          label: esc(t('Recent projects')),
+          enabled: recentProjects.length > 0,
+          submenu: recentProjects.map((project) => ({
+            label: esc(`${projectTitle(project.mediaPath)} (${project.clipCount})`),
+            click() {
+              mainWindow.webContents.send('openRecentProject', project.mediaPath);
+            },
+          })),
         },
         { type: 'separator' },
         {

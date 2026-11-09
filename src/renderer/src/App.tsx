@@ -2289,10 +2289,6 @@ function App() {
 
     async function tryFindAndLoadProjectFile({ chapters, cod }: { chapters: FFprobeChapter[], cod: string | undefined }) {
       try {
-        // In QuickCut / simpleMode — always start with a clean slate.
-        // Don't auto-load saved project files or chapter segments.
-        if (simpleMode) return;
-
         // First try to open from from working dir
         if (await tryOpenProjectPath(getEdlFilePath(fp, cod))) return;
 
@@ -2305,7 +2301,11 @@ function App() {
           await ensureAccessToSourceDir(fp);
           // Ok, we got access from the user (or already have access), now read the project file
           await loadEdlFile({ path: sameDirEdlFilePath, type: 'llc' });
+          return;
         }
+
+        // In simple mode the clips come from the saved project only (no chapters)
+        if (simpleMode) return;
 
         // OK, we didn't find a project file, instead maybe try to create project (segments) from chapters
         const edl = tryMapChaptersToEdl(chapters);
@@ -2545,6 +2545,18 @@ function App() {
       setWorking(undefined);
     }
   }, [workingRef, setWorking, withErrorHandling, loadMedia, setRecentProjects]);
+
+  useEffect(() => {
+    mainApi.refreshMenu();
+  }, [recentProjects]);
+
+  // File > Recent projects: the menu sends the video path
+  const recentProjectsRef = useRef(recentProjects);
+  recentProjectsRef.current = recentProjects;
+  const openRecentByPath = useCallback(async (mediaPath: string) => {
+    const recent = recentProjectsRef.current?.find((p) => p.mediaPath === mediaPath);
+    if (recent) await openRecentProject(recent);
+  }, [openRecentProject]);
 
   const forgetRecentProject = useCallback((mediaPath: string) => {
     setRecentProjects((prev) => removeRecentProject(prev ?? [], mediaPath));
@@ -3448,6 +3460,7 @@ function App() {
         importEdlFile,
         exportEdlFile: tryExportEdlFile,
         promptDownloadMediaUrl: promptDownloadMediaUrlWrapper,
+        openRecentProject: openRecentByPath,
       }).map(([key, fn]) => [
         key,
         async (...args: unknown[]) => {
@@ -3497,7 +3510,7 @@ function App() {
       ipcActions.forEach(([key, action]) => electron.ipcRenderer.off(key, action));
       electron.ipcRenderer.off('apiAction', tryApiAction);
     };
-  }, [checkFileOpened, customOutDir, detectedFps, filePath, getFrameCount, getKeyboardAction, goToTimecodeDirect, handleError, importEdlFile, loadCutSegments, mainActions, promptDownloadMediaUrlWrapper, selectedSegments, toggleKeyboardShortcuts, tryExportEdlFile, userOpenFiles]);
+  }, [checkFileOpened, customOutDir, detectedFps, filePath, getFrameCount, getKeyboardAction, goToTimecodeDirect, handleError, importEdlFile, loadCutSegments, mainActions, openRecentByPath, promptDownloadMediaUrlWrapper, selectedSegments, toggleKeyboardShortcuts, tryExportEdlFile, userOpenFiles]);
 
   const handleBatchFilesDrop = useCallback<DragEventHandler<HTMLDivElement>>(async (ev) => {
     ev.preventDefault();
