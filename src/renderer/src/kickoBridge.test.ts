@@ -162,6 +162,33 @@ describe('paid KICKO handoff', () => {
     expect(deps.deleteSession).toHaveBeenCalledWith(project.id);
   });
 
+  it('sends a typed action as free play together with the name the user typed', async () => {
+    const project = addExportBatch(
+      createTrimoutProject({ name: 'Alex 2026', playerName: 'Alex', scoutRole: 'cm8', now: '2026-07-13T11:00:00.000Z' }),
+      {
+        sourcePath: String.raw`C:\games\match.mp4`,
+        exportedPlays: [{ filePath: String.raw`C:\exports\typed.mp4`, actionType: 'custom', actionLabel: '  חילוץ כדור  ', duration: 12, favorite: true }],
+        now: '2026-07-13T11:30:00.000Z',
+      },
+    );
+    const calls: { url: string; init?: KickoRequestInit | undefined }[] = [];
+    const requestJson = vi.fn(async (url: string, init?: KickoRequestInit) => {
+      calls.push({ url, init });
+      if (url.endsWith('/api/trimout/handoffs')) {
+        return { ok: true, handoffId: HANDOFF_ID, deviceSecret: 't'.repeat(43), userCode: 'EFGH-6789', expiresAt: EXPIRES_AT, verificationUrl: 'https://kicko.example/mvp/trimout-connect.html?code=EFGH-6789' };
+      }
+      if (url.endsWith('/api/trimout/handoffs/status')) return { ok: true, status: 'ready_for_upload' };
+      if (url.endsWith('/api/trimout/handoffs/grants')) return { ok: true, grantId: 'grant-1', status: 'validated', uploadRequired: false };
+      if (url.endsWith('/api/trimout/handoffs/finalize')) return { ok: true, projectId: 'project-new', status: 'completed', importedClipCount: 1 };
+      throw new Error(`Unexpected request: ${url}`);
+    });
+    const deps = dependencies({ requestJson });
+    const connection = await connectToKicko({ project, baseUrl: 'https://kicko.example', dependencies: deps });
+    await sendProjectToKicko({ connection, project, destinationProjectId: null, dependencies: deps });
+    const grantBody = JSON.parse(String(calls.find(({ url }) => url.endsWith('/api/trimout/handoffs/grants'))?.init?.body));
+    expect(grantBody.clip).toMatchObject({ actionType: 'free', customLabel: 'חילוץ כדור' });
+  });
+
   it('resumes a matching encrypted session without creating another handoff', async () => {
     const project = makeProject();
     const requestJson = vi.fn(async (url: string) => {
