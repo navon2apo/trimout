@@ -1,5 +1,19 @@
 # KICKO TrimOut - Changelog
 
+## 1.7.0
+
+### Projects you can come back to
+- File → Recent projects, and a list on the start screen. Each shows its clips and the last position, and opens where you stopped.
+- Opening a video loads its saved clips straight away, with their zoom, action, player and favorite marks.
+- Optional: open the last project when the app starts.
+- The project file now keeps each clip's action, player, favorite/uncertain mark and zoom movement.
+- Clips saved by an older version get their action back from the clip name.
+
+### KICKO
+- Fixed the connection to KICKO (the app now uses the official kicko.football address).
+- A play with an action you typed yourself is sent to KICKO as a free play with your own name for it.
+- Error messages from KICKO now say what was rejected.
+
 ## 1.6.0
 
 ### Merged export and playback
