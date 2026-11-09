@@ -4,6 +4,7 @@ import minBy from 'lodash/minBy';
 import maxBy from 'lodash/maxBy';
 import invariant from 'tiny-invariant';
 
+import { inferActionFromName } from './scoutCatalog';
 import type { DefiniteSegmentBase, PlaybackMode, SegmentBase, SegmentTags, SegmentToExport, StateSegment, ZoomAnchor } from './types';
 
 
@@ -23,7 +24,11 @@ export const createSegment = (props?: {
   isUncertain?: boolean | undefined,
   zoomAnchors?: ZoomAnchor[] | undefined,
   zoomEase?: 'smooth' | 'linear' | 'dynamic' | undefined,
-}): Omit<StateSegment, 'segColorIndex'> => ({
+}): Omit<StateSegment, 'segColorIndex'> => {
+  const inferred = props?.actionType == null && props?.name ? inferActionFromName(props.name) : undefined;
+  const actionType = props?.actionType ?? inferred?.actionType;
+  const actionLabel = props?.actionLabel ?? (props?.actionType == null ? inferred?.actionLabel : undefined);
+  return {
   start: props?.start ?? 0,
   end: props?.end,
   name: props?.name || '',
@@ -37,14 +42,15 @@ export const createSegment = (props?: {
     : undefined,
 
   ...(props?.initial && { initial: true }),
-  ...(props?.actionType != null && { actionType: props.actionType }),
-  ...(props?.actionLabel != null && { actionLabel: props.actionLabel }),
+  ...(actionType != null && { actionType }),
+  ...(actionLabel != null && { actionLabel }),
   ...(props?.playerName != null && { playerName: props.playerName }),
   ...(props?.isFavorite != null && { isFavorite: props.isFavorite }),
   ...(props?.isUncertain != null && { isUncertain: props.isUncertain }),
   ...(props?.zoomAnchors != null && props.zoomAnchors.length > 0 && { zoomAnchors: props.zoomAnchors }),
   ...(props?.zoomEase != null && { zoomEase: props.zoomEase }),
-});
+  };
+};
 
 export const addSegmentColorIndex = (segment: Omit<StateSegment, 'segColorIndex'>, segColorIndex: number): StateSegment => ({
   ...segment,

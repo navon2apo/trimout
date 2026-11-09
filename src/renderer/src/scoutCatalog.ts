@@ -1,5 +1,6 @@
 import type { ScoutRoleId } from './projectModel';
 import catalogData from './scoutCatalogData';
+import createClipFileLabel from './clipNaming';
 
 export interface ScoutIqGuidance {
   hint: string;
@@ -96,4 +97,13 @@ export function getScoutPhaseContext(role: ScoutRole, counts: Record<string, num
     missingActionTypes: phase === 'opening' ? missingOpening : missingConsistency,
     overuseWarning: getOveruseWarning(role, counts),
   };
+}
+
+// Clips saved by an older version kept only their name ("Dribble - 1v1 2"), not the action.
+// A name that is exactly an action's file label plus a number gives the action back.
+export function inferActionFromName(name: string): { actionType: string, actionLabel: string } | undefined {
+  const base = name.replace(/\s+\d+$/, '').trim();
+  if (!base || base === name.trim()) return undefined;
+  const action = SCOUT_ACTIONS.find((a) => createClipFileLabel([a.label]) === base);
+  return action ? { actionType: action.id, actionLabel: action.label } : undefined;
 }
