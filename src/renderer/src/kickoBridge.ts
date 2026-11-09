@@ -2,7 +2,7 @@ import type { ProjectPlayRating, TrimoutProject } from './projectModel';
 import { getOrderedSelectedPlays } from './projectModel';
 import { getOpeningCandidateIds } from './scoutLogic';
 
-export const DEFAULT_KICKO_BASE_URL = 'https://soccer-web-edit-production.up.railway.app';
+export const DEFAULT_KICKO_BASE_URL = 'https://kicko.football';
 
 const MAX_HANDOFF_CLIPS = 60;
 const MAX_HANDOFF_BYTES = 2_147_483_648;
@@ -134,7 +134,7 @@ function defaultRequestJson(url: string, { signal, ...init }: KickoRequestInit =
     const error = asObject(data['error']);
     if (!response.ok || data['ok'] === false) {
       throw new KickoBridgeError(
-        String(error['message'] || error['userMessage'] || `KICKO request failed (${response.status}).`),
+        `${String(error['message'] || error['userMessage'] || `KICKO request failed (${response.status}).`)} [${String(error['code'] || 'no code')}, HTTP ${response.status}, ${new URL(url).pathname}]`,
         {
           code: String(error['code'] || 'kicko_request_failed'),
           status: response.status,
@@ -181,13 +181,18 @@ function normalizeBaseUrl(value: string) {
 }
 
 function normalizeVerificationUrl(value: unknown, baseUrl: string) {
-  const url = new URL(String(value || ''));
+  let url: URL;
+  try {
+    url = new URL(String(value || ''));
+  } catch {
+    throw new KickoBridgeError(`KICKO returned an invalid connection page (not a web address: "${String(value || '')}").`, { code: 'invalid_verification_url' });
+  }
   const loopback = ['127.0.0.1', 'localhost', '[::1]'].includes(url.hostname);
   if (url.protocol !== 'https:' && !(url.protocol === 'http:' && loopback)) {
-    throw new KickoBridgeError('KICKO returned an invalid connection page.', { code: 'invalid_verification_url' });
+    throw new KickoBridgeError(`KICKO returned an invalid connection page (${url.origin}, expected https).`, { code: 'invalid_verification_url' });
   }
   if (url.username || url.password || url.origin !== new URL(baseUrl).origin) {
-    throw new KickoBridgeError('KICKO returned an invalid connection page.', { code: 'invalid_verification_url' });
+    throw new KickoBridgeError(`KICKO returned an invalid connection page (${url.origin}, expected ${new URL(baseUrl).origin}).`, { code: 'invalid_verification_url' });
   }
   return url.toString();
 }
@@ -281,7 +286,8 @@ async function prepareKickoHandoff(project: TrimoutProject, deps: KickoBridgeDep
       clientClipId: play.id,
       filePath: play.filePath,
       contentType: uploadInfo.contentType,
-      actionType: play.actionType,
+      // KICKO only knows a fixed list of actions; a free-text action from TrimOut is sent as "free play"
+      actionType: play.actionType === 'custom' ? 'free' : play.actionType,
       rating: play.rating,
       order,
       durationSeconds,
@@ -558,6 +564,11 @@ export async function sendProjectToKicko({ connection, project, destinationProje
             isOpeningCandidate: prepared.isOpeningCandidate,
           },
         }),
+      }).catch((error: unknown) => {
+        if (error instanceof KickoBridgeError) {
+          error.message += ` {clip ${prepared.order + 1}: ${prepared.fileName}, action=${String(prepared.actionType)}, rating=${String(prepared.rating)}, ${prepared.sizeBytes} bytes, ${prepared.contentType}}`;
+        }
+        throw error;
       });
       const grantId = String(grant['grantId'] || '');
       let grantStatus = String(grant['status'] || '');
