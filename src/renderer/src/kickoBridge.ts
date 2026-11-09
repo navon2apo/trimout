@@ -39,6 +39,7 @@ interface PreparedKickoPlay extends FileInspection {
   filePath: string;
   contentType: string;
   actionType: string;
+  customLabel?: string;
   rating: ProjectPlayRating;
   order: number;
   durationSeconds: number;
@@ -288,6 +289,7 @@ async function prepareKickoHandoff(project: TrimoutProject, deps: KickoBridgeDep
       contentType: uploadInfo.contentType,
       // KICKO only knows a fixed list of actions; a free-text action from TrimOut is sent as "free play"
       actionType: play.actionType === 'custom' ? 'free' : play.actionType,
+      ...(play.actionType === 'custom' && play.actionLabel?.trim() && { customLabel: play.actionLabel.trim().slice(0, 60) }),
       rating: play.rating,
       order,
       durationSeconds,
@@ -558,6 +560,7 @@ export async function sendProjectToKicko({ connection, project, destinationProje
           sha256: prepared.sha256,
           clip: {
             actionType: prepared.actionType,
+            ...(prepared.customLabel != null && { customLabel: prepared.customLabel }),
             rating: prepared.rating,
             order: prepared.order,
             durationSeconds: prepared.durationSeconds,
