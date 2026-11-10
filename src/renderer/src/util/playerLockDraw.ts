@@ -14,6 +14,8 @@ export interface LockDrawOptions {
   spot: SpotMark,
   /** The name on the card (empty = no card) */
   label: string,
+  /** The action, big at the top of the picture (empty = none) */
+  title?: string,
   state: LockState,
   /** Seconds into the freeze, only to turn the dashed ring */
   time?: number,
@@ -61,11 +63,35 @@ function drawCard(ctx: CanvasRenderingContext2D, { label, cx, cy, r, width, k, o
   ctx.restore();
 }
 
+/** The action, big and leaning, near the top (like THROUGH BALL) */
+function drawTitle(ctx: CanvasRenderingContext2D, { title, width, height, k, opacity }: { title: string, width: number, height: number, k: number, opacity: number }) {
+  const hebrew = HEBREW.test(title);
+  const text = hebrew ? title : title.toUpperCase();
+  const fontPx = 60 * k;
+  ctx.save();
+  ctx.font = `italic 900 ${fontPx}px "Segoe UI", "Arial Black", Arial, sans-serif`;
+  ctx.direction = hebrew ? 'rtl' : 'ltr';
+  (ctx as CanvasRenderingContext2D & { letterSpacing?: string }).letterSpacing = hebrew ? '0px' : `${2 * k}px`;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.globalAlpha = opacity;
+  ctx.lineJoin = 'round';
+  ctx.shadowColor = 'rgba(255,45,85,0.85)';
+  ctx.shadowBlur = 22 * k;
+  ctx.strokeStyle = '#e11d48';
+  ctx.lineWidth = 12 * k;
+  ctx.strokeText(text, width / 2, height * 0.12, width * 0.9);
+  ctx.shadowBlur = 0;
+  ctx.fillStyle = '#ffffff';
+  ctx.fillText(text, width / 2, height * 0.12, width * 0.9);
+  ctx.restore();
+}
+
 /**
  * Draws the lock (not the picture): call it on a transparent canvas for the preview, or after drawing
  * the frozen picture for the export. The canvas is `width` x `height` pixels.
  */
-export function drawPlayerLock(ctx: CanvasRenderingContext2D, { width, height, spot, label, state, time = 0 }: LockDrawOptions) {
+export function drawPlayerLock(ctx: CanvasRenderingContext2D, { width, height, spot, label, title = '', state, time = 0 }: LockDrawOptions) {
   const k = scaleFor(height);
   const cx = spot.x * width;
   const cy = spot.y * height;
@@ -120,6 +146,7 @@ export function drawPlayerLock(ctx: CanvasRenderingContext2D, { width, height, s
   }
   ctx.restore();
 
+  if (title.trim().length > 0) drawTitle(ctx, { title: title.trim(), width, height, k, opacity: alpha });
   if (label.trim().length > 0) drawCard(ctx, { label: label.trim(), cx, cy, r, width, k, opacity: alpha, draw: state.draw });
 }
 

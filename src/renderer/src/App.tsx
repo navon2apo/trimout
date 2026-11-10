@@ -150,7 +150,7 @@ import { appName } from '../../main/common.js';
 import type { ExportedPlayInput, ProjectPlayRating, ScoutRoleId, TrimoutProject } from './projectModel';
 import { addExportBatch, createTrimoutProject, reorderProjectPlays, updateProjectPlay } from './projectModel';
 import { loadTrimoutProject, repairTrimoutProjectFiles, saveTrimoutProject } from './projectStore';
-import { SCOUT_ROLE_BY_ID, getScoutPhaseContext } from './scoutCatalog';
+import { SCOUT_ROLE_BY_ID, getActionLabel, getScoutPhaseContext } from './scoutCatalog';
 import { getSuggestedScoutPlayIds } from './scoutLogic';
 import createClipFileLabel from './clipNaming';
 
@@ -575,6 +575,9 @@ function App() {
   }, []);
   const lockResumedRef = useRef(false);
   const lockSpot = zoomSeg?.spotMark;
+  // The action of the clip, big at the top while it is frozen (the name the user typed, or the ready-made action)
+  const lockTitle = zoomSeg?.actionLabel
+    ?? (zoomSeg?.actionType != null && zoomSeg.actionType !== 'free' && zoomSeg.actionType !== 'custom' ? getActionLabel(zoomSeg.actionType) : '');
   const lockOverlayVisible = lockHold == null && playheadInsideClip && !playing && ((lockSpot == null && lockPlacingKey === zoomClipKey) || isAtSpot(lockSpot, playerTime, detectedFps ?? 30));
 
   // The picture shows what the selected clip will export: its zoom at the clip start, or the whole frame.
@@ -3948,6 +3951,7 @@ function App() {
                       spot={lockHold.spot}
                       view={lockHold.view}
                       label={playerName}
+                      title={lockTitle}
                       sound={lockSound}
                       onFrame={handleLockHoldFrame}
                       onDone={handleLockHoldDone}
@@ -3959,6 +3963,7 @@ function App() {
                       videoRef={videoRef}
                       spot={lockSpot}
                       label={playerName}
+                      title={lockTitle}
                       onPlace={handleLockPlace}
                       onChange={handleLockChange}
                     />

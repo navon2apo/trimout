@@ -10,6 +10,8 @@ interface Props {
   spot: SpotMark | undefined,
   /** The name on the card */
   label: string,
+  /** The action, shown big at the top */
+  title: string,
   /** Click on the picture: where the player is (fractions of the picture) */
   onPlace: (x: number, y: number) => void,
   onChange: (spot: SpotMark) => void,
@@ -26,7 +28,7 @@ const DIAG = Math.SQRT1_2;
  * The player lock on top of the paused picture. First click places the ring on the player; after that
  * drag the ring to move it and drag a corner handle to make it bigger or smaller.
  */
-function PlayerLockOverlay({ videoRef, spot, label, onPlace, onChange }: Props) {
+function PlayerLockOverlay({ videoRef, spot, label, title, onPlace, onChange }: Props) {
   const rootRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [box, setBox] = useState<{ x: number, y: number, w: number, h: number } | null>(null);
@@ -60,8 +62,8 @@ function PlayerLockOverlay({ videoRef, spot, label, onPlace, onChange }: Props) 
     const ctx = canvas.getContext('2d');
     if (ctx == null) return;
     ctx.clearRect(0, 0, canvas.width, canvas.height);
-    if (spot != null) drawPlayerLock(ctx, { width: box.w, height: box.h, spot, label, state: EDIT_STATE, time: 0 });
-  }, [box, spot, label]);
+    if (spot != null) drawPlayerLock(ctx, { width: box.w, height: box.h, spot, label, title, state: EDIT_STATE, time: 0 });
+  }, [box, spot, label, title]);
 
   const startDrag = (kind: 'move' | 'size') => (e: ReactPointerEvent) => {
     if (spot == null) return;
