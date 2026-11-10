@@ -18,6 +18,7 @@ function render(extra: Partial<Parameters<typeof ClipsPanel>[0]> = {}) {
     onPlayClip: () => undefined,
     onDeleteSegment: () => undefined,
     onToggleFavorite: () => undefined,
+    onToggleIncluded: () => undefined,
     onRenameSegment: () => undefined,
     onPlayAll: () => undefined,
     onStopPlayAll: () => undefined,
@@ -51,6 +52,17 @@ describe('ClipsPanel', () => {
     expect(html).toContain('aria-label="Pause clip"');
     expect(html.match(/aria-label="Play clip"/g)).toHaveLength(1);
     expect(render()).not.toContain('NOW PLAYING');
+  });
+
+  it('shows an open eye on every clip by default, and a closed eye on a clip left out of the export', () => {
+    const all = render();
+    expect(all.match(/aria-label="In the export: click to leave out"/g)).toHaveLength(2);
+    expect(all).not.toContain('in the export');
+
+    const html = render({ segments: [{ ...segments[0]!, selected: false }, segments[1]!] });
+    expect(html.match(/aria-label="Left out of the export: click to include"/g)).toHaveLength(1);
+    expect(html.match(/aria-label="In the export: click to leave out"/g)).toHaveLength(1);
+    expect(html).toContain('1 in the export');
   });
 
   it('offers Play all, and Stop while playing all', () => {

@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import type { PointerEvent as ReactPointerEvent, RefObject } from 'react';
 import type { SpotMark } from '../types';
 import { clampSpot, EDIT_STATE, MAX_SPOT_SIZE, MIN_SPOT_SIZE } from '../util/playerLock';
-import { drawPlayerLock, ringRadiusPx } from '../util/playerLockDraw';
+import { drawPlayerLock, ensureLockFonts, ringRadiusPx } from '../util/playerLockDraw';
 
 interface Props {
   videoRef: RefObject<HTMLVideoElement | null>,
@@ -58,11 +58,18 @@ function PlayerLockOverlay({ videoRef, spot, label, title, onPlace, onChange }: 
   // The ring and the name card, drawn exactly like the export draws them
   useEffect(() => {
     const canvas = canvasRef.current;
-    if (canvas == null || box == null) return;
+    if (canvas == null || box == null) return undefined;
     const ctx = canvas.getContext('2d');
-    if (ctx == null) return;
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-    if (spot != null) drawPlayerLock(ctx, { width: box.w, height: box.h, spot, label, title, state: EDIT_STATE, time: 0 });
+    if (ctx == null) return undefined;
+    const draw = () => {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      if (spot != null) drawPlayerLock(ctx, { width: box.w, height: box.h, spot, label, title, state: EDIT_STATE, time: 0 });
+    };
+    draw();
+    // Draw once more when the font is there, in case it was not yet
+    let cancelled = false;
+    ensureLockFonts().then(() => { if (!cancelled) draw(); }, () => undefined);
+    return () => { cancelled = true; };
   }, [box, spot, label, title]);
 
   const startDrag = (kind: 'move' | 'size') => (e: ReactPointerEvent) => {

@@ -35,7 +35,7 @@ function drawCard(ctx: CanvasRenderingContext2D, { label, cx, cy, r, width, k, o
   const text = hebrew ? label : label.toUpperCase();
   const fontPx = 58 * k;
   ctx.save();
-  ctx.font = `900 ${fontPx}px "Segoe UI", "Arial Black", Arial, sans-serif`;
+  ctx.font = `900 ${fontPx}px Heebo, "Segoe UI", Arial, sans-serif`;
   ctx.direction = hebrew ? 'rtl' : 'ltr';
   (ctx as CanvasRenderingContext2D & { letterSpacing?: string }).letterSpacing = hebrew ? '0px' : `${2 * k}px`;
   const textW = ctx.measureText(text).width;
@@ -69,7 +69,7 @@ function drawTitle(ctx: CanvasRenderingContext2D, { title, width, height, k, opa
   const text = hebrew ? title : title.toUpperCase();
   const fontPx = 60 * k;
   ctx.save();
-  ctx.font = `italic 900 ${fontPx}px "Segoe UI", "Arial Black", Arial, sans-serif`;
+  ctx.font = `italic 900 ${fontPx}px Heebo, "Segoe UI", Arial, sans-serif`;
   ctx.direction = hebrew ? 'rtl' : 'ltr';
   (ctx as CanvasRenderingContext2D & { letterSpacing?: string }).letterSpacing = hebrew ? '0px' : `${2 * k}px`;
   ctx.textAlign = 'center';
@@ -163,4 +163,12 @@ export function drawLockFrame(ctx: CanvasRenderingContext2D, image: CanvasImageS
   ctx.drawImage(image, 0, 0, width, height);
   ctx.restore();
   drawPlayerLock(ctx, options);
+}
+
+/** Loads the lock font, so the first text drawn is not in a fallback face. Await it before drawing the export. */
+export function ensureLockFonts(): Promise<unknown> {
+  return Promise.all([
+    document.fonts.load('900 58px Heebo'),
+    document.fonts.load('italic 900 60px Heebo'),
+  ]).catch((err) => console.warn('Could not load the lock font', err));
 }

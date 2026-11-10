@@ -27,6 +27,7 @@ import PlayerLockOverlay from './components/PlayerLockOverlay';
 import PlayerLockPreview from './components/PlayerLockPreview';
 import { clampSpot, DEFAULT_LOCK_SOUND, DEFAULT_SPOT_SIZE, isAtSpot, isLockSoundId, lockStartView, lockViewRect, type LockSoundId, type ViewRect } from './util/playerLock';
 import playLockSound from './util/playerLockSound';
+import { ensureLockFonts } from './util/playerLockDraw';
 import useWaveform from './hooks/useWaveform';
 import useKeyboard from './hooks/useKeyboard';
 import useFileFormatState from './hooks/useFileFormatState';
@@ -568,6 +569,10 @@ function App() {
       return DEFAULT_LOCK_SOUND;
     }
   });
+  // Load the font of the lock text early, so the first freeze already shows it
+  useEffect(() => {
+    ensureLockFonts().then(() => undefined, () => undefined);
+  }, []);
   const handleLockSoundChange = useCallback((id: LockSoundId) => {
     setLockSound(id);
     try { window.localStorage.setItem('trimout.lockSound', id); } catch { /* not remembered, still works */ }
@@ -2216,6 +2221,13 @@ function App() {
     const seg = cutSegments[index];
     if (seg == null) return;
     updateSegAtIndex(index, { isFavorite: !seg.isFavorite });
+  }, [cutSegments, updateSegAtIndex]);
+
+  // The eye on a clip: open = in the export (the default), closed = left out
+  const handleToggleIncluded = useCallback((index: number) => {
+    const seg = cutSegments[index];
+    if (seg == null) return;
+    updateSegAtIndex(index, { selected: seg.selected === false });
   }, [cutSegments, updateSegAtIndex]);
 
   // Play a single clip from start to end then stop.
@@ -4289,6 +4301,7 @@ function App() {
                         onPlayClip={handleToggleClip}
                         onDeleteSegment={removeSegment}
                         onToggleFavorite={handleToggleFavorite}
+                        onToggleIncluded={handleToggleIncluded}
                         onRenameSegment={handleRenameClip}
                         onPlayAll={handlePlayAll}
                         onStopPlayAll={pause}

@@ -4,7 +4,7 @@
  * Clicking a card seeks the playhead to its start.
  */
 import { memo, useEffect, useRef, useState } from 'react';
-import { FiMaximize2, FiPause, FiPlay, FiScissors, FiSquare, FiTrash2 } from 'react-icons/fi';
+import { FiEye, FiEyeOff, FiMaximize2, FiPause, FiPlay, FiScissors, FiSquare, FiTrash2 } from 'react-icons/fi';
 
 interface Seg {
   segId?: string | undefined;
@@ -18,6 +18,8 @@ interface Seg {
   isFavorite?: boolean | undefined;
   isUncertain?: boolean | undefined;
   zoomAnchors?: { t: number, rect: { x: number, y: number, w: number, h: number } }[] | undefined;
+  /** Open eye = in the export (the default); false = left out */
+  selected?: boolean | undefined;
   /** Player lock (freeze + ring + name) */
   spotMark?: { t: number, x: number, y: number, size: number } | undefined;
 }
@@ -34,6 +36,8 @@ interface Props {
   onPlayClip: (i: number) => void;
   onDeleteSegment: (i: number) => void;
   onToggleFavorite: (i: number) => void;
+  /** The eye: include or leave out of the export */
+  onToggleIncluded: (i: number) => void;
   onRenameSegment: (i: number, name: string) => void;
   onPlayAll: () => void;
   onStopPlayAll: () => void;
@@ -71,7 +75,7 @@ const iconButton: React.CSSProperties = {
   flexShrink: 0,
 };
 
-function ClipsPanel({ segments, currentSegIndex, playingClipIndex, isPlayingAll, getClipColor, formatTimecode, onSegClick, onPlayClip, onDeleteSegment, onToggleFavorite, onRenameSegment, onPlayAll, onStopPlayAll, onOpenViewer }: Props) {
+function ClipsPanel({ segments, currentSegIndex, playingClipIndex, isPlayingAll, getClipColor, formatTimecode, onSegClick, onPlayClip, onDeleteSegment, onToggleFavorite, onToggleIncluded, onRenameSegment, onPlayAll, onStopPlayAll, onOpenViewer }: Props) {
   const activeRef = useRef<HTMLDivElement>(null);
   const [editingIndex, setEditingIndex] = useState<number | null>(null);
   const [draftName, setDraftName] = useState('');
@@ -100,6 +104,11 @@ function ClipsPanel({ segments, currentSegIndex, playingClipIndex, isPlayingAll,
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '12px 14px 8px' }}>
         <span style={{ flex: 1, fontSize: 13, fontWeight: 700, color: '#0f172a' }}>
           {segments.length} clip{segments.length !== 1 ? 's' : ''}
+          {segments.some((s) => s.selected === false) && (
+            <span style={{ marginLeft: 6, fontSize: 11, fontWeight: 600, color: '#64748b' }}>
+              · {segments.filter((s) => s.selected !== false).length} in the export
+            </span>
+          )}
         </span>
         <button
           type="button"
@@ -135,6 +144,7 @@ function ClipsPanel({ segments, currentSegIndex, playingClipIndex, isPlayingAll,
         {segments.map((seg, i) => {
           const isActive = i === currentSegIndex;
           const isPlaying = i === playingClipIndex;
+          const included = seg.selected !== false;
           const color = getClipColor?.(i) ?? segColor(seg.segColorIndex);
           const displayName = seg.name || seg.actionLabel || seg.actionType || `Clip ${i + 1}`;
 
@@ -156,7 +166,8 @@ function ClipsPanel({ segments, currentSegIndex, playingClipIndex, isPlayingAll,
                 userSelect: 'none',
                 border: `1px solid ${isPlaying ? color : (isActive ? '#84cc16' : '#e4e7ec')}`,
                 boxShadow: isPlaying ? `0 0 0 3px ${color}` : (isActive ? '0 0 0 2px rgba(132,204,22,0.35)' : '0 1px 2px rgba(15,23,42,0.06)'),
-                transition: 'box-shadow 0.12s, background 0.12s',
+                transition: 'box-shadow 0.12s, background 0.12s, opacity 0.12s',
+                opacity: included || isPlaying ? 1 : 0.5,
               }}
             >
               <div style={{ width: isPlaying ? 9 : 5, flexShrink: 0, background: color }} />
@@ -217,6 +228,15 @@ function ClipsPanel({ segments, currentSegIndex, playingClipIndex, isPlayingAll,
               </div>
 
               <div style={{ display: 'flex', alignItems: 'center', gap: 2, paddingRight: 8 }}>
+                <button
+                  type="button"
+                  aria-label={included ? 'In the export: click to leave out' : 'Left out of the export: click to include'}
+                  title={included ? 'In the export (click to leave this clip out)' : 'Left out of the export (click to include it)'}
+                  onClick={(e) => { e.stopPropagation(); onToggleIncluded(i); }}
+                  style={{ ...iconButton, background: 'transparent', fontSize: 16, color: included ? '#334155' : '#94a3b8' }}
+                >
+                  {included ? <FiEye /> : <FiEyeOff />}
+                </button>
                 <button
                   type="button"
                   aria-label={isPlaying ? 'Pause clip' : 'Play clip'}

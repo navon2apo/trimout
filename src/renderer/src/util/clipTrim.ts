@@ -13,10 +13,11 @@ export function trimClipEdge(
   return { start: clip.start, end: Math.max(Math.min(time, duration), clip.start + MIN_CLIP_SECONDS) };
 }
 
-// "Play all" walks the clip list in order and skips markers that have no end yet.
-export function getNextPlayableClipIndex(clips: { start: number, end?: number | undefined }[], afterIndex: number): number | undefined {
+// "Play all" walks the clip list in order and skips markers that have no end yet,
+// and clips the user left out of the export (closed eye), so it shows what will be rendered.
+export function getNextPlayableClipIndex(clips: { start: number, end?: number | undefined, selected?: boolean | undefined }[], afterIndex: number): number | undefined {
   for (let i = afterIndex + 1; i < clips.length; i += 1) {
-    if (clips[i]!.end != null) return i;
+    if (clips[i]!.end != null && clips[i]!.selected !== false) return i;
   }
   return undefined;
 }

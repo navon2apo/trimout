@@ -42,6 +42,12 @@ describe('getNextPlayableClipIndex', () => {
     expect(getNextPlayableClipIndex(clips, 0)).toBe(2);
   });
 
+  it('skips clips that were left out of the export', () => {
+    const withLeftOut = [{ start: 0, end: 5 }, { start: 8, end: 10, selected: false }, { start: 12, end: 18, selected: true }];
+    expect(getNextPlayableClipIndex(withLeftOut, 0)).toBe(2);
+    expect(getNextPlayableClipIndex(withLeftOut, 2)).toBeUndefined();
+  });
+
   it('returns undefined after the last clip', () => {
     expect(getNextPlayableClipIndex(clips, 2)).toBeUndefined();
   });
