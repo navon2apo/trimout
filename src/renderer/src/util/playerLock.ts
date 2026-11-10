@@ -85,10 +85,39 @@ export function cardPosition({ cx, cy, ringRadius, width, cardWidth, k }: {
   };
 }
 
-/** The zoom window (fractions of the picture) that keeps the ring where it is while the picture glides in */
-export function lockZoomRect(spot: SpotMark, zoom: number) {
+export interface ViewRect {
+  x: number,
+  y: number,
+  w: number,
+  h: number,
+}
+
+const WHOLE: ViewRect = { x: 0, y: 0, w: 1, h: 1 };
+
+/**
+ * The view the lock starts from: what is on screen right now (with any zoom already applied).
+ * If the player is not inside it, the lock works from the whole picture instead.
+ */
+export function lockStartView(spot: SpotMark, visible: ViewRect | null | undefined): ViewRect {
+  if (visible == null) return WHOLE;
+  const u = (spot.x - visible.x) / visible.w;
+  const v = (spot.y - visible.y) / visible.h;
+  return u >= 0.03 && u <= 0.97 && v >= 0.03 && v <= 0.97 ? visible : WHOLE;
+}
+
+/** The window to show "zoom" times closer than "view", keeping the player where he is on the screen. Zoom 1 gives the view back. */
+export function lockViewRect(spot: SpotMark, view: ViewRect, zoom: number): ViewRect {
   const z = Math.max(1, zoom);
-  return { x: spot.x * (1 - 1 / z), y: spot.y * (1 - 1 / z), w: 1 / z, h: 1 / z };
+  const w = view.w / z;
+  const h = view.h / z;
+  const u = (spot.x - view.x) / view.w;
+  const v = (spot.y - view.y) / view.h;
+  return { x: clamp(spot.x - u * w, 0, 1 - w), y: clamp(spot.y - v * h, 0, 1 - h), w, h };
+}
+
+/** Where the ring is on the screen while the view is shown: position and size as fractions of the screen */
+export function spotOnScreen(spot: SpotMark, view: ViewRect): SpotMark {
+  return { t: spot.t, x: (spot.x - view.x) / view.w, y: (spot.y - view.y) / view.h, size: spot.size / view.h };
 }
 
 /**

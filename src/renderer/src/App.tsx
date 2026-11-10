@@ -25,7 +25,7 @@ import ZoomMotionPanel from './components/ZoomMotionPanel';
 import ZoomRectOverlay from './components/ZoomRectOverlay';
 import PlayerLockOverlay from './components/PlayerLockOverlay';
 import PlayerLockPreview from './components/PlayerLockPreview';
-import { clampSpot, DEFAULT_LOCK_SOUND, DEFAULT_SPOT_SIZE, isAtSpot, isLockSoundId, lockZoomRect, type LockSoundId } from './util/playerLock';
+import { clampSpot, DEFAULT_LOCK_SOUND, DEFAULT_SPOT_SIZE, isAtSpot, isLockSoundId, lockStartView, lockViewRect, type LockSoundId, type ViewRect } from './util/playerLock';
 import playLockSound from './util/playerLockSound';
 import useWaveform from './hooks/useWaveform';
 import useKeyboard from './hooks/useKeyboard';
@@ -556,9 +556,9 @@ function App() {
   // Player lock: the ring on the player. It shows while waiting for the click that places it, and on its own frame.
   const [lockPlacingKey, setLockPlacingKey] = useState<string | null>(null);
   // While a clip plays and reaches its lock, the picture freezes for a moment (like the export does)
-  const [lockHold, setLockHold] = useState<SpotMark | null>(null);
+  const [lockHold, setLockHold] = useState<{ spot: SpotMark, view: ViewRect } | null>(null);
   // The player stays "playing" during the freeze, so the play button and the clip card do not flicker
-  const lockHoldRef = useRef<SpotMark | null>(null);
+  const lockHoldRef = useRef<{ spot: SpotMark, view: ViewRect } | null>(null);
   // Which sound the lock makes (or none); remembered on this computer
   const [lockSound, setLockSound] = useState<LockSoundId>(() => {
     try {
@@ -713,10 +713,12 @@ function App() {
         const startedOnIt = first && Math.abs(cur - spot.t) <= 1.5 / fps;
         if (crossed || startedOnIt) {
           // Hold the picture without telling the app that playback stopped (only the video element is paused)
-          lockHoldRef.current = spot;
+          // The zoom goes in from the view on screen right now and comes back to it
+          const hold = { spot, view: lockStartView(spot, getVisibleZoomRect()) };
+          lockHoldRef.current = hold;
           video.pause();
           seekAbs(spot.t);
-          setLockHold(spot);
+          setLockHold(hold);
           return;
         }
         prev = cur;
@@ -726,17 +728,20 @@ function App() {
     };
     raf = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(raf);
-  }, [playing, lockHold, currentSegIndexSafe, detectedFps, videoRef, seekAbs]);
+  }, [playing, lockHold, currentSegIndexSafe, detectedFps, videoRef, seekAbs, getVisibleZoomRect]);
 
   const handleLockHoldFrame = useCallback((state: { zoom: number }) => {
-    if (lockHold != null) applyZoomRectFast(lockZoomRect(lockHold, state.zoom));
-  }, [lockHold, applyZoomRectFast]);
+    const hold = lockHoldRef.current;
+    if (hold != null) applyZoomRectFast(lockViewRect(hold.spot, hold.view, state.zoom));
+  }, [applyZoomRectFast]);
 
   const handleLockHoldDone = useCallback(() => {
+    const hold = lockHoldRef.current;
     lockHoldRef.current = null;
     setLockHold(null);
     syncZoomState();
-    applyZoomRect(null);
+    // Back to exactly the view it started from
+    applyZoomRect(hold != null && hold.view.w < 1 ? hold.view : null);
     lockResumedRef.current = true;
     videoRef.current?.play().catch((err) => console.error('Could not continue after the lock', err));
   }, [applyZoomRect, syncZoomState, videoRef]);
@@ -3940,7 +3945,8 @@ function App() {
                   {lockHold != null && (
                     <PlayerLockPreview
                       videoRef={videoRef}
-                      spot={lockHold}
+                      spot={lockHold.spot}
+                      view={lockHold.view}
                       label={playerName}
                       sound={lockSound}
                       onFrame={handleLockHoldFrame}
