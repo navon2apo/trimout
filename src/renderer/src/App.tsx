@@ -53,6 +53,10 @@ import ClipsViewerDialog from './components/ClipsViewerDialog';
 import KickoBridgeDialog from './components/KickoBridgeDialog';
 import FinishDestinationDialog from './components/FinishDestinationDialog';
 import ExportOptions from './components/ExportOptions';
+import ClipOrderList from './components/ClipOrderList';
+import MusicOptions from './components/MusicOptions';
+import { addMusicToVideo } from './util/musicExport';
+import { cleanMusicVolume, DEFAULT_MUSIC_MODE, DEFAULT_MUSIC_VOLUME, isMusicMode, MUSIC_EXTENSIONS, type MusicMode } from './util/music';
 import type { ExportMode } from './components/ExportOptions';
 import { getNextPlayableClipIndex, getUserClips, trimClipEdge } from './util/clipTrim';
 import { compressClip, mergeWithCrossfade, mergedVideoSize, type QualityPreset, type AspectRatio, type FitMode } from './util/qualityPresets';
@@ -535,7 +539,7 @@ function App() {
   }, [isFileOpened]);
 
   const {
-    cutSegments, cutSegmentsHistory, createSegmentsFromKeyframes, shuffleSegments, detectBlackScenes, detectSilentScenes, detectSceneChanges, removeSegment, invertAllSegments, fillSegmentsGaps, combineOverlappingSegments, combineSelectedSegments, shiftAllSegmentTimes, alignSegmentTimesToKeyframes, reorderSegsByStartTime, addSegment, addClip, setCutStart, setCutEnd, labelSegment, splitCurrentSegment, focusSegmentAtCursor, selectSegmentsAtCursor, createNumSegments, createFixedDurationSegments, createFixedByteSizedSegments, createRandomSegments, haveInvalidSegs, currentSegIndexSafe, currentCutSeg, inverseCutSegments, clearSegments, clearSegColorCounter, loadCutSegments, setCutTime, setCurrentSegIndex, labelSelectedSegments, deselectAllSegments, selectAllSegments, selectOnlyCurrentSegment, toggleCurrentSegmentSelected, invertSelectedSegments, removeSelectedSegments, selectSegmentsByLabel, selectSegmentsByExpr, selectAllMarkers, mutateSegmentsByExpr, selectedSegments, segmentsOrInverse, segmentsToExport, duplicateCurrentSegment, updateSegAtIndex, findSegmentsAtCursor, maybeCreateFullLengthSegment, currentCutSegOrWholeTimeline, segColorCounter,
+    cutSegments, cutSegmentsHistory, createSegmentsFromKeyframes, shuffleSegments, detectBlackScenes, detectSilentScenes, detectSceneChanges, removeSegment, invertAllSegments, fillSegmentsGaps, combineOverlappingSegments, combineSelectedSegments, shiftAllSegmentTimes, alignSegmentTimesToKeyframes, reorderSegsByStartTime, reorderSegments, addSegment, addClip, setCutStart, setCutEnd, labelSegment, splitCurrentSegment, focusSegmentAtCursor, selectSegmentsAtCursor, createNumSegments, createFixedDurationSegments, createFixedByteSizedSegments, createRandomSegments, haveInvalidSegs, currentSegIndexSafe, currentCutSeg, inverseCutSegments, clearSegments, clearSegColorCounter, loadCutSegments, setCutTime, setCurrentSegIndex, labelSelectedSegments, deselectAllSegments, selectAllSegments, selectOnlyCurrentSegment, toggleCurrentSegmentSelected, invertSelectedSegments, removeSelectedSegments, selectSegmentsByLabel, selectSegmentsByExpr, selectAllMarkers, mutateSegmentsByExpr, selectedSegments, segmentsOrInverse, segmentsToExport, duplicateCurrentSegment, updateSegAtIndex, findSegmentsAtCursor, maybeCreateFullLengthSegment, currentCutSegOrWholeTimeline, segColorCounter,
   } = useSegments({ filePath, workingRef, setWorking, setProgress, videoStream: activeVideoStream, fileDuration, getRelevantTime, maxLabelLength, checkFileOpened, invertCutSegments, segmentsToChaptersOnly, timecodePlaceholder, parseTimecode, appendFfmpegCommandLog, fileDurationNonZero, mainFileMeta: mainFileMeta?.ffprobeMeta, seekAbs, activeVideoStreamIndex, activeAudioStreamIndexes, handleError, showGenericDialog, simpleMode, ffmpegHwaccel });
 
   // ─── Picture zoom (view only until saved to a clip) ─────────────────────────
@@ -574,6 +578,14 @@ function App() {
   useEffect(() => {
     ensureLockFonts().then(() => undefined, () => undefined);
   }, []);
+  // Music for the merged video (the song is chosen again each time; the volume and the way it is used are remembered)
+  const [music, setMusic] = useState<{ path: string, name: string } | undefined>();
+  const [musicVolume, setMusicVolumeState] = useState<number>(() => {
+    try { return cleanMusicVolume(Number(window.localStorage.getItem('trimout.musicVolume') ?? DEFAULT_MUSIC_VOLUME)); } catch { return DEFAULT_MUSIC_VOLUME; }
+  });
+  const [musicMode, setMusicModeState] = useState<MusicMode>(() => {
+    try { const saved = window.localStorage.getItem('trimout.musicMode'); return isMusicMode(saved) ? saved : DEFAULT_MUSIC_MODE; } catch { return DEFAULT_MUSIC_MODE; }
+  });
   // What the lock shows (player name, move name) and the ring color; remembered on this computer
   const [lockStyle, setLockStyleState] = useState<LockStyle>(() => {
     try {
@@ -1976,6 +1988,31 @@ function App() {
           }
         }
 
+        // 1c. Music on the merged video (picture copied, sound replaced or mixed)
+        if (music != null) {
+          if (mergedOutFilePath == null || !await fileExists(mergedOutFilePath)) {
+            warnings.add('The music was not used: it goes on the merged video, and no merged video was made.');
+          } else {
+            setWorking({ text: 'Adding the music' });
+            const tmpPath = `${mergedOutFilePath}.music${pathExtname(mergedOutFilePath) || '.mp4'}`;
+            try {
+              await addMusicToVideo({
+                videoPath: mergedOutFilePath,
+                outPath: tmpPath,
+                musicPath: music.path,
+                volume: musicVolume,
+                mode: musicMode,
+                appendCommandLog: appendFfmpegCommandLog,
+              });
+              await replaceFile(tmpPath, mergedOutFilePath);
+            } catch (musicErr) {
+              console.warn('Adding the music failed', musicErr);
+              warnings.add('Adding the music failed, so the merged video has no music.');
+              await fsUnlinkSafe(tmpPath);
+            }
+          }
+        }
+
         // 2. Build the metadata object once — reused by metadata.json and project.json
         const metadata = {
           exportedAt: new Date().toISOString(),
@@ -2223,7 +2260,7 @@ function App() {
       setWorking(undefined);
       setProgress(undefined);
     }
-  }, [filePath, numStreamsToCopy, haveInvalidSegs, workingRef, setWorking, segmentsToChaptersOnly, cutFileTemplateOrDefault, generateCutFileNames, cutMultiple, outputDir, customOutDir, fileFormat, fileDuration, isRotationSet, effectiveRotation, copyFileStreams, allFilesMeta, keyframeCut, segmentsToExport, shortestFlag, ffmpegExperimental, preserveMetadata, preserveMetadataOnMerge, preserveMovData, preserveChapters, movFastStart, avoidNegativeTs, customTagsByFile, paramsByStreamId, detectedFps, willMerge, enableOverwriteOutput, exportConfirmEnabled, mainFileFormat, mainStreams, exportExtraStreams, areWeCutting, simpleMode, prefersReducedMotion, cleanupChoices, hideAllNotifications, segmentsOrInverse.selected, t, cutMergedFileTemplateOrDefault, segmentsToChapters, invertCutSegments, generateCutMergedFileNames, concatCutSegments, autoDeleteMergedSegments, tryDeleteFiles, nonCopiedExtraStreams, extractStreams, askForCleanupChoices, cleanupFiles, showOsNotification, openCutFinishedDialog, handleExportFailed, setExportedRanges, qualityPreset, createExportPackage, playerName, cutSegments, quickCutDuration, appendFfmpegCommandLog, exportAspectRatio, exportFitMode, activeProject, persistActiveProject, activeVideoStream?.width, activeVideoStream?.height, exportTransition, lockStyle, lockSound]);
+  }, [filePath, numStreamsToCopy, haveInvalidSegs, workingRef, setWorking, segmentsToChaptersOnly, cutFileTemplateOrDefault, generateCutFileNames, cutMultiple, outputDir, customOutDir, fileFormat, fileDuration, isRotationSet, effectiveRotation, copyFileStreams, allFilesMeta, keyframeCut, segmentsToExport, shortestFlag, ffmpegExperimental, preserveMetadata, preserveMetadataOnMerge, preserveMovData, preserveChapters, movFastStart, avoidNegativeTs, customTagsByFile, paramsByStreamId, detectedFps, willMerge, enableOverwriteOutput, exportConfirmEnabled, mainFileFormat, mainStreams, exportExtraStreams, areWeCutting, simpleMode, prefersReducedMotion, cleanupChoices, hideAllNotifications, segmentsOrInverse.selected, t, cutMergedFileTemplateOrDefault, segmentsToChapters, invertCutSegments, generateCutMergedFileNames, concatCutSegments, autoDeleteMergedSegments, tryDeleteFiles, nonCopiedExtraStreams, extractStreams, askForCleanupChoices, cleanupFiles, showOsNotification, openCutFinishedDialog, handleExportFailed, setExportedRanges, qualityPreset, createExportPackage, playerName, cutSegments, quickCutDuration, appendFfmpegCommandLog, exportAspectRatio, exportFitMode, activeProject, persistActiveProject, activeVideoStream?.width, activeVideoStream?.height, exportTransition, lockStyle, lockSound, music, musicVolume, musicMode]);
 
   const onExportPress = useCallback(async () => {
     if (!filePath) return;
@@ -2314,14 +2351,20 @@ function App() {
   }, [cutSegments, updateSegAtIndex]);
 
   // The eye on a clip: open = in the export (the default), closed = left out
-  const handleToggleIncluded = useCallback((index: number) => {
+  const toggleIncludedAt = useCallback((index: number) => {
     const seg = cutSegments[index];
-    if (seg == null) return;
+    if (seg == null) return undefined;
     const nowIncluded = seg.selected === false;
-    console.log('[eye]', index, seg.name, '->', nowIncluded ? 'in the export' : 'left out');
     updateSegAtIndex(index, { selected: nowIncluded });
+    return nowIncluded;
+  }, [cutSegments, updateSegAtIndex]);
+
+  // The eye on a clip card: the same, and it says what happened
+  const handleToggleIncluded = useCallback((index: number) => {
+    const nowIncluded = toggleIncludedAt(index);
+    if (nowIncluded == null) return;
     showNotification({ text: nowIncluded ? 'Clip is in the export' : 'Clip is left out of the export' });
-  }, [cutSegments, updateSegAtIndex, showNotification]);
+  }, [toggleIncludedAt, showNotification]);
 
   // Play a single clip from start to end then stop.
   // Uses clipStopAtRef (a plain ref) to stop at clip.end — avoids the stale-selectedSegments bug.
@@ -2390,6 +2433,36 @@ function App() {
   const hasFinishedClip = userClips.some((seg) => seg.end != null);
   // Same color as the clip's block on the timeline
   const getClipColor = useCallback((i: number) => { const seg = userClips[i]; return seg != null ? getSegColor(seg).hex() : undefined; }, [userClips]);
+
+  // The clips as the render screen shows them: in order, with their number, and whether the eye is open
+  const orderClips = useMemo(() => userClips.flatMap((seg, i) => (seg.end == null ? [] : [{
+    segId: seg.segId,
+    name: seg.name || seg.actionLabel || seg.actionType || `Clip ${i + 1}`,
+    color: getSegColor(seg).hex(),
+    seconds: seg.end - seg.start,
+    included: seg.selected !== false,
+  }])), [userClips]);
+  const handleOrderToggle = useCallback((segId: string) => {
+    const index = cutSegments.findIndex((seg) => seg.segId === segId);
+    if (index !== -1) toggleIncludedAt(index);
+  }, [cutSegments, toggleIncludedAt]);
+
+  const handleMusicVolume = useCallback((volume: number) => {
+    setMusicVolumeState(volume);
+    try { window.localStorage.setItem('trimout.musicVolume', String(volume)); } catch { /* not remembered, still works */ }
+  }, []);
+  const handleMusicMode = useCallback((mode: MusicMode) => {
+    setMusicModeState(mode);
+    try { window.localStorage.setItem('trimout.musicMode', mode); } catch { /* not remembered, still works */ }
+  }, []);
+  const handleMusicPick = useCallback(async () => {
+    const { canceled, filePaths } = await showOpenDialog({ properties: ['openFile'], title: 'Choose music', filters: [{ name: 'Audio', extensions: MUSIC_EXTENSIONS }] });
+    const chosen = filePaths[0];
+    if (canceled || chosen == null) return;
+    setMusic({ path: chosen, name: basename(chosen) });
+    // The music goes on the merged video, so make sure one is made
+    if (!autoMerge) handleExportModeChange('both');
+  }, [autoMerge, handleExportModeChange]);
 
   // Clear the timeline overlay whenever playback stops (manual pause, seek, etc.)
   useEffect(() => {
@@ -4636,20 +4709,33 @@ function App() {
                 clipCount={Math.max(1, segmentsToExport.length)}
                 hasProject={activeProject != null}
                 downloadOptions={(
-                  <ExportOptions
-                    quality={qualityPreset}
-                    onQualityChange={setQualityPreset}
-                    aspectRatio={exportAspectRatio}
-                    onAspectRatioChange={setExportAspectRatio}
-                    fitMode={exportFitMode}
-                    onFitModeChange={setExportFitMode}
-                    mode={exportMode}
-                    onModeChange={handleExportModeChange}
-                    folderPerExport={createExportPackage}
-                    onFolderPerExportChange={setCreateExportPackage}
-                    transition={exportTransition}
-                    onTransitionChange={setExportTransition}
-                  />
+                  <div className="finish-download-sections">
+                    <ClipOrderList clips={orderClips} onReorder={reorderSegments} onToggleIncluded={handleOrderToggle} />
+                    <MusicOptions
+                      musicName={music?.name}
+                      volume={musicVolume}
+                      mode={musicMode}
+                      needsMergedVideo={music != null && !autoMerge}
+                      onPick={handleMusicPick}
+                      onClear={() => setMusic(undefined)}
+                      onVolumeChange={handleMusicVolume}
+                      onModeChange={handleMusicMode}
+                    />
+                    <ExportOptions
+                      quality={qualityPreset}
+                      onQualityChange={setQualityPreset}
+                      aspectRatio={exportAspectRatio}
+                      onAspectRatioChange={setExportAspectRatio}
+                      fitMode={exportFitMode}
+                      onFitModeChange={setExportFitMode}
+                      mode={exportMode}
+                      onModeChange={handleExportModeChange}
+                      folderPerExport={createExportPackage}
+                      onFolderPerExportChange={setCreateExportPackage}
+                      transition={exportTransition}
+                      onTransitionChange={setExportTransition}
+                    />
+                  </div>
                 )}
                 onDownload={() => handleFinishDestination('local')}
                 onContinueInKicko={() => handleFinishDestination('kicko')}

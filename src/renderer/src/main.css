@@ -447,7 +447,10 @@ input:focus-visible, select:focus-visible {
 .danger-button { border-color: #fecaca; color: var(--kicko-danger); }
 .danger-button:hover:not(:disabled) { border-color: var(--kicko-danger); background: #fef2f2; }
 
-.finish-destination-dialog { width: min(620px, calc(100vw - 48px)); }
+.finish-destination-dialog { width: min(720px, calc(100vw - 48px)); display: flex; flex-direction: column; }
+/* The order list and the music make the download step tall: let it scroll inside the window */
+.finish-destination-dialog .kicko-dialog-body { overflow-y: auto; min-height: 0; }
+.finish-download-sections { display: flex; flex-direction: column; gap: 22px; }
 .finish-destination-options { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
 .finish-destination-option {
   min-height: 150px;
