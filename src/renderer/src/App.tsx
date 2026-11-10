@@ -557,6 +557,7 @@ function App() {
   // While a clip plays and reaches its lock, the picture freezes for a moment (like the export does)
   const [lockHold, setLockHold] = useState<SpotMark | null>(null);
   const lockSavedRef = useRef<{ clipStopAt: number | null, index: number | null, playAll: boolean } | null>(null);
+  const lockResumedRef = useRef(false);
   const lockSpot = zoomSeg?.spotMark;
   const lockOverlayVisible = lockHold == null && playheadInsideClip && !playing && ((lockSpot == null && lockPlacingKey === zoomClipKey) || isAtSpot(lockSpot, playerTime, detectedFps ?? 30));
 
@@ -682,7 +683,9 @@ function App() {
     const fps = detectedFps ?? 30;
     let raf = 0;
     let prev: number | null = videoRef.current?.currentTime ?? null;
-    let first = true;
+    // Right after a freeze the clip goes on from the very same frame: that must not freeze it again
+    let first = !lockResumedRef.current;
+    lockResumedRef.current = false;
     const tick = () => {
       const video = videoRef.current;
       const seg = cutSegmentsForZoomRef.current[currentSegIndexSafe];
@@ -724,6 +727,7 @@ function App() {
       setPlayingClipIndex(saved.index);
     }
     pausedClipRef.current = null;
+    lockResumedRef.current = true;
     play();
   }, [applyZoomRect, syncZoomState, play]);
 
