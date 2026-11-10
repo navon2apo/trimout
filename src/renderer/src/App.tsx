@@ -24,7 +24,8 @@ import { buildMotionAnchors, rectAt, sortAnchors, type ZoomMotionMode } from './
 import ZoomMotionPanel from './components/ZoomMotionPanel';
 import ZoomRectOverlay from './components/ZoomRectOverlay';
 import PlayerLockOverlay from './components/PlayerLockOverlay';
-import { clampSpot, DEFAULT_SPOT_SIZE, isAtSpot } from './util/playerLock';
+import PlayerLockPreview from './components/PlayerLockPreview';
+import { clampSpot, DEFAULT_SPOT_SIZE, isAtSpot, lockZoomRect } from './util/playerLock';
 import useWaveform from './hooks/useWaveform';
 import useKeyboard from './hooks/useKeyboard';
 import useFileFormatState from './hooks/useFileFormatState';
@@ -120,7 +121,7 @@ import { generateCutFileNames as generateCutFileNamesRaw, generateCutMergedFileN
 import { rightBarWidth, leftBarWidth, ffmpegExtractWindow, zoomMax, DEFAULT_TIMELINE_ZOOM } from './util/constants';
 import BigWaveform from './components/BigWaveform';
 
-import type { BatchFile, Chapter, CustomTagsByFile, EdlExportType, EdlFileType, EdlImportType, FfmpegCommandLog, FilesMeta, FileStats, ParamsByStreamId, PlaybackMode, SegmentBase, SegmentColorIndex, SegmentTags, StateSegment, TunerType, ZoomAnchor } from './types';
+import type { BatchFile, Chapter, CustomTagsByFile, EdlExportType, EdlFileType, EdlImportType, FfmpegCommandLog, FilesMeta, FileStats, ParamsByStreamId, PlaybackMode, SegmentBase, SegmentColorIndex, SegmentTags, SpotMark, StateSegment, TunerType, ZoomAnchor } from './types';
 import { goToTimecodeDirectArgsSchema, openFilesActionArgsSchema } from './types';
 import type { CaptureFormat, KeyboardAction, ApiActionRequest } from '../../common/types.js';
 import type { FFprobeChapter, FFprobeStream } from '../../common/ffprobe.js';
@@ -553,8 +554,11 @@ function App() {
 
   // Player lock: the ring on the player. It shows while waiting for the click that places it, and on its own frame.
   const [lockPlacingKey, setLockPlacingKey] = useState<string | null>(null);
+  // While a clip plays and reaches its lock, the picture freezes for a moment (like the export does)
+  const [lockHold, setLockHold] = useState<SpotMark | null>(null);
+  const lockSavedRef = useRef<{ clipStopAt: number | null, index: number | null, playAll: boolean } | null>(null);
   const lockSpot = zoomSeg?.spotMark;
-  const lockOverlayVisible = playheadInsideClip && !playing && ((lockSpot == null && lockPlacingKey === zoomClipKey) || isAtSpot(lockSpot, playerTime, detectedFps ?? 30));
+  const lockOverlayVisible = lockHold == null && playheadInsideClip && !playing && ((lockSpot == null && lockPlacingKey === zoomClipKey) || isAtSpot(lockSpot, playerTime, detectedFps ?? 30));
 
   // The picture shows what the selected clip will export: its zoom at the clip start, or the whole frame.
   // Only reacts to the selection / file changing, so manual zooming is never overridden.
@@ -566,14 +570,14 @@ function App() {
   const currentClipZoomAnchors = cutSegments[currentSegIndexSafe]?.zoomAnchors;
   // Paused: scrubbing inside a clip with several anchors shows the zoom at that moment
   useEffect(() => {
-    if (playing || playerTime == null) return;
+    if (playing || playerTime == null || lockHold != null) return;
     // Editing a point or the player lock: show the whole picture so the frame / ring can be dragged over it
     if (zoomEditingIndex != null || lockOverlayVisible) { applyZoomRect(null); return; }
     const seg = cutSegmentsForZoomRef.current[currentSegIndexSafe];
     if (seg?.zoomAnchors == null || seg.zoomAnchors.length === 0 || seg.end == null) return;
     if (playerTime < seg.start || playerTime > seg.end) return;
     applyZoomRect(rectAt(seg.zoomAnchors, playerTime, seg.zoomEase));
-  }, [playerTime, playing, currentSegIndexSafe, applyZoomRect, zoomEditingIndex, currentClipZoomAnchors, lockOverlayVisible]);
+  }, [playerTime, playing, currentSegIndexSafe, applyZoomRect, zoomEditingIndex, currentClipZoomAnchors, lockOverlayVisible, lockHold]);
 
   // Playing: the picture glides along the anchors, frame by frame (no React render per frame)
   useEffect(() => {
@@ -671,6 +675,57 @@ function App() {
     setLockPlacingKey(null);
     updateSegAtIndex(currentSegIndexSafe, { spotMark: undefined });
   }, [updateSegAtIndex, currentSegIndexSafe]);
+
+  // Playing a clip that has a lock: when it reaches the marked frame, hold the picture, then go on
+  useEffect(() => {
+    if (!playing || lockHold != null) return undefined;
+    const fps = detectedFps ?? 30;
+    let raf = 0;
+    let prev: number | null = videoRef.current?.currentTime ?? null;
+    let first = true;
+    const tick = () => {
+      const video = videoRef.current;
+      const seg = cutSegmentsForZoomRef.current[currentSegIndexSafe];
+      const spot = seg?.spotMark;
+      if (video != null && spot != null && seg != null && seg.end != null && spot.t >= seg.start && spot.t <= seg.end) {
+        const cur = video.currentTime;
+        const crossed = prev != null && prev < spot.t && cur >= spot.t;
+        const startedOnIt = first && Math.abs(cur - spot.t) <= 1.5 / fps;
+        if (crossed || startedOnIt) {
+          lockSavedRef.current = { clipStopAt: clipStopAtRef.current, index: playingClipIndexRef.current, playAll: playAllRef.current };
+          pause();
+          seekAbs(spot.t);
+          setLockHold(spot);
+          return;
+        }
+        prev = cur;
+      }
+      first = false;
+      raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [playing, lockHold, currentSegIndexSafe, detectedFps, videoRef, pause, seekAbs]);
+
+  const handleLockHoldFrame = useCallback((state: { zoom: number }) => {
+    if (lockHold != null) applyZoomRectFast(lockZoomRect(lockHold, state.zoom));
+  }, [lockHold, applyZoomRectFast]);
+
+  const handleLockHoldDone = useCallback(() => {
+    const saved = lockSavedRef.current;
+    lockSavedRef.current = null;
+    setLockHold(null);
+    syncZoomState();
+    applyZoomRect(null);
+    if (saved != null) {
+      clipStopAtRef.current = saved.clipStopAt;
+      playAllRef.current = saved.playAll;
+      setIsPlayingAll(saved.playAll);
+      setPlayingClipIndex(saved.index);
+    }
+    pausedClipRef.current = null;
+    play();
+  }, [applyZoomRect, syncZoomState, play]);
 
   const handleClearZoomAnchors = useCallback(() => {
     setZoomSelection(null);
@@ -3865,6 +3920,16 @@ function App() {
                       videoRef={videoRef}
                       rect={sortAnchors(zoomClip.zoomAnchors ?? [])[zoomEditingIndex]!.rect}
                       onChange={handleZoomFrameChange}
+                    />
+                  )}
+
+                  {lockHold != null && (
+                    <PlayerLockPreview
+                      videoRef={videoRef}
+                      spot={lockHold}
+                      label={playerName}
+                      onFrame={handleLockHoldFrame}
+                      onDone={handleLockHoldDone}
                     />
                   )}
 

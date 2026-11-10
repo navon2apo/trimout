@@ -84,3 +84,21 @@ export function cardPosition({ cx, cy, ringRadius, width, cardWidth, k }: {
     top: Math.max(40 * k, cy - ringRadius - 96 * k),
   };
 }
+
+/** The zoom window (fractions of the picture) that keeps the ring where it is while the picture glides in */
+export function lockZoomRect(spot: SpotMark, zoom: number) {
+  const z = Math.max(1, zoom);
+  return { x: spot.x * (1 - 1 / z), y: spot.y * (1 - 1 / z), w: 1 / z, h: 1 / z };
+}
+
+/**
+ * The sound of the lock: two quick electronic blips, the second one higher.
+ * Made from scratch (no sound file); the preview and the export both build it from these numbers.
+ */
+export const LOCK_SOUND = {
+  blips: [
+    { at: 0, freq: 880, seconds: 0.07 },
+    { at: 0.09, freq: 1760, seconds: 0.14 },
+  ],
+  volume: 0.35,
+} as const;
