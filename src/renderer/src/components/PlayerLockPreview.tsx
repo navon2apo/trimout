@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import type { RefObject } from 'react';
 import type { SpotMark } from '../types';
-import { FREEZE_SECONDS, lockStateAt, type LockState } from '../util/playerLock';
+import { FREEZE_SECONDS, lockStateAt, type LockSoundId, type LockState } from '../util/playerLock';
 import { drawPlayerLock } from '../util/playerLockDraw';
 import playLockSound from '../util/playerLockSound';
 
@@ -9,6 +9,7 @@ interface Props {
   videoRef: RefObject<HTMLVideoElement | null>,
   spot: SpotMark,
   label: string,
+  sound: LockSoundId,
   /** Called every frame, so the picture can glide in and out without re-rendering the app */
   onFrame: (state: LockState) => void,
   onDone: () => void,
@@ -18,7 +19,7 @@ interface Props {
  * The freeze while a clip plays: the ring closes in, the picture glides closer, a short sound,
  * and after one and a half seconds the clip goes on. Same look and timing as the export.
  */
-function PlayerLockPreview({ videoRef, spot, label, onFrame, onDone }: Props) {
+function PlayerLockPreview({ videoRef, spot, label, sound, onFrame, onDone }: Props) {
   const rootRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [box, setBox] = useState<{ x: number, y: number, w: number, h: number } | null>(null);
@@ -55,7 +56,7 @@ function PlayerLockPreview({ videoRef, spot, label, onFrame, onDone }: Props) {
     const start = performance.now();
     let raf = 0;
     let finished = false;
-    playLockSound();
+    playLockSound(sound);
     const tick = (now: number) => {
       const elapsed = (now - start) / 1000;
       const state = lockStateAt(elapsed);
@@ -70,7 +71,7 @@ function PlayerLockPreview({ videoRef, spot, label, onFrame, onDone }: Props) {
     };
     raf = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(raf);
-  }, [box, spot, label]);
+  }, [box, spot, label, sound]);
 
   return (
     <div ref={rootRef} style={{ position: 'absolute', inset: 0, pointerEvents: 'none' }}>

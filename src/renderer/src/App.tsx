@@ -25,7 +25,8 @@ import ZoomMotionPanel from './components/ZoomMotionPanel';
 import ZoomRectOverlay from './components/ZoomRectOverlay';
 import PlayerLockOverlay from './components/PlayerLockOverlay';
 import PlayerLockPreview from './components/PlayerLockPreview';
-import { clampSpot, DEFAULT_SPOT_SIZE, isAtSpot, lockZoomRect } from './util/playerLock';
+import { clampSpot, DEFAULT_LOCK_SOUND, DEFAULT_SPOT_SIZE, isAtSpot, isLockSoundId, lockZoomRect, type LockSoundId } from './util/playerLock';
+import playLockSound from './util/playerLockSound';
 import useWaveform from './hooks/useWaveform';
 import useKeyboard from './hooks/useKeyboard';
 import useFileFormatState from './hooks/useFileFormatState';
@@ -556,7 +557,22 @@ function App() {
   const [lockPlacingKey, setLockPlacingKey] = useState<string | null>(null);
   // While a clip plays and reaches its lock, the picture freezes for a moment (like the export does)
   const [lockHold, setLockHold] = useState<SpotMark | null>(null);
-  const lockSavedRef = useRef<{ clipStopAt: number | null, index: number | null, playAll: boolean } | null>(null);
+  // The player stays "playing" during the freeze, so the play button and the clip card do not flicker
+  const lockHoldRef = useRef<SpotMark | null>(null);
+  // Which sound the lock makes (or none); remembered on this computer
+  const [lockSound, setLockSound] = useState<LockSoundId>(() => {
+    try {
+      const saved = window.localStorage.getItem('trimout.lockSound');
+      return isLockSoundId(saved) ? saved : DEFAULT_LOCK_SOUND;
+    } catch {
+      return DEFAULT_LOCK_SOUND;
+    }
+  });
+  const handleLockSoundChange = useCallback((id: LockSoundId) => {
+    setLockSound(id);
+    try { window.localStorage.setItem('trimout.lockSound', id); } catch { /* not remembered, still works */ }
+    playLockSound(id); // so it can be heard right away
+  }, []);
   const lockResumedRef = useRef(false);
   const lockSpot = zoomSeg?.spotMark;
   const lockOverlayVisible = lockHold == null && playheadInsideClip && !playing && ((lockSpot == null && lockPlacingKey === zoomClipKey) || isAtSpot(lockSpot, playerTime, detectedFps ?? 30));
@@ -588,7 +604,8 @@ function App() {
     const tick = (now: number) => {
       const seg = cutSegmentsForZoomRef.current[currentSegIndexSafe];
       const video = videoRef.current;
-      if (video != null && seg?.zoomAnchors != null && seg.zoomAnchors.length > 0 && seg.end != null && video.currentTime >= seg.start && video.currentTime <= seg.end) {
+      // During the player lock freeze the lock moves the picture
+      if (lockHoldRef.current == null && video != null && seg?.zoomAnchors != null && seg.zoomAnchors.length > 0 && seg.end != null && video.currentTime >= seg.start && video.currentTime <= seg.end) {
         applyZoomRectFast(rectAt(seg.zoomAnchors, video.currentTime, seg.zoomEase));
         if (now - lastSync > 300) { lastSync = now; syncZoomState(); }
       }
@@ -695,8 +712,9 @@ function App() {
         const crossed = prev != null && prev < spot.t && cur >= spot.t;
         const startedOnIt = first && Math.abs(cur - spot.t) <= 1.5 / fps;
         if (crossed || startedOnIt) {
-          lockSavedRef.current = { clipStopAt: clipStopAtRef.current, index: playingClipIndexRef.current, playAll: playAllRef.current };
-          pause();
+          // Hold the picture without telling the app that playback stopped (only the video element is paused)
+          lockHoldRef.current = spot;
+          video.pause();
           seekAbs(spot.t);
           setLockHold(spot);
           return;
@@ -708,28 +726,20 @@ function App() {
     };
     raf = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(raf);
-  }, [playing, lockHold, currentSegIndexSafe, detectedFps, videoRef, pause, seekAbs]);
+  }, [playing, lockHold, currentSegIndexSafe, detectedFps, videoRef, seekAbs]);
 
   const handleLockHoldFrame = useCallback((state: { zoom: number }) => {
     if (lockHold != null) applyZoomRectFast(lockZoomRect(lockHold, state.zoom));
   }, [lockHold, applyZoomRectFast]);
 
   const handleLockHoldDone = useCallback(() => {
-    const saved = lockSavedRef.current;
-    lockSavedRef.current = null;
+    lockHoldRef.current = null;
     setLockHold(null);
     syncZoomState();
     applyZoomRect(null);
-    if (saved != null) {
-      clipStopAtRef.current = saved.clipStopAt;
-      playAllRef.current = saved.playAll;
-      setIsPlayingAll(saved.playAll);
-      setPlayingClipIndex(saved.index);
-    }
-    pausedClipRef.current = null;
     lockResumedRef.current = true;
-    play();
-  }, [applyZoomRect, syncZoomState, play]);
+    videoRef.current?.play().catch((err) => console.error('Could not continue after the lock', err));
+  }, [applyZoomRect, syncZoomState, videoRef]);
 
   const handleClearZoomAnchors = useCallback(() => {
     setZoomSelection(null);
@@ -3902,7 +3912,7 @@ function App() {
                         style={videoStyle}
                         src={fileUri}
                         onPlay={onStartPlaying}
-                        onPause={onStopPlaying}
+                        onPause={() => { if (lockHoldRef.current == null) onStopPlaying(); }}
                         onAbort={onVideoAbort}
                         onDurationChange={onDurationChange}
                         onTimeUpdate={onTimeUpdate}
@@ -3932,6 +3942,7 @@ function App() {
                       videoRef={videoRef}
                       spot={lockHold}
                       label={playerName}
+                      sound={lockSound}
                       onFrame={handleLockHoldFrame}
                       onDone={handleLockHoldDone}
                     />
@@ -4381,6 +4392,8 @@ function App() {
                     onLockStart={handleLockStart}
                     onLockGo={handleLockGo}
                     onLockClear={handleLockClear}
+                    lockSound={lockSound}
+                    onLockSoundChange={handleLockSoundChange}
                     scale={videoZoom.view.scale}
                     wheelZoom={videoZoom.wheelZoom}
                     onToggleWheelZoom={() => videoZoom.setWheelZoom((v) => !v)}

@@ -92,13 +92,39 @@ export function lockZoomRect(spot: SpotMark, zoom: number) {
 }
 
 /**
- * The sound of the lock: two quick electronic blips, the second one higher.
- * Made from scratch (no sound file); the preview and the export both build it from these numbers.
+ * The sounds of the lock. Made from scratch (no sound file). Each is a few tones; a tone starts at "at",
+ * glides from "freq" to "freqEnd" (if given) and fades out over "seconds".
+ * The preview and the export both build them from these numbers.
  */
-export const LOCK_SOUND = {
-  blips: [
-    { at: 0, freq: 880, seconds: 0.07 },
-    { at: 0.09, freq: 1760, seconds: 0.14 },
-  ],
-  volume: 0.35,
-} as const;
+export type LockSoundId = 'off' | 'blips' | 'sweep' | 'pings' | 'tick';
+
+export interface LockTone {
+  at: number,
+  freq: number,
+  freqEnd?: number,
+  seconds: number,
+  type: 'square' | 'sine' | 'triangle',
+}
+
+export const LOCK_SOUND_LABELS: Record<LockSoundId, string> = {
+  off: 'No sound',
+  blips: 'Blips',
+  sweep: 'Sweep',
+  pings: 'Pings',
+  tick: 'Tick',
+};
+export const LOCK_SOUND_IDS = Object.keys(LOCK_SOUND_LABELS) as LockSoundId[];
+export const DEFAULT_LOCK_SOUND: LockSoundId = 'blips';
+
+const tone = (at: number, freq: number, seconds: number, type: LockTone['type'], freqEnd?: number): LockTone => (
+  freqEnd == null ? { at, freq, seconds, type } : { at, freq, freqEnd, seconds, type }
+);
+
+export const LOCK_SOUNDS: Record<Exclude<LockSoundId, 'off'>, { volume: number, tones: LockTone[] }> = {
+  blips: { volume: 0.35, tones: [tone(0, 880, 0.07, 'square'), tone(0.09, 1760, 0.14, 'square')] },
+  sweep: { volume: 0.4, tones: [tone(0, 400, 0.28, 'sine', 1800)] },
+  pings: { volume: 0.4, tones: [tone(0, 1300, 0.12, 'sine'), tone(0.11, 1300, 0.12, 'sine'), tone(0.22, 1700, 0.22, 'sine')] },
+  tick: { volume: 0.45, tones: [tone(0, 300, 0.04, 'triangle'), tone(0.05, 2000, 0.2, 'sine')] },
+};
+
+export const isLockSoundId = (value: unknown): value is LockSoundId => typeof value === 'string' && value in LOCK_SOUND_LABELS;

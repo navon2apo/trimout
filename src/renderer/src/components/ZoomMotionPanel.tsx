@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import type { PointerEvent as ReactPointerEvent } from 'react';
 import { FiPlay, FiTrash2 } from 'react-icons/fi';
 import type { SpotMark, ZoomAnchor } from '../types';
+import { LOCK_SOUND_IDS, LOCK_SOUND_LABELS, type LockSoundId } from '../util/playerLock';
 import { rectAt, rectForLevel, sortAnchors, type ZoomEase, type ZoomMotionMode } from '../util/zoomAnchors';
 
 interface Props {
@@ -30,6 +31,9 @@ interface Props {
   onLockStart: () => void,
   onLockGo: () => void,
   onLockClear: () => void,
+  /** The sound of the lock (or none) */
+  lockSound: LockSoundId,
+  onLockSoundChange: (id: LockSoundId) => void,
   /** Free zoom of the picture (for looking at far parts) */
   scale: number,
   wheelZoom: boolean,
@@ -244,7 +248,7 @@ function ZoomGraph({ anchors, ease, clipStart, clipEnd, playerTime, selectedInde
  * Zoom Motion for the selected clip: a curve you edit by dragging points (when, and how close),
  * and a frame on the picture you drag to choose where the zoom looks.
  */
-function ZoomMotionPanel({ clipStart, clipEnd, playerTime, anchors, ease, selectedIndex, onSelect, onChange, onDeletePoint, onEaseChange, onPreset, onClear, onPreview, onSeek, lockSpot, lockPlacing, onLockStart, onLockGo, onLockClear, scale, wheelZoom, onToggleWheelZoom, onZoomIn, onZoomOut, onFit, hasClip, clipButtonsVisible, onToggleClipButtons }: Props) {
+function ZoomMotionPanel({ clipStart, clipEnd, playerTime, anchors, ease, selectedIndex, onSelect, onChange, onDeletePoint, onEaseChange, onPreset, onClear, onPreview, onSeek, lockSpot, lockPlacing, onLockStart, onLockGo, onLockClear, lockSound, onLockSoundChange, scale, wheelZoom, onToggleWheelZoom, onZoomIn, onZoomOut, onFit, hasClip, clipButtonsVisible, onToggleClipButtons }: Props) {
   useEffect(() => {
     if (selectedIndex == null) return undefined;
     const onKeyDown = (e: KeyboardEvent) => {
@@ -296,6 +300,15 @@ function ZoomMotionPanel({ clipStart, clipEnd, playerTime, anchors, ease, select
                   <button type="button" title="Remove the lock" aria-label="Remove the lock" onClick={onLockClear} style={chip}>✕</button>
                 </>
               )}
+              <select
+                aria-label="Sound of the lock"
+                title="The sound when the picture locks on the player"
+                value={lockSound}
+                onChange={(e) => onLockSoundChange(e.target.value as LockSoundId)}
+                style={{ ...chip, padding: '2px 4px' }}
+              >
+                {LOCK_SOUND_IDS.map((id) => <option key={id} value={id}>{id === 'off' ? '🔇 No sound' : `🔊 ${LOCK_SOUND_LABELS[id]}`}</option>)}
+              </select>
             </span>
             <button
               type="button"
