@@ -44,6 +44,15 @@ describe('ClipsPanel', () => {
     expect(html.match(/aria-label="(Mark as|Remove from) favorite[s]?"/g)).toHaveLength(2);
   });
 
+  it('marks the clip that is playing and turns its play button into pause', () => {
+    const html = render({ playingClipIndex: 1 });
+    expect(html).toContain('NOW PLAYING');
+    expect(html.match(/NOW PLAYING/g)).toHaveLength(1);
+    expect(html).toContain('aria-label="Pause clip"');
+    expect(html.match(/aria-label="Play clip"/g)).toHaveLength(1);
+    expect(render()).not.toContain('NOW PLAYING');
+  });
+
   it('offers Play all, and Stop while playing all', () => {
     expect(render()).toContain('Play all');
     expect(render({ isPlayingAll: true })).toContain('Stop');

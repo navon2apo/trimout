@@ -308,6 +308,9 @@ function App() {
   const [playingClipIndex, setPlayingClipIndex] = useState<number | null>(null);
   const [isPlayingAll, setIsPlayingAll] = useState(false);
   const playAllRef = useRef(false);
+  const playingClipIndexRef = useRef<number | null>(null);
+  const pausedClipRef = useRef<{ index: number } | null>(null);
+  playingClipIndexRef.current = playingClipIndex;
 
   const [ffmpegCommandLog, setFfmpegCommandLog] = useState<FfmpegCommandLog>([]);
   const [rotation, setRotation] = useState(360);
@@ -2115,6 +2118,27 @@ function App() {
     setTimeout(() => { play(); }, 50);
   }, [cutSegments, setCurrentSegIndex, seekAbs, play, fitTimelineToClip]);
 
+  // The play button on a clip card: play, press again to pause where it is, press again to continue.
+  // Pressing it on a clip that is not the one in progress starts that clip from its beginning.
+  const handleToggleClip = useCallback((index: number) => {
+    const seg = cutSegments[index];
+    if (seg == null || seg.end == null) return;
+    if (playingClipIndexRef.current === index) {
+      pause();
+      return;
+    }
+    const resumeAt = commandedTimeRef.current;
+    const paused = pausedClipRef.current;
+    if (paused != null && paused.index === index && resumeAt != null && resumeAt > seg.start && resumeAt < seg.end - 0.1) {
+      setCurrentSegIndex(index);
+      clipStopAtRef.current = seg.end;
+      setPlayingClipIndex(index);
+      play();
+      return;
+    }
+    handlePlayClip(index);
+  }, [commandedTimeRef, cutSegments, handlePlayClip, pause, play, setCurrentSegIndex]);
+
   // "Play all": preview every clip back to back from the original video, no export needed.
   const handlePlayAll = useCallback(() => {
     const first = getNextPlayableClipIndex(getUserClips(cutSegments), -1);
@@ -2152,6 +2176,10 @@ function App() {
   // Clear the timeline overlay whenever playback stops (manual pause, seek, etc.)
   useEffect(() => {
     if (!playing) {
+      // Remember a clip that was paused in the middle, so its play button can continue it
+      pausedClipRef.current = clipStopAtRef.current != null && playingClipIndexRef.current != null && !playAllRef.current
+        ? { index: playingClipIndexRef.current }
+        : null;
       setPlayingClipIndex(null);
       clipStopAtRef.current = null;
       playAllRef.current = false;
@@ -4121,7 +4149,7 @@ function App() {
                         getClipColor={getClipColor}
                         formatTimecode={(s: number) => formatTimecode({ seconds: s })}
                         onSegClick={handleSegClick}
-                        onPlayClip={handlePlayClip}
+                        onPlayClip={handleToggleClip}
                         onDeleteSegment={removeSegment}
                         onToggleFavorite={handleToggleFavorite}
                         onRenameSegment={handleRenameClip}
@@ -4232,7 +4260,7 @@ function App() {
                     onPreset={handleZoomPreset}
                     onClear={handleClearZoomAnchors}
                     onPreview={() => handlePlayClip(currentSegIndexSafe)}
-                    onSeek={(t) => seekAbs(t)}
+                    onSeek={(seconds) => seekAbs(seconds)}
                     scale={videoZoom.view.scale}
                     wheelZoom={videoZoom.wheelZoom}
                     onToggleWheelZoom={() => videoZoom.setWheelZoom((v) => !v)}

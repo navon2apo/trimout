@@ -4,7 +4,7 @@
  * Clicking a card seeks the playhead to its start.
  */
 import { memo, useEffect, useRef, useState } from 'react';
-import { FiMaximize2, FiPlay, FiScissors, FiSquare, FiTrash2 } from 'react-icons/fi';
+import { FiMaximize2, FiPause, FiPlay, FiScissors, FiSquare, FiTrash2 } from 'react-icons/fi';
 
 interface Seg {
   segId?: string | undefined;
@@ -146,17 +146,18 @@ function ClipsPanel({ segments, currentSegIndex, playingClipIndex, isPlayingAll,
               style={{
                 display: 'flex',
                 alignItems: 'stretch',
-                background: '#ffffff',
+                // The clip that is playing is clearly marked: thick outline in its own color and a tinted card
+                background: isPlaying ? `${color}22` : '#ffffff',
                 borderRadius: 10,
                 overflow: 'hidden',
                 cursor: 'pointer',
                 userSelect: 'none',
-                border: `1px solid ${isActive || isPlaying ? '#84cc16' : '#e4e7ec'}`,
-                boxShadow: isActive || isPlaying ? '0 0 0 2px rgba(132,204,22,0.35)' : '0 1px 2px rgba(15,23,42,0.06)',
-                transition: 'box-shadow 0.12s',
+                border: `1px solid ${isPlaying ? color : (isActive ? '#84cc16' : '#e4e7ec')}`,
+                boxShadow: isPlaying ? `0 0 0 3px ${color}` : (isActive ? '0 0 0 2px rgba(132,204,22,0.35)' : '0 1px 2px rgba(15,23,42,0.06)'),
+                transition: 'box-shadow 0.12s, background 0.12s',
               }}
             >
-              <div style={{ width: 5, flexShrink: 0, background: color }} />
+              <div style={{ width: isPlaying ? 9 : 5, flexShrink: 0, background: color }} />
 
               <div style={{ flex: 1, minWidth: 0, padding: '9px 8px 9px 10px' }}>
                 {editingIndex === i ? (
@@ -185,6 +186,7 @@ function ClipsPanel({ segments, currentSegIndex, playingClipIndex, isPlayingAll,
                     onClick={(e) => { e.stopPropagation(); setDraftName(seg.name ?? displayName); setEditingIndex(i); }}
                     style={{ fontSize: 13, fontWeight: 650, color: '#0f172a', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', cursor: 'text' }}
                   >
+                    {isPlaying && <span style={{ marginRight: 6, fontSize: 9, fontWeight: 800, letterSpacing: '0.06em', color: '#0f172a', background: '#d2ff00', borderRadius: 4, padding: '1px 5px' }}>NOW PLAYING</span>}
                     {displayName}
                   </div>
                 )}
@@ -207,12 +209,12 @@ function ClipsPanel({ segments, currentSegIndex, playingClipIndex, isPlayingAll,
               <div style={{ display: 'flex', alignItems: 'center', gap: 2, paddingRight: 8 }}>
                 <button
                   type="button"
-                  aria-label="Play clip"
-                  title="Play clip"
+                  aria-label={isPlaying ? 'Pause clip' : 'Play clip'}
+                  title={isPlaying ? 'Pause' : 'Play clip'}
                   onClick={(e) => { e.stopPropagation(); onPlayClip(i); }}
-                  style={{ ...iconButton, background: '#0f172a', color: '#d2ff00' }}
+                  style={{ ...iconButton, background: isPlaying ? '#d2ff00' : '#0f172a', color: isPlaying ? '#0f172a' : '#d2ff00' }}
                 >
-                  <FiPlay />
+                  {isPlaying ? <FiPause /> : <FiPlay />}
                 </button>
                 <button
                   type="button"
