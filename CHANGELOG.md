@@ -1,5 +1,27 @@
 # KICKO TrimOut - Changelog
 
+## 1.8.0
+
+### Player lock
+- Mark a player on a clip: the picture freezes for a moment, a ring closes in on the player, his name and the name of the move show, and the picture glides closer and back. Plays in the app and is rendered into the exported clip.
+- Click on the player, then drag the ring or its corner handles to place and size it.
+- Style: show the player name and / or the move name, ring color (lime, white, yellow, red, green, blue, black), and the sound (blips, sweep, pings, tick, or none).
+- The zoom starts from the view on screen and comes back to exactly it; it follows the clip's own zoom and the output format.
+- Modern Hebrew and Latin type (Heebo, open license).
+
+### Render screen
+- Drag the clips into the order you want before rendering. The numbers follow, and the file names and the merged video use the new order.
+- Music for the merged video: replace the game sound or mix with it, volume, fades, repeats if the song is short.
+- An eye on every clip: only clips with an open eye are rendered (default: all).
+
+### Clips and zoom
+- The play button on a clip plays, pauses where it is, and continues. The clip that plays is clearly marked.
+- Clip cards have a calmer layout with bigger buttons.
+- The strip on top of the zoom curve moves the playhead; the duplicate player buttons are gone.
+
+### Windows
+- The taskbar shows the TrimOut logo in the installed app (the app id now matches the shortcut).
+
 ## 1.7.0
 
 ### Projects you can come back to
