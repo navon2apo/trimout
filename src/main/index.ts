@@ -82,7 +82,8 @@ if (isWindows) {
   // in order to set the title on OS notifications on Windows, this needs to be set to app.name
   // https://github.com/mifi/lossless-cut/pull/2139
   // https://stackoverflow.com/a/65863174/6519037
-  app.setAppUserModelId(app.name);
+  // The installed app must use the same id as its shortcut (build.appId), otherwise Windows shows a generic taskbar icon.
+  app.setAppUserModelId(isDev ? app.name : 'com.kicko.trimout');
 }
 
 let filesToOpen: string[] = [];
