@@ -25,7 +25,7 @@ import ZoomMotionPanel from './components/ZoomMotionPanel';
 import ZoomRectOverlay from './components/ZoomRectOverlay';
 import PlayerLockOverlay from './components/PlayerLockOverlay';
 import PlayerLockPreview from './components/PlayerLockPreview';
-import { clampSpot, DEFAULT_LOCK_SOUND, DEFAULT_LOCK_STYLE, DEFAULT_SPOT_SIZE, isAtSpot, isLockSoundId, LOCK_COLORS, lockStartView, lockViewRect, parseLockStyle, type LockSoundId, type LockStyle, type ViewRect } from './util/playerLock';
+import { clampSpot, DEFAULT_LOCK_SOUND, DEFAULT_LOCK_STYLE, DEFAULT_SPOT_SIZE, isAtSpot, isLockSoundId, LOCK_COLORS, lockSpotForClip, lockStartView, lockViewRect, parseLockStyle, type LockSoundId, type LockStyle, type ViewRect } from './util/playerLock';
 import playLockSound from './util/playerLockSound';
 import { ensureLockFonts } from './util/playerLockDraw';
 import useWaveform from './hooks/useWaveform';
@@ -56,6 +56,7 @@ import ExportOptions from './components/ExportOptions';
 import type { ExportMode } from './components/ExportOptions';
 import { getNextPlayableClipIndex, getUserClips, trimClipEdge } from './util/clipTrim';
 import { compressClip, mergeWithCrossfade, mergedVideoSize, type QualityPreset, type AspectRatio, type FitMode } from './util/qualityPresets';
+import { exportPlayerLock } from './util/playerLockExport';
 import { TRANSITION_SECONDS, type ExportTransition } from './util/crossfade';
 import MediaSourcePlayer from './MediaSourcePlayer';
 import TopMenu from './TopMenu';
@@ -1805,13 +1806,24 @@ function App() {
           }
         });
         const hasZoom = zoomByPath.size > 0;
+        // Each separate clip file → the clip, when it has a player lock (freeze + ring + name) inside it.
+        const lockByPath = new Map<string, StateSegment>();
+        outFiles.forEach((f, idx) => {
+          const seg = cutSegments[segmentsToExport[idx]?.originalIndex ?? idx];
+          if (seg?.spotMark != null && seg.end != null && seg.spotMark.t >= seg.start && seg.spotMark.t <= seg.end) lockByPath.set(f.path, seg);
+        });
+        const hasLock = lockByPath.size > 0;
         // Blended transitions: the merged video is rebuilt from the finished clip files (so it gets their zooms too).
         const fadeSeconds = TRANSITION_SECONDS[exportTransition];
         const crossfade = fadeSeconds > 0 && mergedOutFilePath != null && existingOutFiles.length > 1;
         // Zoom changes the picture, so it also forces a re-encode (a lossless copy can't).
-        const needsCompress = qualityPreset !== 'lossless' || needsAspectChange || hasZoom;
+        // The player lock too: the clip is cut again from the source at its exact start, so the frozen moment is exact.
+        const needsCompress = qualityPreset !== 'lossless' || needsAspectChange || hasZoom || hasLock;
         if (hasZoom && mergedOutFilePath != null && !crossfade) {
           warnings.add('Saved zooms are applied to the separate clips, not to the merged video.');
+        }
+        if (hasLock && mergedOutFilePath != null && !crossfade) {
+          warnings.add('The player lock is applied to the separate clips, not to the merged video.');
         }
         const sourceWidth = activeVideoStream?.width ?? 0;
         const sourceHeight = activeVideoStream?.height ?? 0;
@@ -1863,6 +1875,14 @@ function App() {
                   if (clipZoom.anchors.length === 1 || !filePath || !sourceWidth || !sourceHeight) return { zoomRect: clipZoom.anchors[0]!.rect };
                   return { zoomMotion: { sourcePath: filePath, start: clipZoom.start, end: clipZoom.end, anchors: clipZoom.anchors, width: sourceWidth, height: sourceHeight, fps: detectedFps ?? 30, ease: clipZoom.ease } };
                 })(),
+                // A clip with a player lock is cut from the source at its exact start (moving zoom already is)
+                ...(() => {
+                  const lockSeg = lockByPath.get(losslessPath);
+                  const clipZoom = zoomByPath.get(losslessPath);
+                  if (lockSeg == null || lockSeg.end == null || !filePath) return {};
+                  if (clipZoom != null && clipZoom.anchors.length > 1 && sourceWidth && sourceHeight) return {};
+                  return { exactFrom: { sourcePath: filePath, start: lockSeg.start, end: lockSeg.end } };
+                })(),
                 appendCommandLog: appendFfmpegCommandLog,
               });
               await replaceFile(tmpPath, losslessPath);
@@ -1873,6 +1893,55 @@ function App() {
               await fsUnlinkSafe(tmpPath);
             }
           }
+        }
+
+        // 1a. Player lock: freeze + ring + name inside each marked clip (after zoom / format, so the ring lands right)
+        const addLockToClip = async (clipPath: string, lockSeg: StateSegment) => {
+          const spot = lockSeg.spotMark;
+          if (spot == null || !await fileExists(clipPath)) return;
+          const clipZoom = zoomByPath.get(clipPath);
+          const aspectDims = exportAspectRatio === 'original' ? null : mergedVideoSize(exportAspectRatio, sourceWidth, sourceHeight);
+          const ringSpot = lockSpotForClip({
+            spot,
+            anchors: clipZoom?.anchors,
+            ease: clipZoom?.ease,
+            source: { w: sourceWidth, h: sourceHeight },
+            outSize: aspectDims != null ? { w: aspectDims.width, h: aspectDims.height } : null,
+            fit: exportFitMode,
+          });
+          if (ringSpot == null) {
+            warnings.add(`The player is outside the picture of "${basename(clipPath)}" after the zoom or format, so it has no lock.`);
+            return;
+          }
+          const playerLabel = (lockSeg.playerName ?? playerName).trim();
+          const moveTitle = lockSeg.actionLabel ?? (lockSeg.actionType != null && lockSeg.actionType !== 'free' && lockSeg.actionType !== 'custom' ? getActionLabel(lockSeg.actionType) : '');
+          const tmpPath = `${clipPath}.lock${pathExtname(clipPath) || '.mp4'}`;
+          try {
+            await exportPlayerLock({
+              inPath: clipPath,
+              outPath: tmpPath,
+              atSec: spot.t - lockSeg.start,
+              spot: ringSpot,
+              label: lockStyle.showName ? playerLabel : '',
+              title: lockStyle.showAction ? moveTitle : '',
+              color: LOCK_COLORS[lockStyle.color].hex,
+              sound: lockSound,
+              fps: detectedFps ?? 30,
+              preset: effectivePreset,
+              appendCommandLog: appendFfmpegCommandLog,
+            });
+            await replaceFile(tmpPath, clipPath);
+          } catch (lockErr) {
+            console.warn('Player lock failed for', clipPath, lockErr);
+            warnings.add(`Player lock failed: ${basename(clipPath)}`);
+            await fsUnlinkSafe(tmpPath);
+          }
+        };
+        if (hasLock) {
+          setWorking({ text: 'Adding the player lock' });
+          // One clip at a time (each one re-encodes the clip, so they should not compete)
+          // eslint-disable-next-line no-await-in-loop
+          for (const [clipPath, lockSeg] of lockByPath) await addLockToClip(clipPath, lockSeg);
         }
 
         // 1b. Merged video with blended transitions, from the finished clips
@@ -2154,7 +2223,7 @@ function App() {
       setWorking(undefined);
       setProgress(undefined);
     }
-  }, [filePath, numStreamsToCopy, haveInvalidSegs, workingRef, setWorking, segmentsToChaptersOnly, cutFileTemplateOrDefault, generateCutFileNames, cutMultiple, outputDir, customOutDir, fileFormat, fileDuration, isRotationSet, effectiveRotation, copyFileStreams, allFilesMeta, keyframeCut, segmentsToExport, shortestFlag, ffmpegExperimental, preserveMetadata, preserveMetadataOnMerge, preserveMovData, preserveChapters, movFastStart, avoidNegativeTs, customTagsByFile, paramsByStreamId, detectedFps, willMerge, enableOverwriteOutput, exportConfirmEnabled, mainFileFormat, mainStreams, exportExtraStreams, areWeCutting, simpleMode, prefersReducedMotion, cleanupChoices, hideAllNotifications, segmentsOrInverse.selected, t, cutMergedFileTemplateOrDefault, segmentsToChapters, invertCutSegments, generateCutMergedFileNames, concatCutSegments, autoDeleteMergedSegments, tryDeleteFiles, nonCopiedExtraStreams, extractStreams, askForCleanupChoices, cleanupFiles, showOsNotification, openCutFinishedDialog, handleExportFailed, setExportedRanges, qualityPreset, createExportPackage, playerName, cutSegments, quickCutDuration, appendFfmpegCommandLog, exportAspectRatio, exportFitMode, activeProject, persistActiveProject, activeVideoStream?.width, activeVideoStream?.height, exportTransition]);
+  }, [filePath, numStreamsToCopy, haveInvalidSegs, workingRef, setWorking, segmentsToChaptersOnly, cutFileTemplateOrDefault, generateCutFileNames, cutMultiple, outputDir, customOutDir, fileFormat, fileDuration, isRotationSet, effectiveRotation, copyFileStreams, allFilesMeta, keyframeCut, segmentsToExport, shortestFlag, ffmpegExperimental, preserveMetadata, preserveMetadataOnMerge, preserveMovData, preserveChapters, movFastStart, avoidNegativeTs, customTagsByFile, paramsByStreamId, detectedFps, willMerge, enableOverwriteOutput, exportConfirmEnabled, mainFileFormat, mainStreams, exportExtraStreams, areWeCutting, simpleMode, prefersReducedMotion, cleanupChoices, hideAllNotifications, segmentsOrInverse.selected, t, cutMergedFileTemplateOrDefault, segmentsToChapters, invertCutSegments, generateCutMergedFileNames, concatCutSegments, autoDeleteMergedSegments, tryDeleteFiles, nonCopiedExtraStreams, extractStreams, askForCleanupChoices, cleanupFiles, showOsNotification, openCutFinishedDialog, handleExportFailed, setExportedRanges, qualityPreset, createExportPackage, playerName, cutSegments, quickCutDuration, appendFfmpegCommandLog, exportAspectRatio, exportFitMode, activeProject, persistActiveProject, activeVideoStream?.width, activeVideoStream?.height, exportTransition, lockStyle, lockSound]);
 
   const onExportPress = useCallback(async () => {
     if (!filePath) return;

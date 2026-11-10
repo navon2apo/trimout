@@ -3,7 +3,8 @@
  * and the picture glides in and back out. All numbers here are the look we agreed on (from KICKO ONE);
  * the preview on screen and the export both use them, so they always match.
  */
-import type { SpotMark } from '../types';
+import type { SpotMark, ZoomAnchor } from '../types';
+import { rectAt, type ZoomEase } from './zoomAnchors';
 
 /** The whole freeze: ring and zoom come in, hold, and go back out, all on the still picture */
 export const FREEZE_SECONDS = 1.5;
@@ -195,4 +196,77 @@ export function parseLockStyle(raw: string | null | undefined): LockStyle {
   } catch {
     return DEFAULT_LOCK_STYLE;
   }
+}
+
+/**
+ * Where the ring is in the finished clip. The export may zoom into the clip first and then change its shape
+ * (9:16 etc.), so the mark made on the whole picture has to follow both steps.
+ * Returns null when the player is not inside the finished picture any more.
+ */
+export function mapSpotToOutput({ spot, zoomRect, zoomSize, outSize, fit }: {
+  spot: SpotMark,
+  /** The part of the picture the clip shows at the moment of the lock (null = all of it) */
+  zoomRect: ViewRect | null,
+  /** Size of the picture after the zoom step */
+  zoomSize: { w: number, h: number },
+  /** Size of the finished clip */
+  outSize: { w: number, h: number },
+  /** How the shape was changed: crop = filled, pad = black bars, none = not changed */
+  fit: 'none' | 'crop' | 'pad',
+}): SpotMark | null {
+  const rect = zoomRect ?? WHOLE;
+  const u = (spot.x - rect.x) / rect.w;
+  const v = (spot.y - rect.y) / rect.h;
+  const sizeInZoom = spot.size / rect.h;
+  let scale = 1;
+  if (fit === 'crop') scale = Math.max(outSize.w / zoomSize.w, outSize.h / zoomSize.h);
+  if (fit === 'pad') scale = Math.min(outSize.w / zoomSize.w, outSize.h / zoomSize.h);
+  const x = (u * zoomSize.w * scale + (outSize.w - zoomSize.w * scale) / 2) / outSize.w;
+  const y = (v * zoomSize.h * scale + (outSize.h - zoomSize.h * scale) / 2) / outSize.h;
+  if (x < 0 || x > 1 || y < 0 || y > 1) return null;
+  return { t: spot.t, x, y, size: (sizeInZoom * zoomSize.h * scale) / outSize.h };
+}
+
+const even = (n: number) => Math.max(2, Math.trunc(n / 2) * 2);
+
+/**
+ * The ring for one clip of the export: follows the clip's own zoom (fixed or moving) and its output shape.
+ * "outSize" is the size of the finished clip, or null when the shape is not changed.
+ */
+export function lockSpotForClip({ spot, anchors, ease, source, outSize, fit }: {
+  spot: SpotMark,
+  anchors: ZoomAnchor[] | undefined,
+  ease: ZoomEase | undefined,
+  source: { w: number, h: number },
+  outSize: { w: number, h: number } | null,
+  fit: 'crop' | 'pad',
+}): SpotMark | null {
+  let zoomRect: ViewRect | null = null;
+  let zoomSize = source;
+  if (anchors != null && anchors.length === 1) {
+    zoomRect = anchors[0]!.rect;
+    zoomSize = { w: even(source.w * zoomRect.w), h: even(source.h * zoomRect.h) };
+  } else if (anchors != null && anchors.length > 1) {
+    zoomRect = rectAt(anchors, spot.t, ease ?? 'smooth');
+  }
+  return mapSpotToOutput({ spot, zoomRect, zoomSize, outSize: outSize ?? zoomSize, fit: outSize == null ? 'none' : fit });
+}
+
+/**
+ * The sound as an ffmpeg "aevalsrc" expression (one channel), made from the same tones the app plays.
+ * Square tones are made with gt(), triangles with asin(), sweeps by changing the frequency over the tone.
+ */
+export function lockSoundExpression(id: Exclude<LockSoundId, 'off'>): string {
+  const { volume, tones } = LOCK_SOUNDS[id];
+  const n = (value: number) => Number(value.toFixed(4)); // no long decimals in the expression
+  return tones.map(({ at, freq, freqEnd, seconds, type }) => {
+    const x = `(t-${at})`;
+    const phase = freqEnd == null
+      ? `2*PI*${freq}*${x}`
+      : `2*PI*(${freq}*${x}+${n((freqEnd - freq) / (2 * seconds))}*${x}*${x})`;
+    let wave = `sin(${phase})`;
+    if (type === 'square') wave = `(gt(sin(${phase}),0)*2-1)`;
+    if (type === 'triangle') wave = `(2/PI*asin(sin(${phase})))`;
+    return `between(t,${at},${n(at + seconds)})*${volume}*min(1,${x}/0.005)*pow(max(0,1-${x}/${seconds}),2)*${wave}`;
+  }).join('+');
 }

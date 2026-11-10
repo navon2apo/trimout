@@ -1,7 +1,7 @@
 // eslint-disable-next-line import/no-extraneous-dependencies
 import { describe, expect, it } from 'vitest';
 
-import { clampSpot, DEFAULT_SPOT_SIZE, FREEZE_SECONDS, freezeFrameCount, isAtSpot, LOCK_ZOOM, lockStartView, lockStateAt, lockViewRect, MAX_SPOT_SIZE, MIN_SPOT_SIZE, spotOnScreen, parseLockStyle, LOCK_COLOR_IDS } from './playerLock';
+import { clampSpot, DEFAULT_SPOT_SIZE, FREEZE_SECONDS, freezeFrameCount, isAtSpot, LOCK_ZOOM, lockStartView, lockStateAt, lockViewRect, MAX_SPOT_SIZE, MIN_SPOT_SIZE, spotOnScreen, parseLockStyle, LOCK_COLOR_IDS, mapSpotToOutput, lockSpotForClip, lockSoundExpression, LOCK_SOUND_IDS, type LockSoundId } from './playerLock';
 
 describe('player lock look', () => {
   it('lasts one and a half seconds, which is 45 frames at 30 fps', () => {
@@ -97,5 +97,67 @@ describe('lock style', () => {
 
   it('offers white, yellow, red, green, blue and black, plus the lime default', () => {
     expect(LOCK_COLOR_IDS).toEqual(['lime', 'white', 'yellow', 'red', 'green', 'blue', 'black']);
+  });
+});
+
+describe('the ring in the finished clip', () => {
+  const spot = { t: 1, x: 0.5, y: 0.5, size: 0.08 };
+  const hd = { w: 1920, h: 1080 };
+
+  it('stays the same when the clip is not zoomed or reshaped', () => {
+    expect(mapSpotToOutput({ spot, zoomRect: null, zoomSize: hd, outSize: hd, fit: 'none' })).toEqual(spot);
+  });
+
+  it('follows a zoom: the ring gets bigger on the zoomed picture', () => {
+    const zoomed = mapSpotToOutput({ spot, zoomRect: { x: 0.25, y: 0.25, w: 0.5, h: 0.5 }, zoomSize: hd, outSize: hd, fit: 'none' });
+    expect(zoomed?.x).toBeCloseTo(0.5, 5);
+    expect(zoomed?.size).toBeCloseTo(0.16, 5);
+  });
+
+  it('follows a vertical crop, and drops the ring if the player is cropped out', () => {
+    const vertical = { w: 1080, h: 1920 };
+    const centered = mapSpotToOutput({ spot, zoomRect: null, zoomSize: hd, outSize: vertical, fit: 'crop' });
+    expect(centered?.x).toBeCloseTo(0.5, 5);
+    expect(centered?.size).toBeCloseTo((0.08 * 1080 * (1920 / 1080)) / 1920, 5);
+    expect(mapSpotToOutput({ spot: { ...spot, x: 0.1 }, zoomRect: null, zoomSize: hd, outSize: vertical, fit: 'crop' })).toBeNull();
+  });
+
+  it('follows black bars: the picture sits in the middle of the tall frame', () => {
+    const padded = mapSpotToOutput({ spot: { ...spot, y: 0 }, zoomRect: null, zoomSize: hd, outSize: { w: 1080, h: 1920 }, fit: 'pad' });
+    expect(padded?.x).toBeCloseTo(0.5, 5);
+    expect(padded?.y).toBeCloseTo(((1920 - 1080 * (1080 / 1920)) / 2) / 1920, 5);
+  });
+});
+
+describe('the ring and the sound for one exported clip', () => {
+  const spot = { t: 12, x: 0.5, y: 0.5, size: 0.08 };
+  const hd = { w: 1920, h: 1080 };
+
+  it('is the same ring when the clip has no zoom and keeps its shape', () => {
+    expect(lockSpotForClip({ spot, anchors: undefined, ease: undefined, source: hd, outSize: null, fit: 'crop' })).toEqual(spot);
+  });
+
+  it('follows a fixed zoom', () => {
+    const fixed = lockSpotForClip({ spot, anchors: [{ t: 10, rect: { x: 0.25, y: 0.25, w: 0.5, h: 0.5 } }], ease: undefined, source: hd, outSize: null, fit: 'crop' });
+    expect(fixed?.x).toBeCloseTo(0.5, 5);
+    expect(fixed?.size).toBeCloseTo(0.16, 5);
+  });
+
+  it('follows a moving zoom at the moment of the lock', () => {
+    const anchors = [
+      { t: 10, rect: { x: 0, y: 0, w: 1, h: 1 } },
+      { t: 14, rect: { x: 0.25, y: 0.25, w: 0.5, h: 0.5 } },
+    ];
+    const moving = lockSpotForClip({ spot: { ...spot, t: 14 }, anchors, ease: 'linear', source: hd, outSize: null, fit: 'crop' });
+    expect(moving?.size).toBeCloseTo(0.16, 5);
+  });
+
+  it('writes every sound as an expression for ffmpeg', () => {
+    LOCK_SOUND_IDS.filter((id) => id !== 'off').forEach((id) => {
+      const expr = lockSoundExpression(id as Exclude<LockSoundId, 'off'>);
+      expect(expr).toContain('between(t,');
+      expect(expr).not.toContain('undefined');
+      expect(expr).not.toContain('NaN');
+    });
   });
 });
