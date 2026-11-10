@@ -12,6 +12,8 @@ interface Props {
   label: string,
   /** The action, shown big at the top */
   title: string,
+  /** Color of the ring */
+  color: string,
   /** Click on the picture: where the player is (fractions of the picture) */
   onPlace: (x: number, y: number) => void,
   onChange: (spot: SpotMark) => void,
@@ -28,7 +30,7 @@ const DIAG = Math.SQRT1_2;
  * The player lock on top of the paused picture. First click places the ring on the player; after that
  * drag the ring to move it and drag a corner handle to make it bigger or smaller.
  */
-function PlayerLockOverlay({ videoRef, spot, label, title, onPlace, onChange }: Props) {
+function PlayerLockOverlay({ videoRef, spot, label, title, color, onPlace, onChange }: Props) {
   const rootRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [box, setBox] = useState<{ x: number, y: number, w: number, h: number } | null>(null);
@@ -63,14 +65,14 @@ function PlayerLockOverlay({ videoRef, spot, label, title, onPlace, onChange }: 
     if (ctx == null) return undefined;
     const draw = () => {
       ctx.clearRect(0, 0, canvas.width, canvas.height);
-      if (spot != null) drawPlayerLock(ctx, { width: box.w, height: box.h, spot, label, title, state: EDIT_STATE, time: 0 });
+      if (spot != null) drawPlayerLock(ctx, { width: box.w, height: box.h, spot, label, title, color, state: EDIT_STATE, time: 0 });
     };
     draw();
     // Draw once more when the font is there, in case it was not yet
     let cancelled = false;
     ensureLockFonts().then(() => { if (!cancelled) draw(); }, () => undefined);
     return () => { cancelled = true; };
-  }, [box, spot, label, title]);
+  }, [box, spot, label, title, color]);
 
   const startDrag = (kind: 'move' | 'size') => (e: ReactPointerEvent) => {
     if (spot == null) return;

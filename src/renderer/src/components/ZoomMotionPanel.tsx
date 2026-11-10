@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import type { PointerEvent as ReactPointerEvent } from 'react';
 import { FiPlay, FiTrash2 } from 'react-icons/fi';
 import type { SpotMark, ZoomAnchor } from '../types';
-import { LOCK_SOUND_IDS, LOCK_SOUND_LABELS, type LockSoundId } from '../util/playerLock';
+import { LOCK_COLOR_IDS, LOCK_COLORS, LOCK_SOUND_IDS, LOCK_SOUND_LABELS, type LockSoundId, type LockStyle } from '../util/playerLock';
 import { rectAt, rectForLevel, sortAnchors, type ZoomEase, type ZoomMotionMode } from '../util/zoomAnchors';
 
 interface Props {
@@ -34,6 +34,9 @@ interface Props {
   /** The sound of the lock (or none) */
   lockSound: LockSoundId,
   onLockSoundChange: (id: LockSoundId) => void,
+  /** What the lock shows (player name, move name) and the ring color */
+  lockStyle: LockStyle,
+  onLockStyleChange: (style: LockStyle) => void,
   /** Free zoom of the picture (for looking at far parts) */
   scale: number,
   wheelZoom: boolean,
@@ -248,7 +251,10 @@ function ZoomGraph({ anchors, ease, clipStart, clipEnd, playerTime, selectedInde
  * Zoom Motion for the selected clip: a curve you edit by dragging points (when, and how close),
  * and a frame on the picture you drag to choose where the zoom looks.
  */
-function ZoomMotionPanel({ clipStart, clipEnd, playerTime, anchors, ease, selectedIndex, onSelect, onChange, onDeletePoint, onEaseChange, onPreset, onClear, onPreview, onSeek, lockSpot, lockPlacing, onLockStart, onLockGo, onLockClear, lockSound, onLockSoundChange, scale, wheelZoom, onToggleWheelZoom, onZoomIn, onZoomOut, onFit, hasClip, clipButtonsVisible, onToggleClipButtons }: Props) {
+function ZoomMotionPanel({ clipStart, clipEnd, playerTime, anchors, ease, selectedIndex, onSelect, onChange, onDeletePoint, onEaseChange, onPreset, onClear, onPreview, onSeek, lockSpot, lockPlacing, onLockStart, onLockGo, onLockClear, lockSound, onLockSoundChange, lockStyle, onLockStyleChange, scale, wheelZoom, onToggleWheelZoom, onZoomIn, onZoomOut, onFit, hasClip, clipButtonsVisible, onToggleClipButtons }: Props) {
+  // The small window with what the lock shows, its color and its sound
+  const [styleOpen, setStyleOpen] = useState(false);
+
   useEffect(() => {
     if (selectedIndex == null) return undefined;
     const onKeyDown = (e: KeyboardEvent) => {
@@ -300,15 +306,59 @@ function ZoomMotionPanel({ clipStart, clipEnd, playerTime, anchors, ease, select
                   <button type="button" title="Remove the lock" aria-label="Remove the lock" onClick={onLockClear} style={chip}>✕</button>
                 </>
               )}
-              <select
-                aria-label="Sound of the lock"
-                title="The sound when the picture locks on the player"
-                value={lockSound}
-                onChange={(e) => onLockSoundChange(e.target.value as LockSoundId)}
-                style={{ ...chip, padding: '2px 4px' }}
-              >
-                {LOCK_SOUND_IDS.map((id) => <option key={id} value={id}>{id === 'off' ? '🔇 No sound' : `🔊 ${LOCK_SOUND_LABELS[id]}`}</option>)}
-              </select>
+              <span style={{ position: 'relative', display: 'inline-flex' }}>
+                <button
+                  type="button"
+                  title="What the lock shows, its color and its sound"
+                  aria-expanded={styleOpen}
+                  onClick={() => setStyleOpen((v) => !v)}
+                  style={{ ...chip, background: styleOpen ? '#0f172a' : '#ffffff', color: styleOpen ? '#d2ff00' : '#0f172a', display: 'inline-flex', alignItems: 'center', gap: 5 }}
+                >
+                  <span style={{ width: 10, height: 10, borderRadius: '50%', background: LOCK_COLORS[lockStyle.color].hex, border: '1px solid #94a3b8' }} />
+                  Style
+                </button>
+                {styleOpen && (
+                  <div
+                    role="dialog"
+                    aria-label="Lock style"
+                    style={{ position: 'absolute', right: 0, bottom: 'calc(100% + 6px)', zIndex: 30, width: 250, background: '#ffffff', border: '1px solid #d0d5dd', borderRadius: 10, boxShadow: '0 8px 24px rgba(15,23,42,0.18)', padding: 12, display: 'flex', flexDirection: 'column', gap: 10 }}
+                  >
+                    <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: '0.04em', color: '#64748b' }}>WHAT THE LOCK SHOWS</div>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: '#0f172a', cursor: 'pointer' }} htmlFor="lock-show-name">
+                      <input id="lock-show-name" type="checkbox" checked={lockStyle.showName} onChange={(e) => onLockStyleChange({ ...lockStyle, showName: e.target.checked })} />
+                      Player name
+                    </label>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: '#0f172a', cursor: 'pointer' }} htmlFor="lock-show-action">
+                      <input id="lock-show-action" type="checkbox" checked={lockStyle.showAction} onChange={(e) => onLockStyleChange({ ...lockStyle, showAction: e.target.checked })} />
+                      Name of the move
+                    </label>
+                    <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: '0.04em', color: '#64748b' }}>RING COLOR</div>
+                    <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                      {LOCK_COLOR_IDS.map((id) => (
+                        <button
+                          key={id}
+                          type="button"
+                          title={LOCK_COLORS[id].label}
+                          aria-label={LOCK_COLORS[id].label}
+                          aria-pressed={lockStyle.color === id}
+                          onClick={() => onLockStyleChange({ ...lockStyle, color: id })}
+                          style={{ width: 26, height: 26, borderRadius: '50%', cursor: 'pointer', background: LOCK_COLORS[id].hex, border: lockStyle.color === id ? '3px solid #2563eb' : '2px solid #cbd5e1', boxSizing: 'border-box', padding: 0 }}
+                        />
+                      ))}
+                    </div>
+                    <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: '0.04em', color: '#64748b' }}>SOUND</div>
+                    <select
+                      aria-label="Sound of the lock"
+                      title="The sound when the picture locks on the player"
+                      value={lockSound}
+                      onChange={(e) => onLockSoundChange(e.target.value as LockSoundId)}
+                      style={{ ...chip, padding: '4px 6px', fontSize: 13 }}
+                    >
+                      {LOCK_SOUND_IDS.map((id) => <option key={id} value={id}>{id === 'off' ? '🔇 No sound' : `🔊 ${LOCK_SOUND_LABELS[id]}`}</option>)}
+                    </select>
+                  </div>
+                )}
+              </span>
             </span>
             <button
               type="button"

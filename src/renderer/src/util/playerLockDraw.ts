@@ -6,6 +6,7 @@ import type { SpotMark } from '../types';
 import { cardPosition, type LockState } from './playerLock';
 
 export const LOCK_COLOR = '#d2ff00';
+const LOCK_COLOR_BLACK = '#0a0d12';
 const HEBREW = /[֐-׿]/;
 
 export interface LockDrawOptions {
@@ -16,6 +17,8 @@ export interface LockDrawOptions {
   label: string,
   /** The action, big at the top of the picture (empty = none) */
   title?: string,
+  /** Color of the ring, its marks and the shadow of the card */
+  color?: string,
   state: LockState,
   /** Seconds into the freeze, only to turn the dashed ring */
   time?: number,
@@ -28,8 +31,8 @@ export function ringRadiusPx(spot: SpotMark, height: number, ringScale = 1): num
   return spot.size * height * ringScale;
 }
 
-function drawCard(ctx: CanvasRenderingContext2D, { label, cx, cy, r, width, k, opacity, draw }: {
-  label: string, cx: number, cy: number, r: number, width: number, k: number, opacity: number, draw: number,
+function drawCard(ctx: CanvasRenderingContext2D, { label, cx, cy, r, width, k, opacity, draw, color }: {
+  label: string, cx: number, cy: number, r: number, width: number, k: number, opacity: number, draw: number, color: string,
 }) {
   const hebrew = HEBREW.test(label);
   const text = hebrew ? label : label.toUpperCase();
@@ -52,7 +55,7 @@ function drawCard(ctx: CanvasRenderingContext2D, { label, cx, cy, r, width, k, o
   ctx.scale(scale, scale);
   ctx.transform(1, 0, Math.tan((8 * Math.PI) / 180), 1, 0, 0); // the card leans, like the stamp in KICKO
   // Hard shadow in the ring color, then the white card
-  ctx.fillStyle = LOCK_COLOR;
+  ctx.fillStyle = color;
   ctx.fillRect(-cardW / 2 + 7 * k, -cardH / 2 + 7 * k, cardW, cardH);
   ctx.fillStyle = '#ffffff';
   ctx.fillRect(-cardW / 2, -cardH / 2, cardW, cardH);
@@ -91,7 +94,7 @@ function drawTitle(ctx: CanvasRenderingContext2D, { title, width, height, k, opa
  * Draws the lock (not the picture): call it on a transparent canvas for the preview, or after drawing
  * the frozen picture for the export. The canvas is `width` x `height` pixels.
  */
-export function drawPlayerLock(ctx: CanvasRenderingContext2D, { width, height, spot, label, title = '', state, time = 0 }: LockDrawOptions) {
+export function drawPlayerLock(ctx: CanvasRenderingContext2D, { width, height, spot, label, title = '', color = LOCK_COLOR, state, time = 0 }: LockDrawOptions) {
   const k = scaleFor(height);
   const cx = spot.x * width;
   const cy = spot.y * height;
@@ -111,9 +114,9 @@ export function drawPlayerLock(ctx: CanvasRenderingContext2D, { width, height, s
   // The ring
   ctx.lineCap = 'round';
   ctx.globalAlpha = alpha;
-  ctx.shadowColor = LOCK_COLOR;
+  ctx.shadowColor = color === LOCK_COLOR_BLACK ? 'rgba(255,255,255,0.9)' : color; // a black ring gets a light glow so it shows on the dark pitch
   ctx.shadowBlur = 16 * k;
-  ctx.strokeStyle = LOCK_COLOR;
+  ctx.strokeStyle = color;
   ctx.lineWidth = 10 * k;
   ctx.beginPath();
   ctx.arc(cx, cy, r, 0, Math.PI * 2);
@@ -135,7 +138,7 @@ export function drawPlayerLock(ctx: CanvasRenderingContext2D, { width, height, s
 
   // Four marks on the ring, like a target
   ctx.globalAlpha = alpha;
-  ctx.strokeStyle = LOCK_COLOR;
+  ctx.strokeStyle = color;
   ctx.lineWidth = 8 * k;
   for (let i = 0; i < 4; i += 1) {
     const a = (i * Math.PI) / 2;
@@ -147,7 +150,7 @@ export function drawPlayerLock(ctx: CanvasRenderingContext2D, { width, height, s
   ctx.restore();
 
   if (title.trim().length > 0) drawTitle(ctx, { title: title.trim(), width, height, k, opacity: alpha });
-  if (label.trim().length > 0) drawCard(ctx, { label: label.trim(), cx, cy, r, width, k, opacity: alpha, draw: state.draw });
+  if (label.trim().length > 0) drawCard(ctx, { label: label.trim(), cx, cy, r, width, k, opacity: alpha, draw: state.draw, color });
 }
 
 /** Draws the frozen picture zoomed around the ring, then the lock on top: one frame of the freeze */

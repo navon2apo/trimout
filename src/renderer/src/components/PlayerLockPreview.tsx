@@ -11,6 +11,8 @@ interface Props {
   label: string,
   /** The action, shown big at the top */
   title: string,
+  /** Color of the ring */
+  color: string,
   /** The view that is on screen (the ring is drawn where the player is in it) */
   view: ViewRect,
   sound: LockSoundId,
@@ -23,7 +25,7 @@ interface Props {
  * The freeze while a clip plays: the ring closes in, the picture glides closer, a short sound,
  * and after one and a half seconds the clip goes on. Same look and timing as the export.
  */
-function PlayerLockPreview({ videoRef, spot, label, title, view, sound, onFrame, onDone }: Props) {
+function PlayerLockPreview({ videoRef, spot, label, title, color, view, sound, onFrame, onDone }: Props) {
   const rootRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [box, setBox] = useState<{ x: number, y: number, w: number, h: number } | null>(null);
@@ -65,7 +67,7 @@ function PlayerLockPreview({ videoRef, spot, label, title, view, sound, onFrame,
       const elapsed = (now - start) / 1000;
       const state = lockStateAt(elapsed);
       ctx.clearRect(0, 0, canvas.width, canvas.height);
-      drawPlayerLock(ctx, { width: box.w, height: box.h, spot: spotOnScreen(spot, view), label, title, state, time: elapsed });
+      drawPlayerLock(ctx, { width: box.w, height: box.h, spot: spotOnScreen(spot, view), label, title, color, state, time: elapsed });
       onFrameRef.current(state);
       if (elapsed >= FREEZE_SECONDS) {
         if (!finished) { finished = true; onDoneRef.current(); }
@@ -75,7 +77,7 @@ function PlayerLockPreview({ videoRef, spot, label, title, view, sound, onFrame,
     };
     raf = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(raf);
-  }, [box, spot, label, title, sound, view]);
+  }, [box, spot, label, title, color, sound, view]);
 
   return (
     <div ref={rootRef} style={{ position: 'absolute', inset: 0, pointerEvents: 'none' }}>

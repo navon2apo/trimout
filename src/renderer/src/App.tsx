@@ -25,7 +25,7 @@ import ZoomMotionPanel from './components/ZoomMotionPanel';
 import ZoomRectOverlay from './components/ZoomRectOverlay';
 import PlayerLockOverlay from './components/PlayerLockOverlay';
 import PlayerLockPreview from './components/PlayerLockPreview';
-import { clampSpot, DEFAULT_LOCK_SOUND, DEFAULT_SPOT_SIZE, isAtSpot, isLockSoundId, lockStartView, lockViewRect, type LockSoundId, type ViewRect } from './util/playerLock';
+import { clampSpot, DEFAULT_LOCK_SOUND, DEFAULT_LOCK_STYLE, DEFAULT_SPOT_SIZE, isAtSpot, isLockSoundId, LOCK_COLORS, lockStartView, lockViewRect, parseLockStyle, type LockSoundId, type LockStyle, type ViewRect } from './util/playerLock';
 import playLockSound from './util/playerLockSound';
 import { ensureLockFonts } from './util/playerLockDraw';
 import useWaveform from './hooks/useWaveform';
@@ -573,6 +573,18 @@ function App() {
   useEffect(() => {
     ensureLockFonts().then(() => undefined, () => undefined);
   }, []);
+  // What the lock shows (player name, move name) and the ring color; remembered on this computer
+  const [lockStyle, setLockStyleState] = useState<LockStyle>(() => {
+    try {
+      return parseLockStyle(window.localStorage.getItem('trimout.lockStyle'));
+    } catch {
+      return DEFAULT_LOCK_STYLE;
+    }
+  });
+  const handleLockStyleChange = useCallback((style: LockStyle) => {
+    setLockStyleState(style);
+    try { window.localStorage.setItem('trimout.lockStyle', JSON.stringify(style)); } catch { /* not remembered, still works */ }
+  }, []);
   const handleLockSoundChange = useCallback((id: LockSoundId) => {
     setLockSound(id);
     try { window.localStorage.setItem('trimout.lockSound', id); } catch { /* not remembered, still works */ }
@@ -583,6 +595,8 @@ function App() {
   // The action of the clip, big at the top while it is frozen (the name the user typed, or the ready-made action)
   const lockTitle = zoomSeg?.actionLabel
     ?? (zoomSeg?.actionType != null && zoomSeg.actionType !== 'free' && zoomSeg.actionType !== 'custom' ? getActionLabel(zoomSeg.actionType) : '');
+  const lockLabelShown = lockStyle.showName ? playerName : '';
+  const lockTitleShown = lockStyle.showAction ? lockTitle : '';
   const lockOverlayVisible = lockHold == null && playheadInsideClip && !playing && ((lockSpot == null && lockPlacingKey === zoomClipKey) || isAtSpot(lockSpot, playerTime, detectedFps ?? 30));
 
   // The picture shows what the selected clip will export: its zoom at the clip start, or the whole frame.
@@ -3972,8 +3986,9 @@ function App() {
                       videoRef={videoRef}
                       spot={lockHold.spot}
                       view={lockHold.view}
-                      label={playerName}
-                      title={lockTitle}
+                      label={lockLabelShown}
+                      title={lockTitleShown}
+                      color={LOCK_COLORS[lockStyle.color].hex}
                       sound={lockSound}
                       onFrame={handleLockHoldFrame}
                       onDone={handleLockHoldDone}
@@ -3984,8 +3999,9 @@ function App() {
                     <PlayerLockOverlay
                       videoRef={videoRef}
                       spot={lockSpot}
-                      label={playerName}
-                      title={lockTitle}
+                      label={lockLabelShown}
+                      title={lockTitleShown}
+                      color={LOCK_COLORS[lockStyle.color].hex}
                       onPlace={handleLockPlace}
                       onChange={handleLockChange}
                     />
@@ -4428,6 +4444,8 @@ function App() {
                     onLockClear={handleLockClear}
                     lockSound={lockSound}
                     onLockSoundChange={handleLockSoundChange}
+                    lockStyle={lockStyle}
+                    onLockStyleChange={handleLockStyleChange}
                     scale={videoZoom.view.scale}
                     wheelZoom={videoZoom.wheelZoom}
                     onToggleWheelZoom={() => videoZoom.setWheelZoom((v) => !v)}

@@ -1,7 +1,7 @@
 // eslint-disable-next-line import/no-extraneous-dependencies
 import { describe, expect, it } from 'vitest';
 
-import { clampSpot, DEFAULT_SPOT_SIZE, FREEZE_SECONDS, freezeFrameCount, isAtSpot, LOCK_ZOOM, lockStartView, lockStateAt, lockViewRect, MAX_SPOT_SIZE, MIN_SPOT_SIZE, spotOnScreen } from './playerLock';
+import { clampSpot, DEFAULT_SPOT_SIZE, FREEZE_SECONDS, freezeFrameCount, isAtSpot, LOCK_ZOOM, lockStartView, lockStateAt, lockViewRect, MAX_SPOT_SIZE, MIN_SPOT_SIZE, spotOnScreen, parseLockStyle, LOCK_COLOR_IDS } from './playerLock';
 
 describe('player lock look', () => {
   it('lasts one and a half seconds, which is 45 frames at 30 fps', () => {
@@ -81,5 +81,21 @@ describe('zoom from the view on screen', () => {
     const onScreen = spotOnScreen(spot, { x: 0.25, y: 0.25, w: 0.5, h: 0.5 });
     expect(onScreen.x).toBeCloseTo(0.5, 5);
     expect(onScreen.size).toBeCloseTo(0.16, 5);
+  });
+});
+
+describe('lock style', () => {
+  it('shows the name and the move in lime by default', () => {
+    expect(parseLockStyle(null)).toEqual({ showName: true, showAction: true, color: 'lime' });
+  });
+
+  it('reads a saved style, and ignores anything wrong in it', () => {
+    expect(parseLockStyle(JSON.stringify({ showName: false, showAction: true, color: 'blue' }))).toEqual({ showName: false, showAction: true, color: 'blue' });
+    expect(parseLockStyle(JSON.stringify({ showName: 'no', color: 'purple' }))).toEqual({ showName: true, showAction: true, color: 'lime' });
+    expect(parseLockStyle('not json')).toEqual({ showName: true, showAction: true, color: 'lime' });
+  });
+
+  it('offers white, yellow, red, green, blue and black, plus the lime default', () => {
+    expect(LOCK_COLOR_IDS).toEqual(['lime', 'white', 'yellow', 'red', 'green', 'blue', 'black']);
   });
 });

@@ -157,3 +157,42 @@ export const LOCK_SOUNDS: Record<Exclude<LockSoundId, 'off'>, { volume: number, 
 };
 
 export const isLockSoundId = (value: unknown): value is LockSoundId => typeof value === 'string' && value in LOCK_SOUND_LABELS;
+
+/** The colors the ring can have (lime is the KICKO look and the default) */
+export const LOCK_COLORS = {
+  lime: { label: 'Lime', hex: '#d2ff00' },
+  white: { label: 'White', hex: '#ffffff' },
+  yellow: { label: 'Yellow', hex: '#ffd60a' },
+  red: { label: 'Red', hex: '#ff2d3d' },
+  green: { label: 'Green', hex: '#22c55e' },
+  blue: { label: 'Blue', hex: '#2f7bff' },
+  black: { label: 'Black', hex: '#0a0d12' },
+} as const;
+export type LockColorId = keyof typeof LOCK_COLORS;
+export const LOCK_COLOR_IDS = Object.keys(LOCK_COLORS) as LockColorId[];
+
+/** What the lock shows and how it looks (the same for the whole export) */
+export interface LockStyle {
+  /** The player's name on the card above the ring */
+  showName: boolean,
+  /** The move (action) of the clip, big at the top */
+  showAction: boolean,
+  color: LockColorId,
+}
+
+export const DEFAULT_LOCK_STYLE: LockStyle = { showName: true, showAction: true, color: 'lime' };
+
+/** Reads a saved style; anything missing or wrong falls back to the default */
+export function parseLockStyle(raw: string | null | undefined): LockStyle {
+  if (raw == null) return DEFAULT_LOCK_STYLE;
+  try {
+    const value = JSON.parse(raw) as Partial<Record<keyof LockStyle, unknown>>;
+    return {
+      showName: typeof value.showName === 'boolean' ? value.showName : DEFAULT_LOCK_STYLE.showName,
+      showAction: typeof value.showAction === 'boolean' ? value.showAction : DEFAULT_LOCK_STYLE.showAction,
+      color: typeof value.color === 'string' && value.color in LOCK_COLORS ? value.color as LockColorId : DEFAULT_LOCK_STYLE.color,
+    };
+  } catch {
+    return DEFAULT_LOCK_STYLE;
+  }
+}
