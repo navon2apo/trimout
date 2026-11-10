@@ -4232,11 +4232,7 @@ function App() {
                     onPreset={handleZoomPreset}
                     onClear={handleClearZoomAnchors}
                     onPreview={() => handlePlayClip(currentSegIndexSafe)}
-                    playing={playing}
-                    onTogglePlay={() => togglePlay()}
-                    onSeekBy={seekRel}
-                    onRestart={() => seekAbs(zoomClip?.start ?? 0)}
-                    frameSeconds={1 / (detectedFps ?? 30)}
+                    onSeek={(t) => seekAbs(t)}
                     scale={videoZoom.view.scale}
                     wheelZoom={videoZoom.wheelZoom}
                     onToggleWheelZoom={() => videoZoom.setWheelZoom((v) => !v)}
