@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import type { PointerEvent as ReactPointerEvent } from 'react';
 import { FiPlay, FiTrash2 } from 'react-icons/fi';
-import type { ZoomAnchor } from '../types';
+import type { SpotMark, ZoomAnchor } from '../types';
 import { rectAt, rectForLevel, sortAnchors, type ZoomEase, type ZoomMotionMode } from '../util/zoomAnchors';
 
 interface Props {
@@ -23,6 +23,13 @@ interface Props {
   onPreview: () => void,
   /** Move the playhead (the strip on top of the curve works like the seek bar of a player) */
   onSeek: (seconds: number) => void,
+  /** Player lock on this clip (freeze + ring + name at one moment), if any */
+  lockSpot: SpotMark | undefined,
+  /** Waiting for the click that places the ring */
+  lockPlacing: boolean,
+  onLockStart: () => void,
+  onLockGo: () => void,
+  onLockClear: () => void,
   /** Free zoom of the picture (for looking at far parts) */
   scale: number,
   wheelZoom: boolean,
@@ -237,7 +244,7 @@ function ZoomGraph({ anchors, ease, clipStart, clipEnd, playerTime, selectedInde
  * Zoom Motion for the selected clip: a curve you edit by dragging points (when, and how close),
  * and a frame on the picture you drag to choose where the zoom looks.
  */
-function ZoomMotionPanel({ clipStart, clipEnd, playerTime, anchors, ease, selectedIndex, onSelect, onChange, onDeletePoint, onEaseChange, onPreset, onClear, onPreview, onSeek, scale, wheelZoom, onToggleWheelZoom, onZoomIn, onZoomOut, onFit, hasClip, clipButtonsVisible, onToggleClipButtons }: Props) {
+function ZoomMotionPanel({ clipStart, clipEnd, playerTime, anchors, ease, selectedIndex, onSelect, onChange, onDeletePoint, onEaseChange, onPreset, onClear, onPreview, onSeek, lockSpot, lockPlacing, onLockStart, onLockGo, onLockClear, scale, wheelZoom, onToggleWheelZoom, onZoomIn, onZoomOut, onFit, hasClip, clipButtonsVisible, onToggleClipButtons }: Props) {
   useEffect(() => {
     if (selectedIndex == null) return undefined;
     const onKeyDown = (e: KeyboardEvent) => {
@@ -273,6 +280,23 @@ function ZoomMotionPanel({ clipStart, clipEnd, playerTime, anchors, ease, select
             {selected != null && (
             <span style={{ fontSize: 11, color: '#3f6212', fontWeight: 700 }}>Drag the frame on the picture to choose where it looks · {levelOf(selected).toFixed(1)}×</span>
             )}
+            <span style={{ display: 'inline-flex', alignItems: 'center', gap: 3 }}>
+              {lockSpot == null ? (
+                <button
+                  type="button"
+                  title="Freeze the picture on this moment and mark the player with a ring and his name"
+                  onClick={onLockStart}
+                  style={{ ...chip, background: lockPlacing ? '#d2ff00' : '#ffffff', borderColor: lockPlacing ? '#84cc16' : '#d0d5dd' }}
+                >
+                  {lockPlacing ? '◎ Click on the player' : '◎ Lock player'}
+                </button>
+              ) : (
+                <>
+                  <button type="button" title="Go to the moment of the lock" onClick={onLockGo} style={{ ...chip, background: '#f7fee7', borderColor: '#84cc16' }}>◎ Lock</button>
+                  <button type="button" title="Remove the lock" aria-label="Remove the lock" onClick={onLockClear} style={chip}>✕</button>
+                </>
+              )}
+            </span>
             <button
               type="button"
               disabled={selected == null}

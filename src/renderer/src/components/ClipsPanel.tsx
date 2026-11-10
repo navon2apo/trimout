@@ -18,6 +18,8 @@ interface Seg {
   isFavorite?: boolean | undefined;
   isUncertain?: boolean | undefined;
   zoomAnchors?: { t: number, rect: { x: number, y: number, w: number, h: number } }[] | undefined;
+  /** Player lock (freeze + ring + name) */
+  spotMark?: { t: number, x: number, y: number, size: number } | undefined;
 }
 
 interface Props {
@@ -193,6 +195,14 @@ function ClipsPanel({ segments, currentSegIndex, playingClipIndex, isPlayingAll,
                 <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 4, fontSize: 11, color: '#64748b', fontVariantNumeric: 'tabular-nums' }}>
                   <span style={{ fontWeight: 700, color: '#334155', background: '#f1f5f9', borderRadius: 5, padding: '1px 6px' }}>{fmtDuration(seg.start, seg.end)}</span>
                   <span>{formatTimecode(seg.start)}</span>
+                  {seg.spotMark != null && (
+                    <span
+                      title="This clip freezes on the player with a ring and his name"
+                      style={{ fontWeight: 700, color: '#3f6212', background: '#ecfccb', borderRadius: 5, padding: '1px 6px' }}
+                    >
+                      ◎ lock
+                    </span>
+                  )}
                   {seg.zoomAnchors != null && seg.zoomAnchors.length > 0 && (
                     <span
                       title={seg.zoomAnchors.length > 1 ? 'This clip has a moving zoom — the export renders it' : 'This clip has a saved zoom — the export crops to it'}
