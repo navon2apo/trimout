@@ -2234,8 +2234,11 @@ function App() {
   const handleToggleIncluded = useCallback((index: number) => {
     const seg = cutSegments[index];
     if (seg == null) return;
-    updateSegAtIndex(index, { selected: seg.selected === false });
-  }, [cutSegments, updateSegAtIndex]);
+    const nowIncluded = seg.selected === false;
+    console.log('[eye]', index, seg.name, '->', nowIncluded ? 'in the export' : 'left out');
+    updateSegAtIndex(index, { selected: nowIncluded });
+    showNotification({ text: nowIncluded ? 'Clip is in the export' : 'Clip is left out of the export' });
+  }, [cutSegments, updateSegAtIndex, showNotification]);
 
   // Play a single clip from start to end then stop.
   // Uses clipStopAtRef (a plain ref) to stop at clip.end — avoids the stale-selectedSegments bug.
