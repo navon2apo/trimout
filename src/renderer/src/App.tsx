@@ -1581,6 +1581,13 @@ function App() {
       return;
     }
 
+    // Every clip has a closed eye: nothing to render (without this the export would fall back to all clips)
+    const userClipsNow = getUserClips(cutSegments);
+    if (userClipsNow.length > 0 && userClipsNow.every((clip) => clip.selected === false)) {
+      errorToast('All the clips are left out of the export. Open the eye on at least one clip.');
+      return;
+    }
+
     setStreamsSelectorShown(false);
     setExportConfirmOpen(false);
 

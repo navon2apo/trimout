@@ -172,7 +172,7 @@ function ClipsPanel({ segments, currentSegIndex, playingClipIndex, isPlayingAll,
             >
               <div style={{ width: isPlaying ? 9 : 5, flexShrink: 0, background: color }} />
 
-              <div style={{ flex: 1, minWidth: 0, padding: '9px 8px 9px 10px' }}>
+              <div style={{ flex: 1, minWidth: 0, padding: '10px 10px 8px 12px', display: 'flex', flexDirection: 'column', gap: 7 }}>
                 {editingIndex === i ? (
                   <input
                     // eslint-disable-next-line jsx-a11y/no-autofocus
@@ -197,13 +197,12 @@ function ClipsPanel({ segments, currentSegIndex, playingClipIndex, isPlayingAll,
                     dir="auto"
                     title="Click to rename"
                     onClick={(e) => { e.stopPropagation(); setDraftName(seg.name ?? displayName); setEditingIndex(i); }}
-                    style={{ fontSize: 13, fontWeight: 650, color: '#0f172a', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', cursor: 'text' }}
+                    style={{ fontSize: 14, fontWeight: 650, lineHeight: 1.25, color: '#0f172a', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', cursor: 'text', textDecoration: included ? 'none' : 'line-through' }}
                   >
-                    {isPlaying && <span style={{ marginRight: 6, fontSize: 9, fontWeight: 800, letterSpacing: '0.06em', color: '#0f172a', background: '#d2ff00', borderRadius: 4, padding: '1px 5px' }}>NOW PLAYING</span>}
                     {displayName}
                   </div>
                 )}
-                <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 4, fontSize: 11, color: '#64748b', fontVariantNumeric: 'tabular-nums' }}>
+                <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '5px 6px', fontSize: 11, color: '#64748b', fontVariantNumeric: 'tabular-nums' }}>
                   <span style={{ fontWeight: 700, color: '#334155', background: '#f1f5f9', borderRadius: 5, padding: '1px 6px' }}>{fmtDuration(seg.start, seg.end)}</span>
                   <span>{formatTimecode(seg.start)}</span>
                   {seg.spotMark != null && (
@@ -225,47 +224,52 @@ function ClipsPanel({ segments, currentSegIndex, playingClipIndex, isPlayingAll,
                     </span>
                   )}
                 </div>
-              </div>
 
-              <div style={{ display: 'flex', alignItems: 'center', gap: 2, paddingRight: 8 }}>
-                <button
-                  type="button"
-                  aria-label={included ? 'In the export: click to leave out' : 'Left out of the export: click to include'}
-                  title={included ? 'In the export (click to leave this clip out)' : 'Left out of the export (click to include it)'}
-                  onClick={(e) => { e.stopPropagation(); onToggleIncluded(i); }}
-                  style={{ ...iconButton, background: 'transparent', fontSize: 16, color: included ? '#334155' : '#94a3b8' }}
-                >
-                  {included ? <FiEye /> : <FiEyeOff />}
-                </button>
-                <button
-                  type="button"
-                  aria-label={isPlaying ? 'Pause clip' : 'Play clip'}
-                  title={isPlaying ? 'Pause' : 'Play clip'}
-                  onClick={(e) => { e.stopPropagation(); onPlayClip(i); }}
-                  style={{ ...iconButton, background: isPlaying ? '#d2ff00' : '#0f172a', color: isPlaying ? '#0f172a' : '#d2ff00' }}
-                >
-                  {isPlaying ? <FiPause /> : <FiPlay />}
-                </button>
-                <button
-                  type="button"
-                  aria-label={seg.isFavorite ? 'Remove from favorites' : 'Mark as favorite'}
-                  title={seg.isFavorite ? 'Remove from favorites' : 'Mark as favorite'}
-                  onClick={(e) => { e.stopPropagation(); onToggleFavorite(i); }}
-                  style={{ ...iconButton, background: 'transparent', fontSize: 16, color: seg.isFavorite ? '#f59e0b' : '#cbd5e1' }}
-                >
-                  ★
-                </button>
-                <button
-                  type="button"
-                  aria-label="Delete clip"
-                  title="Delete clip"
-                  onClick={(e) => { e.stopPropagation(); onDeleteSegment(i); }}
-                  onMouseEnter={(e) => { e.currentTarget.style.color = '#dc2626'; }}
-                  onMouseLeave={(e) => { e.currentTarget.style.color = '#94a3b8'; }}
-                  style={{ ...iconButton, background: 'transparent', color: '#94a3b8' }}
-                >
-                  <FiTrash2 />
-                </button>
+                {/* The buttons get their own row, so nothing is squeezed: play on the left, the rest on the right */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <button
+                    type="button"
+                    aria-label={isPlaying ? 'Pause clip' : 'Play clip'}
+                    title={isPlaying ? 'Pause' : 'Play clip'}
+                    onClick={(e) => { e.stopPropagation(); onPlayClip(i); }}
+                    style={{ ...iconButton, width: 32, height: 32, background: isPlaying ? '#d2ff00' : '#0f172a', color: isPlaying ? '#0f172a' : '#d2ff00' }}
+                  >
+                    {isPlaying ? <FiPause /> : <FiPlay />}
+                  </button>
+                  {isPlaying && (
+                    <span style={{ fontSize: 10, fontWeight: 800, letterSpacing: '0.06em', color: '#0f172a', background: '#d2ff00', borderRadius: 4, padding: '2px 6px', whiteSpace: 'nowrap' }}>NOW PLAYING</span>
+                  )}
+                  <span style={{ flex: 1 }} />
+                  <button
+                    type="button"
+                    aria-label={included ? 'In the export: click to leave out' : 'Left out of the export: click to include'}
+                    title={included ? 'In the export (click to leave this clip out)' : 'Left out of the export (click to include it)'}
+                    onClick={(e) => { e.stopPropagation(); onToggleIncluded(i); }}
+                    style={{ ...iconButton, width: 32, height: 32, background: included ? 'transparent' : '#f1f5f9', fontSize: 18, color: included ? '#334155' : '#94a3b8' }}
+                  >
+                    {included ? <FiEye /> : <FiEyeOff />}
+                  </button>
+                  <button
+                    type="button"
+                    aria-label={seg.isFavorite ? 'Remove from favorites' : 'Mark as favorite'}
+                    title={seg.isFavorite ? 'Remove from favorites' : 'Mark as favorite'}
+                    onClick={(e) => { e.stopPropagation(); onToggleFavorite(i); }}
+                    style={{ ...iconButton, width: 32, height: 32, background: 'transparent', fontSize: 18, color: seg.isFavorite ? '#f59e0b' : '#cbd5e1' }}
+                  >
+                    ★
+                  </button>
+                  <button
+                    type="button"
+                    aria-label="Delete clip"
+                    title="Delete clip"
+                    onClick={(e) => { e.stopPropagation(); onDeleteSegment(i); }}
+                    onMouseEnter={(e) => { e.currentTarget.style.color = '#dc2626'; }}
+                    onMouseLeave={(e) => { e.currentTarget.style.color = '#94a3b8'; }}
+                    style={{ ...iconButton, width: 32, height: 32, background: 'transparent', color: '#94a3b8', fontSize: 15 }}
+                  >
+                    <FiTrash2 />
+                  </button>
+                </div>
               </div>
             </div>
           );
