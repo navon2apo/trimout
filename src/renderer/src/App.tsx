@@ -23,6 +23,11 @@ import useVideoZoom from './hooks/useVideoZoom';
 import { buildMotionAnchors, rectAt, sortAnchors, type ZoomMotionMode } from './util/zoomAnchors';
 import ZoomMotionPanel from './components/ZoomMotionPanel';
 import ZoomRectOverlay from './components/ZoomRectOverlay';
+import PlayerLockOverlay from './components/PlayerLockOverlay';
+import PlayerLockPreview from './components/PlayerLockPreview';
+import { clampSpot, DEFAULT_LOCK_SOUND, DEFAULT_LOCK_STYLE, DEFAULT_SPOT_SIZE, isAtSpot, isLockSoundId, LOCK_COLORS, lockSpotForClip, lockStartView, lockViewRect, parseLockStyle, type LockSoundId, type LockStyle, type ViewRect } from './util/playerLock';
+import playLockSound from './util/playerLockSound';
+import { ensureLockFonts } from './util/playerLockDraw';
 import useWaveform from './hooks/useWaveform';
 import useKeyboard from './hooks/useKeyboard';
 import useFileFormatState from './hooks/useFileFormatState';
@@ -48,9 +53,14 @@ import ClipsViewerDialog from './components/ClipsViewerDialog';
 import KickoBridgeDialog from './components/KickoBridgeDialog';
 import FinishDestinationDialog from './components/FinishDestinationDialog';
 import ExportOptions from './components/ExportOptions';
+import ClipOrderList from './components/ClipOrderList';
+import MusicOptions from './components/MusicOptions';
+import { addMusicToVideo } from './util/musicExport';
+import { cleanMusicVolume, DEFAULT_MUSIC_MODE, DEFAULT_MUSIC_VOLUME, isMusicMode, MUSIC_EXTENSIONS, type MusicMode } from './util/music';
 import type { ExportMode } from './components/ExportOptions';
 import { getNextPlayableClipIndex, getUserClips, trimClipEdge } from './util/clipTrim';
 import { compressClip, mergeWithCrossfade, mergedVideoSize, type QualityPreset, type AspectRatio, type FitMode } from './util/qualityPresets';
+import { exportPlayerLock } from './util/playerLockExport';
 import { TRANSITION_SECONDS, type ExportTransition } from './util/crossfade';
 import MediaSourcePlayer from './MediaSourcePlayer';
 import TopMenu from './TopMenu';
@@ -118,7 +128,7 @@ import { generateCutFileNames as generateCutFileNamesRaw, generateCutMergedFileN
 import { rightBarWidth, leftBarWidth, ffmpegExtractWindow, zoomMax, DEFAULT_TIMELINE_ZOOM } from './util/constants';
 import BigWaveform from './components/BigWaveform';
 
-import type { BatchFile, Chapter, CustomTagsByFile, EdlExportType, EdlFileType, EdlImportType, FfmpegCommandLog, FilesMeta, FileStats, ParamsByStreamId, PlaybackMode, SegmentBase, SegmentColorIndex, SegmentTags, StateSegment, TunerType, ZoomAnchor } from './types';
+import type { BatchFile, Chapter, CustomTagsByFile, EdlExportType, EdlFileType, EdlImportType, FfmpegCommandLog, FilesMeta, FileStats, ParamsByStreamId, PlaybackMode, SegmentBase, SegmentColorIndex, SegmentTags, SpotMark, StateSegment, TunerType, ZoomAnchor } from './types';
 import { goToTimecodeDirectArgsSchema, openFilesActionArgsSchema } from './types';
 import type { CaptureFormat, KeyboardAction, ApiActionRequest } from '../../common/types.js';
 import type { FFprobeChapter, FFprobeStream } from '../../common/ffprobe.js';
@@ -146,7 +156,7 @@ import { appName } from '../../main/common.js';
 import type { ExportedPlayInput, ProjectPlayRating, ScoutRoleId, TrimoutProject } from './projectModel';
 import { addExportBatch, createTrimoutProject, reorderProjectPlays, updateProjectPlay } from './projectModel';
 import { loadTrimoutProject, repairTrimoutProjectFiles, saveTrimoutProject } from './projectStore';
-import { SCOUT_ROLE_BY_ID, getScoutPhaseContext } from './scoutCatalog';
+import { SCOUT_ROLE_BY_ID, getActionLabel, getScoutPhaseContext } from './scoutCatalog';
 import { getSuggestedScoutPlayIds } from './scoutLogic';
 import createClipFileLabel from './clipNaming';
 
@@ -308,6 +318,9 @@ function App() {
   const [playingClipIndex, setPlayingClipIndex] = useState<number | null>(null);
   const [isPlayingAll, setIsPlayingAll] = useState(false);
   const playAllRef = useRef(false);
+  const playingClipIndexRef = useRef<number | null>(null);
+  const pausedClipRef = useRef<{ index: number } | null>(null);
+  playingClipIndexRef.current = playingClipIndex;
 
   const [ffmpegCommandLog, setFfmpegCommandLog] = useState<FfmpegCommandLog>([]);
   const [rotation, setRotation] = useState(360);
@@ -526,7 +539,7 @@ function App() {
   }, [isFileOpened]);
 
   const {
-    cutSegments, cutSegmentsHistory, createSegmentsFromKeyframes, shuffleSegments, detectBlackScenes, detectSilentScenes, detectSceneChanges, removeSegment, invertAllSegments, fillSegmentsGaps, combineOverlappingSegments, combineSelectedSegments, shiftAllSegmentTimes, alignSegmentTimesToKeyframes, reorderSegsByStartTime, addSegment, addClip, setCutStart, setCutEnd, labelSegment, splitCurrentSegment, focusSegmentAtCursor, selectSegmentsAtCursor, createNumSegments, createFixedDurationSegments, createFixedByteSizedSegments, createRandomSegments, haveInvalidSegs, currentSegIndexSafe, currentCutSeg, inverseCutSegments, clearSegments, clearSegColorCounter, loadCutSegments, setCutTime, setCurrentSegIndex, labelSelectedSegments, deselectAllSegments, selectAllSegments, selectOnlyCurrentSegment, toggleCurrentSegmentSelected, invertSelectedSegments, removeSelectedSegments, selectSegmentsByLabel, selectSegmentsByExpr, selectAllMarkers, mutateSegmentsByExpr, selectedSegments, segmentsOrInverse, segmentsToExport, duplicateCurrentSegment, updateSegAtIndex, findSegmentsAtCursor, maybeCreateFullLengthSegment, currentCutSegOrWholeTimeline, segColorCounter,
+    cutSegments, cutSegmentsHistory, createSegmentsFromKeyframes, shuffleSegments, detectBlackScenes, detectSilentScenes, detectSceneChanges, removeSegment, invertAllSegments, fillSegmentsGaps, combineOverlappingSegments, combineSelectedSegments, shiftAllSegmentTimes, alignSegmentTimesToKeyframes, reorderSegsByStartTime, reorderSegments, addSegment, addClip, setCutStart, setCutEnd, labelSegment, splitCurrentSegment, focusSegmentAtCursor, selectSegmentsAtCursor, createNumSegments, createFixedDurationSegments, createFixedByteSizedSegments, createRandomSegments, haveInvalidSegs, currentSegIndexSafe, currentCutSeg, inverseCutSegments, clearSegments, clearSegColorCounter, loadCutSegments, setCutTime, setCurrentSegIndex, labelSelectedSegments, deselectAllSegments, selectAllSegments, selectOnlyCurrentSegment, toggleCurrentSegmentSelected, invertSelectedSegments, removeSelectedSegments, selectSegmentsByLabel, selectSegmentsByExpr, selectAllMarkers, mutateSegmentsByExpr, selectedSegments, segmentsOrInverse, segmentsToExport, duplicateCurrentSegment, updateSegAtIndex, findSegmentsAtCursor, maybeCreateFullLengthSegment, currentCutSegOrWholeTimeline, segColorCounter,
   } = useSegments({ filePath, workingRef, setWorking, setProgress, videoStream: activeVideoStream, fileDuration, getRelevantTime, maxLabelLength, checkFileOpened, invertCutSegments, segmentsToChaptersOnly, timecodePlaceholder, parseTimecode, appendFfmpegCommandLog, fileDurationNonZero, mainFileMeta: mainFileMeta?.ffprobeMeta, seekAbs, activeVideoStreamIndex, activeAudioStreamIndexes, handleError, showGenericDialog, simpleMode, ffmpegHwaccel });
 
   // ─── Picture zoom (view only until saved to a clip) ─────────────────────────
@@ -546,6 +559,59 @@ function App() {
   const playheadInsideClip = zoomSeg != null && !zoomSeg.initial && zoomSeg.end != null && playerTime != null && playerTime >= zoomSeg.start && playerTime <= zoomSeg.end;
   const zoomEditingIndex = playheadInsideClip && zoomSelection != null && zoomSelection.clipKey === zoomClipKey ? zoomSelection.index : null;
 
+  // Player lock: the ring on the player. It shows while waiting for the click that places it, and on its own frame.
+  const [lockPlacingKey, setLockPlacingKey] = useState<string | null>(null);
+  // While a clip plays and reaches its lock, the picture freezes for a moment (like the export does)
+  const [lockHold, setLockHold] = useState<{ spot: SpotMark, view: ViewRect } | null>(null);
+  // The player stays "playing" during the freeze, so the play button and the clip card do not flicker
+  const lockHoldRef = useRef<{ spot: SpotMark, view: ViewRect } | null>(null);
+  // Which sound the lock makes (or none); remembered on this computer
+  const [lockSound, setLockSound] = useState<LockSoundId>(() => {
+    try {
+      const saved = window.localStorage.getItem('trimout.lockSound');
+      return isLockSoundId(saved) ? saved : DEFAULT_LOCK_SOUND;
+    } catch {
+      return DEFAULT_LOCK_SOUND;
+    }
+  });
+  // Load the font of the lock text early, so the first freeze already shows it
+  useEffect(() => {
+    ensureLockFonts().then(() => undefined, () => undefined);
+  }, []);
+  // Music for the merged video (the song is chosen again each time; the volume and the way it is used are remembered)
+  const [music, setMusic] = useState<{ path: string, name: string } | undefined>();
+  const [musicVolume, setMusicVolumeState] = useState<number>(() => {
+    try { return cleanMusicVolume(Number(window.localStorage.getItem('trimout.musicVolume') ?? DEFAULT_MUSIC_VOLUME)); } catch { return DEFAULT_MUSIC_VOLUME; }
+  });
+  const [musicMode, setMusicModeState] = useState<MusicMode>(() => {
+    try { const saved = window.localStorage.getItem('trimout.musicMode'); return isMusicMode(saved) ? saved : DEFAULT_MUSIC_MODE; } catch { return DEFAULT_MUSIC_MODE; }
+  });
+  // What the lock shows (player name, move name) and the ring color; remembered on this computer
+  const [lockStyle, setLockStyleState] = useState<LockStyle>(() => {
+    try {
+      return parseLockStyle(window.localStorage.getItem('trimout.lockStyle'));
+    } catch {
+      return DEFAULT_LOCK_STYLE;
+    }
+  });
+  const handleLockStyleChange = useCallback((style: LockStyle) => {
+    setLockStyleState(style);
+    try { window.localStorage.setItem('trimout.lockStyle', JSON.stringify(style)); } catch { /* not remembered, still works */ }
+  }, []);
+  const handleLockSoundChange = useCallback((id: LockSoundId) => {
+    setLockSound(id);
+    try { window.localStorage.setItem('trimout.lockSound', id); } catch { /* not remembered, still works */ }
+    playLockSound(id); // so it can be heard right away
+  }, []);
+  const lockResumedRef = useRef(false);
+  const lockSpot = zoomSeg?.spotMark;
+  // The action of the clip, big at the top while it is frozen (the name the user typed, or the ready-made action)
+  const lockTitle = zoomSeg?.actionLabel
+    ?? (zoomSeg?.actionType != null && zoomSeg.actionType !== 'free' && zoomSeg.actionType !== 'custom' ? getActionLabel(zoomSeg.actionType) : '');
+  const lockLabelShown = lockStyle.showName ? playerName : '';
+  const lockTitleShown = lockStyle.showAction ? lockTitle : '';
+  const lockOverlayVisible = lockHold == null && playheadInsideClip && !playing && ((lockSpot == null && lockPlacingKey === zoomClipKey) || isAtSpot(lockSpot, playerTime, detectedFps ?? 30));
+
   // The picture shows what the selected clip will export: its zoom at the clip start, or the whole frame.
   // Only reacts to the selection / file changing, so manual zooming is never overridden.
   useEffect(() => {
@@ -556,14 +622,14 @@ function App() {
   const currentClipZoomAnchors = cutSegments[currentSegIndexSafe]?.zoomAnchors;
   // Paused: scrubbing inside a clip with several anchors shows the zoom at that moment
   useEffect(() => {
-    if (playing || playerTime == null) return;
-    // Editing a point: show the whole picture so the frame can be dragged over it
-    if (zoomEditingIndex != null) { applyZoomRect(null); return; }
+    if (playing || playerTime == null || lockHold != null) return;
+    // Editing a point or the player lock: show the whole picture so the frame / ring can be dragged over it
+    if (zoomEditingIndex != null || lockOverlayVisible) { applyZoomRect(null); return; }
     const seg = cutSegmentsForZoomRef.current[currentSegIndexSafe];
     if (seg?.zoomAnchors == null || seg.zoomAnchors.length === 0 || seg.end == null) return;
     if (playerTime < seg.start || playerTime > seg.end) return;
     applyZoomRect(rectAt(seg.zoomAnchors, playerTime, seg.zoomEase));
-  }, [playerTime, playing, currentSegIndexSafe, applyZoomRect, zoomEditingIndex, currentClipZoomAnchors]);
+  }, [playerTime, playing, currentSegIndexSafe, applyZoomRect, zoomEditingIndex, currentClipZoomAnchors, lockOverlayVisible, lockHold]);
 
   // Playing: the picture glides along the anchors, frame by frame (no React render per frame)
   useEffect(() => {
@@ -573,7 +639,8 @@ function App() {
     const tick = (now: number) => {
       const seg = cutSegmentsForZoomRef.current[currentSegIndexSafe];
       const video = videoRef.current;
-      if (video != null && seg?.zoomAnchors != null && seg.zoomAnchors.length > 0 && seg.end != null && video.currentTime >= seg.start && video.currentTime <= seg.end) {
+      // During the player lock freeze the lock moves the picture
+      if (lockHoldRef.current == null && video != null && seg?.zoomAnchors != null && seg.zoomAnchors.length > 0 && seg.end != null && video.currentTime >= seg.start && video.currentTime <= seg.end) {
         applyZoomRectFast(rectAt(seg.zoomAnchors, video.currentTime, seg.zoomEase));
         if (now - lastSync > 300) { lastSync = now; syncZoomState(); }
       }
@@ -632,6 +699,87 @@ function App() {
     const sorted = sortAnchors(seg.zoomAnchors);
     setClipZoomAnchors(sorted.map((a, i) => (i === zoomEditingIndex ? { ...a, rect } : a)));
   }, [cutSegments, currentSegIndexSafe, zoomEditingIndex, setClipZoomAnchors]);
+
+  // Player lock: start (wait for the click on the player), place, adjust, jump to it, remove
+  const handleLockStart = useCallback(() => {
+    pause();
+    setLockPlacingKey(zoomClipKey);
+  }, [pause, zoomClipKey]);
+
+  const handleLockPlace = useCallback((x: number, y: number) => {
+    const fps = detectedFps ?? 30;
+    const at = Math.round((playerTime ?? getRelevantTime()) * fps) / fps;
+    updateSegAtIndex(currentSegIndexSafe, { spotMark: clampSpot({ t: at, x, y, size: DEFAULT_SPOT_SIZE }) });
+    setLockPlacingKey(null);
+  }, [detectedFps, playerTime, getRelevantTime, updateSegAtIndex, currentSegIndexSafe]);
+
+  const handleLockChange = useCallback((spot: { t: number, x: number, y: number, size: number }) => {
+    updateSegAtIndex(currentSegIndexSafe, { spotMark: spot });
+  }, [updateSegAtIndex, currentSegIndexSafe]);
+
+  const handleLockGo = useCallback(() => {
+    const seg = cutSegments[currentSegIndexSafe];
+    if (seg?.spotMark == null) return;
+    pause();
+    seekAbs(seg.spotMark.t);
+  }, [cutSegments, currentSegIndexSafe, pause, seekAbs]);
+
+  const handleLockClear = useCallback(() => {
+    setLockPlacingKey(null);
+    updateSegAtIndex(currentSegIndexSafe, { spotMark: undefined });
+  }, [updateSegAtIndex, currentSegIndexSafe]);
+
+  // Playing a clip that has a lock: when it reaches the marked frame, hold the picture, then go on
+  useEffect(() => {
+    if (!playing || lockHold != null) return undefined;
+    const fps = detectedFps ?? 30;
+    let raf = 0;
+    let prev: number | null = videoRef.current?.currentTime ?? null;
+    // Right after a freeze the clip goes on from the very same frame: that must not freeze it again
+    let first = !lockResumedRef.current;
+    lockResumedRef.current = false;
+    const tick = () => {
+      const video = videoRef.current;
+      const seg = cutSegmentsForZoomRef.current[currentSegIndexSafe];
+      const spot = seg?.spotMark;
+      if (video != null && spot != null && seg != null && seg.end != null && spot.t >= seg.start && spot.t <= seg.end) {
+        const cur = video.currentTime;
+        const crossed = prev != null && prev < spot.t && cur >= spot.t;
+        const startedOnIt = first && Math.abs(cur - spot.t) <= 1.5 / fps;
+        if (crossed || startedOnIt) {
+          // Hold the picture without telling the app that playback stopped (only the video element is paused)
+          // The zoom goes in from the view on screen right now and comes back to it
+          const hold = { spot, view: lockStartView(spot, getVisibleZoomRect()) };
+          lockHoldRef.current = hold;
+          video.pause();
+          seekAbs(spot.t);
+          setLockHold(hold);
+          return;
+        }
+        prev = cur;
+      }
+      first = false;
+      raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf);
+  }, [playing, lockHold, currentSegIndexSafe, detectedFps, videoRef, seekAbs, getVisibleZoomRect]);
+
+  const handleLockHoldFrame = useCallback((state: { zoom: number }) => {
+    const hold = lockHoldRef.current;
+    if (hold != null) applyZoomRectFast(lockViewRect(hold.spot, hold.view, state.zoom));
+  }, [applyZoomRectFast]);
+
+  const handleLockHoldDone = useCallback(() => {
+    const hold = lockHoldRef.current;
+    lockHoldRef.current = null;
+    setLockHold(null);
+    syncZoomState();
+    // Back to exactly the view it started from
+    applyZoomRect(hold != null && hold.view.w < 1 ? hold.view : null);
+    lockResumedRef.current = true;
+    videoRef.current?.play().catch((err) => console.error('Could not continue after the lock', err));
+  }, [applyZoomRect, syncZoomState, videoRef]);
 
   const handleClearZoomAnchors = useCallback(() => {
     setZoomSelection(null);
@@ -1460,6 +1608,13 @@ function App() {
       return;
     }
 
+    // Every clip has a closed eye: nothing to render (without this the export would fall back to all clips)
+    const userClipsNow = getUserClips(cutSegments);
+    if (userClipsNow.length > 0 && userClipsNow.every((clip) => clip.selected === false)) {
+      errorToast('All the clips are left out of the export. Open the eye on at least one clip.');
+      return;
+    }
+
     setStreamsSelectorShown(false);
     setExportConfirmOpen(false);
 
@@ -1663,13 +1818,24 @@ function App() {
           }
         });
         const hasZoom = zoomByPath.size > 0;
+        // Each separate clip file → the clip, when it has a player lock (freeze + ring + name) inside it.
+        const lockByPath = new Map<string, StateSegment>();
+        outFiles.forEach((f, idx) => {
+          const seg = cutSegments[segmentsToExport[idx]?.originalIndex ?? idx];
+          if (seg?.spotMark != null && seg.end != null && seg.spotMark.t >= seg.start && seg.spotMark.t <= seg.end) lockByPath.set(f.path, seg);
+        });
+        const hasLock = lockByPath.size > 0;
         // Blended transitions: the merged video is rebuilt from the finished clip files (so it gets their zooms too).
         const fadeSeconds = TRANSITION_SECONDS[exportTransition];
         const crossfade = fadeSeconds > 0 && mergedOutFilePath != null && existingOutFiles.length > 1;
         // Zoom changes the picture, so it also forces a re-encode (a lossless copy can't).
-        const needsCompress = qualityPreset !== 'lossless' || needsAspectChange || hasZoom;
+        // The player lock too: the clip is cut again from the source at its exact start, so the frozen moment is exact.
+        const needsCompress = qualityPreset !== 'lossless' || needsAspectChange || hasZoom || hasLock;
         if (hasZoom && mergedOutFilePath != null && !crossfade) {
           warnings.add('Saved zooms are applied to the separate clips, not to the merged video.');
+        }
+        if (hasLock && mergedOutFilePath != null && !crossfade) {
+          warnings.add('The player lock is applied to the separate clips, not to the merged video.');
         }
         const sourceWidth = activeVideoStream?.width ?? 0;
         const sourceHeight = activeVideoStream?.height ?? 0;
@@ -1721,6 +1887,14 @@ function App() {
                   if (clipZoom.anchors.length === 1 || !filePath || !sourceWidth || !sourceHeight) return { zoomRect: clipZoom.anchors[0]!.rect };
                   return { zoomMotion: { sourcePath: filePath, start: clipZoom.start, end: clipZoom.end, anchors: clipZoom.anchors, width: sourceWidth, height: sourceHeight, fps: detectedFps ?? 30, ease: clipZoom.ease } };
                 })(),
+                // A clip with a player lock is cut from the source at its exact start (moving zoom already is)
+                ...(() => {
+                  const lockSeg = lockByPath.get(losslessPath);
+                  const clipZoom = zoomByPath.get(losslessPath);
+                  if (lockSeg == null || lockSeg.end == null || !filePath) return {};
+                  if (clipZoom != null && clipZoom.anchors.length > 1 && sourceWidth && sourceHeight) return {};
+                  return { exactFrom: { sourcePath: filePath, start: lockSeg.start, end: lockSeg.end } };
+                })(),
                 appendCommandLog: appendFfmpegCommandLog,
               });
               await replaceFile(tmpPath, losslessPath);
@@ -1731,6 +1905,55 @@ function App() {
               await fsUnlinkSafe(tmpPath);
             }
           }
+        }
+
+        // 1a. Player lock: freeze + ring + name inside each marked clip (after zoom / format, so the ring lands right)
+        const addLockToClip = async (clipPath: string, lockSeg: StateSegment) => {
+          const spot = lockSeg.spotMark;
+          if (spot == null || !await fileExists(clipPath)) return;
+          const clipZoom = zoomByPath.get(clipPath);
+          const aspectDims = exportAspectRatio === 'original' ? null : mergedVideoSize(exportAspectRatio, sourceWidth, sourceHeight);
+          const ringSpot = lockSpotForClip({
+            spot,
+            anchors: clipZoom?.anchors,
+            ease: clipZoom?.ease,
+            source: { w: sourceWidth, h: sourceHeight },
+            outSize: aspectDims != null ? { w: aspectDims.width, h: aspectDims.height } : null,
+            fit: exportFitMode,
+          });
+          if (ringSpot == null) {
+            warnings.add(`The player is outside the picture of "${basename(clipPath)}" after the zoom or format, so it has no lock.`);
+            return;
+          }
+          const playerLabel = (lockSeg.playerName ?? playerName).trim();
+          const moveTitle = lockSeg.actionLabel ?? (lockSeg.actionType != null && lockSeg.actionType !== 'free' && lockSeg.actionType !== 'custom' ? getActionLabel(lockSeg.actionType) : '');
+          const tmpPath = `${clipPath}.lock${pathExtname(clipPath) || '.mp4'}`;
+          try {
+            await exportPlayerLock({
+              inPath: clipPath,
+              outPath: tmpPath,
+              atSec: spot.t - lockSeg.start,
+              spot: ringSpot,
+              label: lockStyle.showName ? playerLabel : '',
+              title: lockStyle.showAction ? moveTitle : '',
+              color: LOCK_COLORS[lockStyle.color].hex,
+              sound: lockSound,
+              fps: detectedFps ?? 30,
+              preset: effectivePreset,
+              appendCommandLog: appendFfmpegCommandLog,
+            });
+            await replaceFile(tmpPath, clipPath);
+          } catch (lockErr) {
+            console.warn('Player lock failed for', clipPath, lockErr);
+            warnings.add(`Player lock failed: ${basename(clipPath)}`);
+            await fsUnlinkSafe(tmpPath);
+          }
+        };
+        if (hasLock) {
+          setWorking({ text: 'Adding the player lock' });
+          // One clip at a time (each one re-encodes the clip, so they should not compete)
+          // eslint-disable-next-line no-await-in-loop
+          for (const [clipPath, lockSeg] of lockByPath) await addLockToClip(clipPath, lockSeg);
         }
 
         // 1b. Merged video with blended transitions, from the finished clips
@@ -1762,6 +1985,31 @@ function App() {
             const toDelete = existingOutFiles.filter((f) => created.has(f.path));
             await tryDeleteFiles(toDelete.map((f) => f.path));
             for (const f of toDelete) existingOutFiles.splice(existingOutFiles.indexOf(f), 1);
+          }
+        }
+
+        // 1c. Music on the merged video (picture copied, sound replaced or mixed)
+        if (music != null) {
+          if (mergedOutFilePath == null || !await fileExists(mergedOutFilePath)) {
+            warnings.add('The music was not used: it goes on the merged video, and no merged video was made.');
+          } else {
+            setWorking({ text: 'Adding the music' });
+            const tmpPath = `${mergedOutFilePath}.music${pathExtname(mergedOutFilePath) || '.mp4'}`;
+            try {
+              await addMusicToVideo({
+                videoPath: mergedOutFilePath,
+                outPath: tmpPath,
+                musicPath: music.path,
+                volume: musicVolume,
+                mode: musicMode,
+                appendCommandLog: appendFfmpegCommandLog,
+              });
+              await replaceFile(tmpPath, mergedOutFilePath);
+            } catch (musicErr) {
+              console.warn('Adding the music failed', musicErr);
+              warnings.add('Adding the music failed, so the merged video has no music.');
+              await fsUnlinkSafe(tmpPath);
+            }
           }
         }
 
@@ -2012,7 +2260,7 @@ function App() {
       setWorking(undefined);
       setProgress(undefined);
     }
-  }, [filePath, numStreamsToCopy, haveInvalidSegs, workingRef, setWorking, segmentsToChaptersOnly, cutFileTemplateOrDefault, generateCutFileNames, cutMultiple, outputDir, customOutDir, fileFormat, fileDuration, isRotationSet, effectiveRotation, copyFileStreams, allFilesMeta, keyframeCut, segmentsToExport, shortestFlag, ffmpegExperimental, preserveMetadata, preserveMetadataOnMerge, preserveMovData, preserveChapters, movFastStart, avoidNegativeTs, customTagsByFile, paramsByStreamId, detectedFps, willMerge, enableOverwriteOutput, exportConfirmEnabled, mainFileFormat, mainStreams, exportExtraStreams, areWeCutting, simpleMode, prefersReducedMotion, cleanupChoices, hideAllNotifications, segmentsOrInverse.selected, t, cutMergedFileTemplateOrDefault, segmentsToChapters, invertCutSegments, generateCutMergedFileNames, concatCutSegments, autoDeleteMergedSegments, tryDeleteFiles, nonCopiedExtraStreams, extractStreams, askForCleanupChoices, cleanupFiles, showOsNotification, openCutFinishedDialog, handleExportFailed, setExportedRanges, qualityPreset, createExportPackage, playerName, cutSegments, quickCutDuration, appendFfmpegCommandLog, exportAspectRatio, exportFitMode, activeProject, persistActiveProject, activeVideoStream?.width, activeVideoStream?.height, exportTransition]);
+  }, [filePath, numStreamsToCopy, haveInvalidSegs, workingRef, setWorking, segmentsToChaptersOnly, cutFileTemplateOrDefault, generateCutFileNames, cutMultiple, outputDir, customOutDir, fileFormat, fileDuration, isRotationSet, effectiveRotation, copyFileStreams, allFilesMeta, keyframeCut, segmentsToExport, shortestFlag, ffmpegExperimental, preserveMetadata, preserveMetadataOnMerge, preserveMovData, preserveChapters, movFastStart, avoidNegativeTs, customTagsByFile, paramsByStreamId, detectedFps, willMerge, enableOverwriteOutput, exportConfirmEnabled, mainFileFormat, mainStreams, exportExtraStreams, areWeCutting, simpleMode, prefersReducedMotion, cleanupChoices, hideAllNotifications, segmentsOrInverse.selected, t, cutMergedFileTemplateOrDefault, segmentsToChapters, invertCutSegments, generateCutMergedFileNames, concatCutSegments, autoDeleteMergedSegments, tryDeleteFiles, nonCopiedExtraStreams, extractStreams, askForCleanupChoices, cleanupFiles, showOsNotification, openCutFinishedDialog, handleExportFailed, setExportedRanges, qualityPreset, createExportPackage, playerName, cutSegments, quickCutDuration, appendFfmpegCommandLog, exportAspectRatio, exportFitMode, activeProject, persistActiveProject, activeVideoStream?.width, activeVideoStream?.height, exportTransition, lockStyle, lockSound, music, musicVolume, musicMode]);
 
   const onExportPress = useCallback(async () => {
     if (!filePath) return;
@@ -2102,6 +2350,22 @@ function App() {
     updateSegAtIndex(index, { isFavorite: !seg.isFavorite });
   }, [cutSegments, updateSegAtIndex]);
 
+  // The eye on a clip: open = in the export (the default), closed = left out
+  const toggleIncludedAt = useCallback((index: number) => {
+    const seg = cutSegments[index];
+    if (seg == null) return undefined;
+    const nowIncluded = seg.selected === false;
+    updateSegAtIndex(index, { selected: nowIncluded });
+    return nowIncluded;
+  }, [cutSegments, updateSegAtIndex]);
+
+  // The eye on a clip card: the same, and it says what happened
+  const handleToggleIncluded = useCallback((index: number) => {
+    const nowIncluded = toggleIncludedAt(index);
+    if (nowIncluded == null) return;
+    showNotification({ text: nowIncluded ? 'Clip is in the export' : 'Clip is left out of the export' });
+  }, [toggleIncludedAt, showNotification]);
+
   // Play a single clip from start to end then stop.
   // Uses clipStopAtRef (a plain ref) to stop at clip.end — avoids the stale-selectedSegments bug.
   const handlePlayClip = useCallback((index: number) => {
@@ -2114,6 +2378,27 @@ function App() {
     setPlayingClipIndex(index);
     setTimeout(() => { play(); }, 50);
   }, [cutSegments, setCurrentSegIndex, seekAbs, play, fitTimelineToClip]);
+
+  // The play button on a clip card: play, press again to pause where it is, press again to continue.
+  // Pressing it on a clip that is not the one in progress starts that clip from its beginning.
+  const handleToggleClip = useCallback((index: number) => {
+    const seg = cutSegments[index];
+    if (seg == null || seg.end == null) return;
+    if (playingClipIndexRef.current === index) {
+      pause();
+      return;
+    }
+    const resumeAt = commandedTimeRef.current;
+    const paused = pausedClipRef.current;
+    if (paused != null && paused.index === index && resumeAt != null && resumeAt > seg.start && resumeAt < seg.end - 0.1) {
+      setCurrentSegIndex(index);
+      clipStopAtRef.current = seg.end;
+      setPlayingClipIndex(index);
+      play();
+      return;
+    }
+    handlePlayClip(index);
+  }, [commandedTimeRef, cutSegments, handlePlayClip, pause, play, setCurrentSegIndex]);
 
   // "Play all": preview every clip back to back from the original video, no export needed.
   const handlePlayAll = useCallback(() => {
@@ -2149,9 +2434,43 @@ function App() {
   // Same color as the clip's block on the timeline
   const getClipColor = useCallback((i: number) => { const seg = userClips[i]; return seg != null ? getSegColor(seg).hex() : undefined; }, [userClips]);
 
+  // The clips as the render screen shows them: in order, with their number, and whether the eye is open
+  const orderClips = useMemo(() => userClips.flatMap((seg, i) => (seg.end == null ? [] : [{
+    segId: seg.segId,
+    name: seg.name || seg.actionLabel || seg.actionType || `Clip ${i + 1}`,
+    color: getSegColor(seg).hex(),
+    seconds: seg.end - seg.start,
+    included: seg.selected !== false,
+  }])), [userClips]);
+  const handleOrderToggle = useCallback((segId: string) => {
+    const index = cutSegments.findIndex((seg) => seg.segId === segId);
+    if (index !== -1) toggleIncludedAt(index);
+  }, [cutSegments, toggleIncludedAt]);
+
+  const handleMusicVolume = useCallback((volume: number) => {
+    setMusicVolumeState(volume);
+    try { window.localStorage.setItem('trimout.musicVolume', String(volume)); } catch { /* not remembered, still works */ }
+  }, []);
+  const handleMusicMode = useCallback((mode: MusicMode) => {
+    setMusicModeState(mode);
+    try { window.localStorage.setItem('trimout.musicMode', mode); } catch { /* not remembered, still works */ }
+  }, []);
+  const handleMusicPick = useCallback(async () => {
+    const { canceled, filePaths } = await showOpenDialog({ properties: ['openFile'], title: 'Choose music', filters: [{ name: 'Audio', extensions: MUSIC_EXTENSIONS }] });
+    const chosen = filePaths[0];
+    if (canceled || chosen == null) return;
+    setMusic({ path: chosen, name: basename(chosen) });
+    // The music goes on the merged video, so make sure one is made
+    if (!autoMerge) handleExportModeChange('both');
+  }, [autoMerge, handleExportModeChange]);
+
   // Clear the timeline overlay whenever playback stops (manual pause, seek, etc.)
   useEffect(() => {
     if (!playing) {
+      // Remember a clip that was paused in the middle, so its play button can continue it
+      pausedClipRef.current = clipStopAtRef.current != null && playingClipIndexRef.current != null && !playAllRef.current
+        ? { index: playingClipIndexRef.current }
+        : null;
       setPlayingClipIndex(null);
       clipStopAtRef.current = null;
       playAllRef.current = false;
@@ -3779,7 +4098,7 @@ function App() {
                         style={videoStyle}
                         src={fileUri}
                         onPlay={onStartPlaying}
-                        onPause={onStopPlaying}
+                        onPause={() => { if (lockHoldRef.current == null) onStopPlaying(); }}
                         onAbort={onVideoAbort}
                         onDurationChange={onDurationChange}
                         onTimeUpdate={onTimeUpdate}
@@ -3801,6 +4120,32 @@ function App() {
                       videoRef={videoRef}
                       rect={sortAnchors(zoomClip.zoomAnchors ?? [])[zoomEditingIndex]!.rect}
                       onChange={handleZoomFrameChange}
+                    />
+                  )}
+
+                  {lockHold != null && (
+                    <PlayerLockPreview
+                      videoRef={videoRef}
+                      spot={lockHold.spot}
+                      view={lockHold.view}
+                      label={lockLabelShown}
+                      title={lockTitleShown}
+                      color={LOCK_COLORS[lockStyle.color].hex}
+                      sound={lockSound}
+                      onFrame={handleLockHoldFrame}
+                      onDone={handleLockHoldDone}
+                    />
+                  )}
+
+                  {lockOverlayVisible && (
+                    <PlayerLockOverlay
+                      videoRef={videoRef}
+                      spot={lockSpot}
+                      label={lockLabelShown}
+                      title={lockTitleShown}
+                      color={LOCK_COLORS[lockStyle.color].hex}
+                      onPlace={handleLockPlace}
+                      onChange={handleLockChange}
                     />
                   )}
 
@@ -4121,9 +4466,10 @@ function App() {
                         getClipColor={getClipColor}
                         formatTimecode={(s: number) => formatTimecode({ seconds: s })}
                         onSegClick={handleSegClick}
-                        onPlayClip={handlePlayClip}
+                        onPlayClip={handleToggleClip}
                         onDeleteSegment={removeSegment}
                         onToggleFavorite={handleToggleFavorite}
+                        onToggleIncluded={handleToggleIncluded}
                         onRenameSegment={handleRenameClip}
                         onPlayAll={handlePlayAll}
                         onStopPlayAll={pause}
@@ -4232,11 +4578,16 @@ function App() {
                     onPreset={handleZoomPreset}
                     onClear={handleClearZoomAnchors}
                     onPreview={() => handlePlayClip(currentSegIndexSafe)}
-                    playing={playing}
-                    onTogglePlay={() => togglePlay()}
-                    onSeekBy={seekRel}
-                    onRestart={() => seekAbs(zoomClip?.start ?? 0)}
-                    frameSeconds={1 / (detectedFps ?? 30)}
+                    onSeek={(seconds) => seekAbs(seconds)}
+                    lockSpot={zoomClip?.spotMark}
+                    lockPlacing={lockPlacingKey === zoomClipKey && zoomClip?.spotMark == null}
+                    onLockStart={handleLockStart}
+                    onLockGo={handleLockGo}
+                    onLockClear={handleLockClear}
+                    lockSound={lockSound}
+                    onLockSoundChange={handleLockSoundChange}
+                    lockStyle={lockStyle}
+                    onLockStyleChange={handleLockStyleChange}
                     scale={videoZoom.view.scale}
                     wheelZoom={videoZoom.wheelZoom}
                     onToggleWheelZoom={() => videoZoom.setWheelZoom((v) => !v)}
@@ -4358,20 +4709,33 @@ function App() {
                 clipCount={Math.max(1, segmentsToExport.length)}
                 hasProject={activeProject != null}
                 downloadOptions={(
-                  <ExportOptions
-                    quality={qualityPreset}
-                    onQualityChange={setQualityPreset}
-                    aspectRatio={exportAspectRatio}
-                    onAspectRatioChange={setExportAspectRatio}
-                    fitMode={exportFitMode}
-                    onFitModeChange={setExportFitMode}
-                    mode={exportMode}
-                    onModeChange={handleExportModeChange}
-                    folderPerExport={createExportPackage}
-                    onFolderPerExportChange={setCreateExportPackage}
-                    transition={exportTransition}
-                    onTransitionChange={setExportTransition}
-                  />
+                  <div className="finish-download-sections">
+                    <ClipOrderList clips={orderClips} onReorder={reorderSegments} onToggleIncluded={handleOrderToggle} />
+                    <MusicOptions
+                      musicName={music?.name}
+                      volume={musicVolume}
+                      mode={musicMode}
+                      needsMergedVideo={music != null && !autoMerge}
+                      onPick={handleMusicPick}
+                      onClear={() => setMusic(undefined)}
+                      onVolumeChange={handleMusicVolume}
+                      onModeChange={handleMusicMode}
+                    />
+                    <ExportOptions
+                      quality={qualityPreset}
+                      onQualityChange={setQualityPreset}
+                      aspectRatio={exportAspectRatio}
+                      onAspectRatioChange={setExportAspectRatio}
+                      fitMode={exportFitMode}
+                      onFitModeChange={setExportFitMode}
+                      mode={exportMode}
+                      onModeChange={handleExportModeChange}
+                      folderPerExport={createExportPackage}
+                      onFolderPerExportChange={setCreateExportPackage}
+                      transition={exportTransition}
+                      onTransitionChange={setExportTransition}
+                    />
+                  </div>
                 )}
                 onDownload={() => handleFinishDestination('local')}
                 onContinueInKicko={() => handleFinishDestination('kicko')}

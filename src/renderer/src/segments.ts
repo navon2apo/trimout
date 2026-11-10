@@ -5,7 +5,7 @@ import maxBy from 'lodash/maxBy';
 import invariant from 'tiny-invariant';
 
 import { inferActionFromName } from './scoutCatalog';
-import type { DefiniteSegmentBase, PlaybackMode, SegmentBase, SegmentTags, SegmentToExport, StateSegment, ZoomAnchor } from './types';
+import type { DefiniteSegmentBase, PlaybackMode, SegmentBase, SegmentTags, SegmentToExport, SpotMark, StateSegment, ZoomAnchor } from './types';
 
 
 export const isDurationValid = (duration?: number): duration is number => duration != null && Number.isFinite(duration) && duration > 0;
@@ -24,6 +24,7 @@ export const createSegment = (props?: {
   isUncertain?: boolean | undefined,
   zoomAnchors?: ZoomAnchor[] | undefined,
   zoomEase?: 'smooth' | 'linear' | 'dynamic' | undefined,
+  spotMark?: SpotMark | undefined,
 }): Omit<StateSegment, 'segColorIndex'> => {
   const inferred = props?.actionType == null && props?.name ? inferActionFromName(props.name) : undefined;
   const actionType = props?.actionType ?? inferred?.actionType;
@@ -49,6 +50,7 @@ export const createSegment = (props?: {
   ...(props?.isUncertain != null && { isUncertain: props.isUncertain }),
   ...(props?.zoomAnchors != null && props.zoomAnchors.length > 0 && { zoomAnchors: props.zoomAnchors }),
   ...(props?.zoomEase != null && { zoomEase: props.zoomEase }),
+  ...(props?.spotMark != null && { spotMark: props.spotMark }),
   };
 };
 
@@ -58,7 +60,7 @@ export const addSegmentColorIndex = (segment: Omit<StateSegment, 'segColorIndex'
 });
 
 export const mapSaveableSegments = (segments: StateSegment[]) => segments.map(({
-  start, end, name, tags, selected, actionType, actionLabel, playerName, isFavorite, isUncertain, zoomAnchors, zoomEase,
+  start, end, name, tags, selected, actionType, actionLabel, playerName, isFavorite, isUncertain, zoomAnchors, zoomEase, spotMark,
 }) => ({
   start,
   end,
@@ -73,6 +75,7 @@ export const mapSaveableSegments = (segments: StateSegment[]) => segments.map(({
   ...(isUncertain != null && { isUncertain }),
   ...(zoomAnchors != null && zoomAnchors.length > 0 && { zoomAnchors }),
   ...(zoomEase != null && { zoomEase }),
+  ...(spotMark != null && { spotMark }),
 }));
 
 // in the past we had non-string tags

@@ -80,6 +80,11 @@ export interface CompressOptions {
     fps: number,
     ease?: ZoomEase | undefined,
   } | undefined;
+  /**
+   * Cut the clip straight from the source video at its exact start (a lossless cut can start a moment early).
+   * Needed when something must line up with a frame, like the player lock. Not used with zoomMotion, which does the same.
+   */
+  exactFrom?: { sourcePath: string, start: number, end: number } | undefined;
   appendCommandLog?: (args: string[]) => void;
 }
 
@@ -95,6 +100,7 @@ export async function compressClip({
   fitMode = 'crop',
   zoomRect,
   zoomMotion,
+  exactFrom,
   appendCommandLog,
 }: CompressOptions): Promise<void> {
   const { crf, preset: ffPreset } = QUALITY_PRESETS[preset];
@@ -110,7 +116,9 @@ export async function compressClip({
     '-hide_banner', '-y',
     ...(zoomMotion != null
       ? ['-ss', zoomMotion.start.toFixed(3), '-i', zoomMotion.sourcePath, '-t', (zoomMotion.end - zoomMotion.start).toFixed(3)]
-      : ['-i', inPath]),
+      : (exactFrom != null
+        ? ['-ss', exactFrom.start.toFixed(3), '-i', exactFrom.sourcePath, '-t', (exactFrom.end - exactFrom.start).toFixed(3)]
+        : ['-i', inPath])),
     '-c:v', 'libx264',
     '-crf', String(crf),
     '-preset', ffPreset,

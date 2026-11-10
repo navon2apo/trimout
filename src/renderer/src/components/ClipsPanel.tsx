@@ -4,7 +4,7 @@
  * Clicking a card seeks the playhead to its start.
  */
 import { memo, useEffect, useRef, useState } from 'react';
-import { FiMaximize2, FiPlay, FiScissors, FiSquare, FiTrash2 } from 'react-icons/fi';
+import { FiEye, FiEyeOff, FiMaximize2, FiPause, FiPlay, FiScissors, FiSquare, FiTrash2 } from 'react-icons/fi';
 
 interface Seg {
   segId?: string | undefined;
@@ -18,6 +18,10 @@ interface Seg {
   isFavorite?: boolean | undefined;
   isUncertain?: boolean | undefined;
   zoomAnchors?: { t: number, rect: { x: number, y: number, w: number, h: number } }[] | undefined;
+  /** Open eye = in the export (the default); false = left out */
+  selected?: boolean | undefined;
+  /** Player lock (freeze + ring + name) */
+  spotMark?: { t: number, x: number, y: number, size: number } | undefined;
 }
 
 interface Props {
@@ -32,6 +36,8 @@ interface Props {
   onPlayClip: (i: number) => void;
   onDeleteSegment: (i: number) => void;
   onToggleFavorite: (i: number) => void;
+  /** The eye: include or leave out of the export */
+  onToggleIncluded: (i: number) => void;
   onRenameSegment: (i: number, name: string) => void;
   onPlayAll: () => void;
   onStopPlayAll: () => void;
@@ -69,7 +75,7 @@ const iconButton: React.CSSProperties = {
   flexShrink: 0,
 };
 
-function ClipsPanel({ segments, currentSegIndex, playingClipIndex, isPlayingAll, getClipColor, formatTimecode, onSegClick, onPlayClip, onDeleteSegment, onToggleFavorite, onRenameSegment, onPlayAll, onStopPlayAll, onOpenViewer }: Props) {
+function ClipsPanel({ segments, currentSegIndex, playingClipIndex, isPlayingAll, getClipColor, formatTimecode, onSegClick, onPlayClip, onDeleteSegment, onToggleFavorite, onToggleIncluded, onRenameSegment, onPlayAll, onStopPlayAll, onOpenViewer }: Props) {
   const activeRef = useRef<HTMLDivElement>(null);
   const [editingIndex, setEditingIndex] = useState<number | null>(null);
   const [draftName, setDraftName] = useState('');
@@ -98,6 +104,11 @@ function ClipsPanel({ segments, currentSegIndex, playingClipIndex, isPlayingAll,
       <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '12px 14px 8px' }}>
         <span style={{ flex: 1, fontSize: 13, fontWeight: 700, color: '#0f172a' }}>
           {segments.length} clip{segments.length !== 1 ? 's' : ''}
+          {segments.some((s) => s.selected === false) && (
+            <span style={{ marginLeft: 6, fontSize: 11, fontWeight: 600, color: '#64748b' }}>
+              · {segments.filter((s) => s.selected !== false).length} in the export
+            </span>
+          )}
         </span>
         <button
           type="button"
@@ -133,6 +144,7 @@ function ClipsPanel({ segments, currentSegIndex, playingClipIndex, isPlayingAll,
         {segments.map((seg, i) => {
           const isActive = i === currentSegIndex;
           const isPlaying = i === playingClipIndex;
+          const included = seg.selected !== false;
           const color = getClipColor?.(i) ?? segColor(seg.segColorIndex);
           const displayName = seg.name || seg.actionLabel || seg.actionType || `Clip ${i + 1}`;
 
@@ -146,19 +158,21 @@ function ClipsPanel({ segments, currentSegIndex, playingClipIndex, isPlayingAll,
               style={{
                 display: 'flex',
                 alignItems: 'stretch',
-                background: '#ffffff',
+                // The clip that is playing is clearly marked: thick outline in its own color and a tinted card
+                background: isPlaying ? `${color}22` : '#ffffff',
                 borderRadius: 10,
                 overflow: 'hidden',
                 cursor: 'pointer',
                 userSelect: 'none',
-                border: `1px solid ${isActive || isPlaying ? '#84cc16' : '#e4e7ec'}`,
-                boxShadow: isActive || isPlaying ? '0 0 0 2px rgba(132,204,22,0.35)' : '0 1px 2px rgba(15,23,42,0.06)',
-                transition: 'box-shadow 0.12s',
+                border: `1px solid ${isPlaying ? color : (isActive ? '#84cc16' : '#e4e7ec')}`,
+                boxShadow: isPlaying ? `0 0 0 3px ${color}` : (isActive ? '0 0 0 2px rgba(132,204,22,0.35)' : '0 1px 2px rgba(15,23,42,0.06)'),
+                transition: 'box-shadow 0.12s, background 0.12s, opacity 0.12s',
+                opacity: included || isPlaying ? 1 : 0.5,
               }}
             >
-              <div style={{ width: 5, flexShrink: 0, background: color }} />
+              <div style={{ width: isPlaying ? 9 : 5, flexShrink: 0, background: color }} />
 
-              <div style={{ flex: 1, minWidth: 0, padding: '9px 8px 9px 10px' }}>
+              <div style={{ flex: 1, minWidth: 0, padding: '10px 10px 8px 12px', display: 'flex', flexDirection: 'column', gap: 7 }}>
                 {editingIndex === i ? (
                   <input
                     // eslint-disable-next-line jsx-a11y/no-autofocus
@@ -183,14 +197,22 @@ function ClipsPanel({ segments, currentSegIndex, playingClipIndex, isPlayingAll,
                     dir="auto"
                     title="Click to rename"
                     onClick={(e) => { e.stopPropagation(); setDraftName(seg.name ?? displayName); setEditingIndex(i); }}
-                    style={{ fontSize: 13, fontWeight: 650, color: '#0f172a', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', cursor: 'text' }}
+                    style={{ fontSize: 14, fontWeight: 650, lineHeight: 1.25, color: '#0f172a', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', cursor: 'text', textDecoration: included ? 'none' : 'line-through' }}
                   >
                     {displayName}
                   </div>
                 )}
-                <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 4, fontSize: 11, color: '#64748b', fontVariantNumeric: 'tabular-nums' }}>
+                <div style={{ display: 'flex', alignItems: 'center', flexWrap: 'wrap', gap: '5px 6px', fontSize: 11, color: '#64748b', fontVariantNumeric: 'tabular-nums' }}>
                   <span style={{ fontWeight: 700, color: '#334155', background: '#f1f5f9', borderRadius: 5, padding: '1px 6px' }}>{fmtDuration(seg.start, seg.end)}</span>
                   <span>{formatTimecode(seg.start)}</span>
+                  {seg.spotMark != null && (
+                    <span
+                      title="This clip freezes on the player with a ring and his name"
+                      style={{ fontWeight: 700, color: '#3f6212', background: '#ecfccb', borderRadius: 5, padding: '1px 6px' }}
+                    >
+                      ◎ lock
+                    </span>
+                  )}
                   {seg.zoomAnchors != null && seg.zoomAnchors.length > 0 && (
                     <span
                       title={seg.zoomAnchors.length > 1 ? 'This clip has a moving zoom — the export renders it' : 'This clip has a saved zoom — the export crops to it'}
@@ -202,38 +224,52 @@ function ClipsPanel({ segments, currentSegIndex, playingClipIndex, isPlayingAll,
                     </span>
                   )}
                 </div>
-              </div>
 
-              <div style={{ display: 'flex', alignItems: 'center', gap: 2, paddingRight: 8 }}>
-                <button
-                  type="button"
-                  aria-label="Play clip"
-                  title="Play clip"
-                  onClick={(e) => { e.stopPropagation(); onPlayClip(i); }}
-                  style={{ ...iconButton, background: '#0f172a', color: '#d2ff00' }}
-                >
-                  <FiPlay />
-                </button>
-                <button
-                  type="button"
-                  aria-label={seg.isFavorite ? 'Remove from favorites' : 'Mark as favorite'}
-                  title={seg.isFavorite ? 'Remove from favorites' : 'Mark as favorite'}
-                  onClick={(e) => { e.stopPropagation(); onToggleFavorite(i); }}
-                  style={{ ...iconButton, background: 'transparent', fontSize: 16, color: seg.isFavorite ? '#f59e0b' : '#cbd5e1' }}
-                >
-                  ★
-                </button>
-                <button
-                  type="button"
-                  aria-label="Delete clip"
-                  title="Delete clip"
-                  onClick={(e) => { e.stopPropagation(); onDeleteSegment(i); }}
-                  onMouseEnter={(e) => { e.currentTarget.style.color = '#dc2626'; }}
-                  onMouseLeave={(e) => { e.currentTarget.style.color = '#94a3b8'; }}
-                  style={{ ...iconButton, background: 'transparent', color: '#94a3b8' }}
-                >
-                  <FiTrash2 />
-                </button>
+                {/* The buttons get their own row, so nothing is squeezed: play on the left, the rest on the right */}
+                <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+                  <button
+                    type="button"
+                    aria-label={isPlaying ? 'Pause clip' : 'Play clip'}
+                    title={isPlaying ? 'Pause' : 'Play clip'}
+                    onClick={(e) => { e.stopPropagation(); onPlayClip(i); }}
+                    style={{ ...iconButton, width: 32, height: 32, background: isPlaying ? '#d2ff00' : '#0f172a', color: isPlaying ? '#0f172a' : '#d2ff00' }}
+                  >
+                    {isPlaying ? <FiPause /> : <FiPlay />}
+                  </button>
+                  {isPlaying && (
+                    <span style={{ fontSize: 10, fontWeight: 800, letterSpacing: '0.06em', color: '#0f172a', background: '#d2ff00', borderRadius: 4, padding: '2px 6px', whiteSpace: 'nowrap' }}>NOW PLAYING</span>
+                  )}
+                  <span style={{ flex: 1 }} />
+                  <button
+                    type="button"
+                    aria-label={included ? 'In the export: click to leave out' : 'Left out of the export: click to include'}
+                    title={included ? 'In the export (click to leave this clip out)' : 'Left out of the export (click to include it)'}
+                    onClick={(e) => { e.stopPropagation(); onToggleIncluded(i); }}
+                    style={{ ...iconButton, width: 32, height: 32, background: included ? 'transparent' : '#f1f5f9', fontSize: 18, color: included ? '#334155' : '#94a3b8' }}
+                  >
+                    {included ? <FiEye /> : <FiEyeOff />}
+                  </button>
+                  <button
+                    type="button"
+                    aria-label={seg.isFavorite ? 'Remove from favorites' : 'Mark as favorite'}
+                    title={seg.isFavorite ? 'Remove from favorites' : 'Mark as favorite'}
+                    onClick={(e) => { e.stopPropagation(); onToggleFavorite(i); }}
+                    style={{ ...iconButton, width: 32, height: 32, background: 'transparent', fontSize: 18, color: seg.isFavorite ? '#f59e0b' : '#cbd5e1' }}
+                  >
+                    ★
+                  </button>
+                  <button
+                    type="button"
+                    aria-label="Delete clip"
+                    title="Delete clip"
+                    onClick={(e) => { e.stopPropagation(); onDeleteSegment(i); }}
+                    onMouseEnter={(e) => { e.currentTarget.style.color = '#dc2626'; }}
+                    onMouseLeave={(e) => { e.currentTarget.style.color = '#94a3b8'; }}
+                    style={{ ...iconButton, width: 32, height: 32, background: 'transparent', color: '#94a3b8', fontSize: 15 }}
+                  >
+                    <FiTrash2 />
+                  </button>
+                </div>
               </div>
             </div>
           );

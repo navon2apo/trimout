@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import type { PointerEvent as ReactPointerEvent } from 'react';
 import { FiPlay, FiTrash2 } from 'react-icons/fi';
-import type { ZoomAnchor } from '../types';
+import type { SpotMark, ZoomAnchor } from '../types';
+import { LOCK_COLOR_IDS, LOCK_COLORS, LOCK_SOUND_IDS, LOCK_SOUND_LABELS, type LockSoundId, type LockStyle } from '../util/playerLock';
 import { rectAt, rectForLevel, sortAnchors, type ZoomEase, type ZoomMotionMode } from '../util/zoomAnchors';
 
 interface Props {
@@ -21,12 +22,21 @@ interface Props {
   onPreset: (mode: ZoomMotionMode) => void,
   onClear: () => void,
   onPreview: () => void,
-  /** Playback controls, so a movement can be watched without leaving this card */
-  playing: boolean,
-  onTogglePlay: () => void,
-  onSeekBy: (seconds: number) => void,
-  onRestart: () => void,
-  frameSeconds: number,
+  /** Move the playhead (the strip on top of the curve works like the seek bar of a player) */
+  onSeek: (seconds: number) => void,
+  /** Player lock on this clip (freeze + ring + name at one moment), if any */
+  lockSpot: SpotMark | undefined,
+  /** Waiting for the click that places the ring */
+  lockPlacing: boolean,
+  onLockStart: () => void,
+  onLockGo: () => void,
+  onLockClear: () => void,
+  /** The sound of the lock (or none) */
+  lockSound: LockSoundId,
+  onLockSoundChange: (id: LockSoundId) => void,
+  /** What the lock shows (player name, move name) and the ring color */
+  lockStyle: LockStyle,
+  onLockStyleChange: (style: LockStyle) => void,
   /** Free zoom of the picture (for looking at far parts) */
   scale: number,
   wheelZoom: boolean,
@@ -56,6 +66,7 @@ const EASES: { id: ZoomEase, label: string }[] = [
 const MIN_GAP_S = 0.25;
 const MAX_LEVEL = 4;
 const GRAPH_H = 104;
+const SCRUB_H = 22; // seek strip on top of the curve
 const PAD_X = 16;
 const PAD_Y = 14;
 const HIT_PX = 13;
@@ -69,10 +80,11 @@ const levelOf = (a: ZoomAnchor) => 1 / a.rect.w;
  * The zoom curve of the selected clip. Drag a point sideways to change when it happens, up / down
  * to change how close it is. Click empty space to add a point, double-click a point to remove it.
  */
-function ZoomGraph({ anchors, ease, clipStart, clipEnd, playerTime, selectedIndex, onSelect, onChange, onDeletePoint }: Pick<Props, 'anchors' | 'ease' | 'clipStart' | 'clipEnd' | 'playerTime' | 'selectedIndex' | 'onSelect' | 'onChange' | 'onDeletePoint'>) {
+function ZoomGraph({ anchors, ease, clipStart, clipEnd, playerTime, selectedIndex, onSelect, onChange, onDeletePoint, onSeek }: Pick<Props, 'anchors' | 'ease' | 'clipStart' | 'clipEnd' | 'playerTime' | 'selectedIndex' | 'onSelect' | 'onChange' | 'onDeletePoint' | 'onSeek'>) {
   const wrapRef = useRef<HTMLDivElement>(null);
   const [width, setWidth] = useState(600);
   const dragRef = useRef<number | null>(null);
+  const scrubRef = useRef(false);
 
   useEffect(() => {
     const el = wrapRef.current;
@@ -99,10 +111,12 @@ function ZoomGraph({ anchors, ease, clipStart, clipEnd, playerTime, selectedInde
   const line = `M${points.join(' L')}`;
   const area = `${line} L${px(clipEnd)},${GRAPH_H - PAD_Y} L${px(clipStart)},${GRAPH_H - PAD_Y} Z`;
 
+  // y is measured from the top of the curve area; the seek strip above it has negative y
   const local = (e: ReactPointerEvent) => {
     const r = e.currentTarget.getBoundingClientRect();
-    return { x: e.clientX - r.left, y: e.clientY - r.top };
+    return { x: e.clientX - r.left, y: e.clientY - r.top - SCRUB_H };
   };
+  const seekToX = (x: number) => onSeek(Math.min(clipEnd, Math.max(clipStart, timeAtX(x))));
   const nearestDot = (x: number, y: number) => {
     let best = -1;
     let bestD = HIT_PX;
@@ -115,6 +129,13 @@ function ZoomGraph({ anchors, ease, clipStart, clipEnd, playerTime, selectedInde
 
   const onPointerDown = (e: ReactPointerEvent<SVGSVGElement>) => {
     const { x, y } = local(e);
+    if (y < 0) {
+      // The strip on top works like the seek bar of a player: click or drag to move the playhead
+      scrubRef.current = true;
+      e.currentTarget.setPointerCapture(e.pointerId);
+      seekToX(x);
+      return;
+    }
     const hit = nearestDot(x, y);
     if (hit >= 0) {
       dragRef.current = hit;
@@ -135,6 +156,10 @@ function ZoomGraph({ anchors, ease, clipStart, clipEnd, playerTime, selectedInde
   };
 
   const onPointerMove = (e: ReactPointerEvent<SVGSVGElement>) => {
+    if (scrubRef.current) {
+      seekToX(local(e).x);
+      return;
+    }
     const idx = dragRef.current;
     if (idx == null) return;
     const { x, y } = local(e);
@@ -149,6 +174,11 @@ function ZoomGraph({ anchors, ease, clipStart, clipEnd, playerTime, selectedInde
   };
 
   const onPointerUp = (e: ReactPointerEvent<SVGSVGElement>) => {
+    if (scrubRef.current) {
+      scrubRef.current = false;
+      if (e.currentTarget.hasPointerCapture(e.pointerId)) e.currentTarget.releasePointerCapture(e.pointerId);
+      return;
+    }
     const idx = dragRef.current;
     dragRef.current = null;
     if (e.currentTarget.hasPointerCapture(e.pointerId)) e.currentTarget.releasePointerCapture(e.pointerId);
@@ -157,7 +187,7 @@ function ZoomGraph({ anchors, ease, clipStart, clipEnd, playerTime, selectedInde
 
   const onDoubleClick = (e: React.MouseEvent<SVGSVGElement>) => {
     const r = e.currentTarget.getBoundingClientRect();
-    const hit = nearestDot(e.clientX - r.left, e.clientY - r.top);
+    const hit = nearestDot(e.clientX - r.left, e.clientY - r.top - SCRUB_H);
     if (hit < 0) return;
     onDeletePoint(hit);
   };
@@ -167,46 +197,51 @@ function ZoomGraph({ anchors, ease, clipStart, clipEnd, playerTime, selectedInde
     <div ref={wrapRef} style={{ width: '100%' }}>
       <svg
         width={width}
-        height={GRAPH_H}
+        height={GRAPH_H + SCRUB_H}
         role="img"
-        aria-label="Zoom over time. Drag points to edit."
+        aria-label="Zoom over time. Drag points to edit. The strip on top moves the playhead."
         style={{ display: 'block', background: '#0f172a', borderRadius: 8, touchAction: 'none', cursor: 'crosshair' }}
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
         onPointerUp={onPointerUp}
         onDoubleClick={onDoubleClick}
       >
-        {[1, 2, 3, 4].map((l) => (
-          <g key={l}>
-            <line x1={PAD_X} x2={width - PAD_X} y1={py(l)} y2={py(l)} stroke="#1e293b" />
-            <text x={2} y={py(l) + 3} fill="#64748b" fontSize="9">{l}×</text>
-          </g>
-        ))}
-        {sorted.length > 0 && <path d={area} fill="rgba(210,255,0,0.14)" />}
-        {sorted.length > 0 && <path d={line} fill="none" stroke="#d2ff00" strokeWidth="2.5" strokeLinejoin="round" />}
-        {inside && (
-          <>
-            <line x1={px(playerTime)} x2={px(playerTime)} y1={4} y2={GRAPH_H - 4} stroke="#ffffff" strokeDasharray="3 3" />
-            <text x={Math.min(px(playerTime) + 5, width - 34)} y={14} fill="#ffffff" fontSize="11" fontWeight="700">{levelAtTime(playerTime).toFixed(1)}×</text>
-          </>
-        )}
-        {sorted.map((a, i) => (
-          <circle
-            key={a.t}
-            cx={px(a.t)}
-            cy={py(levelOf(a))}
-            r={i === selectedIndex ? 8 : 6}
-            fill={i === selectedIndex ? '#ffffff' : '#d2ff00'}
-            stroke={i === selectedIndex ? '#d2ff00' : '#0f172a'}
-            strokeWidth="3"
-            style={{ cursor: 'grab' }}
-          />
-        ))}
-        {sorted.length === 0 && (
-          <text x={width / 2} y={GRAPH_H / 2 + 4} fill="#94a3b8" fontSize="12" textAnchor="middle">Click here to add a zoom point, or pick a ready-made movement above</text>
-        )}
-        <text x={PAD_X} y={GRAPH_H - 2} fill="#94a3b8" fontSize="9">0s</text>
-        <text x={width - PAD_X} y={GRAPH_H - 2} fill="#94a3b8" fontSize="9" textAnchor="end">{dur.toFixed(0)}s</text>
+        <rect x={0} y={0} width={width} height={SCRUB_H} fill="#1e293b" style={{ cursor: 'ew-resize' }} />
+        <line x1={PAD_X} x2={width - PAD_X} y1={SCRUB_H / 2} y2={SCRUB_H / 2} stroke="#475569" strokeWidth="3" strokeLinecap="round" style={{ pointerEvents: 'none' }} />
+        {inside && <circle cx={px(playerTime)} cy={SCRUB_H / 2} r={6} fill="#ffffff" style={{ pointerEvents: 'none' }} />}
+        <g transform={`translate(0 ${SCRUB_H})`}>
+          {[1, 2, 3, 4].map((l) => (
+            <g key={l}>
+              <line x1={PAD_X} x2={width - PAD_X} y1={py(l)} y2={py(l)} stroke="#1e293b" />
+              <text x={2} y={py(l) + 3} fill="#64748b" fontSize="9">{l}×</text>
+            </g>
+          ))}
+          {sorted.length > 0 && <path d={area} fill="rgba(210,255,0,0.14)" />}
+          {sorted.length > 0 && <path d={line} fill="none" stroke="#d2ff00" strokeWidth="2.5" strokeLinejoin="round" />}
+          {inside && (
+            <>
+              <line x1={px(playerTime)} x2={px(playerTime)} y1={4} y2={GRAPH_H - 4} stroke="#ffffff" strokeDasharray="3 3" />
+              <text x={Math.min(px(playerTime) + 5, width - 34)} y={14} fill="#ffffff" fontSize="11" fontWeight="700">{levelAtTime(playerTime).toFixed(1)}×</text>
+            </>
+          )}
+          {sorted.map((a, i) => (
+            <circle
+              key={a.t}
+              cx={px(a.t)}
+              cy={py(levelOf(a))}
+              r={i === selectedIndex ? 8 : 6}
+              fill={i === selectedIndex ? '#ffffff' : '#d2ff00'}
+              stroke={i === selectedIndex ? '#d2ff00' : '#0f172a'}
+              strokeWidth="3"
+              style={{ cursor: 'grab' }}
+            />
+          ))}
+          {sorted.length === 0 && (
+            <text x={width / 2} y={GRAPH_H / 2 + 4} fill="#94a3b8" fontSize="12" textAnchor="middle">Click here to add a zoom point, or pick a ready-made movement above</text>
+          )}
+          <text x={PAD_X} y={GRAPH_H - 2} fill="#94a3b8" fontSize="9">0s</text>
+          <text x={width - PAD_X} y={GRAPH_H - 2} fill="#94a3b8" fontSize="9" textAnchor="end">{dur.toFixed(0)}s</text>
+        </g>
       </svg>
     </div>
   );
@@ -216,7 +251,10 @@ function ZoomGraph({ anchors, ease, clipStart, clipEnd, playerTime, selectedInde
  * Zoom Motion for the selected clip: a curve you edit by dragging points (when, and how close),
  * and a frame on the picture you drag to choose where the zoom looks.
  */
-function ZoomMotionPanel({ clipStart, clipEnd, playerTime, anchors, ease, selectedIndex, onSelect, onChange, onDeletePoint, onEaseChange, onPreset, onClear, onPreview, playing, onTogglePlay, onSeekBy, onRestart, frameSeconds, scale, wheelZoom, onToggleWheelZoom, onZoomIn, onZoomOut, onFit, hasClip, clipButtonsVisible, onToggleClipButtons }: Props) {
+function ZoomMotionPanel({ clipStart, clipEnd, playerTime, anchors, ease, selectedIndex, onSelect, onChange, onDeletePoint, onEaseChange, onPreset, onClear, onPreview, onSeek, lockSpot, lockPlacing, onLockStart, onLockGo, onLockClear, lockSound, onLockSoundChange, lockStyle, onLockStyleChange, scale, wheelZoom, onToggleWheelZoom, onZoomIn, onZoomOut, onFit, hasClip, clipButtonsVisible, onToggleClipButtons }: Props) {
+  // The small window with what the lock shows, its color and its sound
+  const [styleOpen, setStyleOpen] = useState(false);
+
   useEffect(() => {
     if (selectedIndex == null) return undefined;
     const onKeyDown = (e: KeyboardEvent) => {
@@ -253,14 +291,75 @@ function ZoomMotionPanel({ clipStart, clipEnd, playerTime, anchors, ease, select
             <span style={{ fontSize: 11, color: '#3f6212', fontWeight: 700 }}>Drag the frame on the picture to choose where it looks · {levelOf(selected).toFixed(1)}×</span>
             )}
             <span style={{ display: 'inline-flex', alignItems: 'center', gap: 3 }}>
-              <button type="button" title="Back to the start of the clip" aria-label="Back to the start of the clip" onClick={onRestart} style={chip}>{'\u23EE'}</button>
-              <button type="button" title="Back 1 second" aria-label="Back 1 second" onClick={() => onSeekBy(-1)} style={chip}>-1s</button>
-              <button type="button" title="One frame back" aria-label="One frame back" onClick={() => onSeekBy(-frameSeconds)} style={chip}>{'\u2039'}</button>
-              <button type="button" title={playing ? 'Pause' : 'Play'} aria-label={playing ? 'Pause' : 'Play'} onClick={onTogglePlay} style={{ ...chip, minWidth: 34, background: '#d2ff00', borderColor: '#c2e600' }}>{playing ? '\u23F8' : '\u25B6'}</button>
-              <button type="button" title="One frame forward" aria-label="One frame forward" onClick={() => onSeekBy(frameSeconds)} style={chip}>{'\u203A'}</button>
-              <button type="button" title="Forward 1 second" aria-label="Forward 1 second" onClick={() => onSeekBy(1)} style={chip}>+1s</button>
+              {lockSpot == null ? (
+                <button
+                  type="button"
+                  title="Freeze the picture on this moment and mark the player with a ring and his name"
+                  onClick={onLockStart}
+                  style={{ ...chip, background: lockPlacing ? '#d2ff00' : '#ffffff', borderColor: lockPlacing ? '#84cc16' : '#d0d5dd' }}
+                >
+                  {lockPlacing ? '◎ Click on the player' : '◎ Lock player'}
+                </button>
+              ) : (
+                <>
+                  <button type="button" title="Go to the moment of the lock" onClick={onLockGo} style={{ ...chip, background: '#f7fee7', borderColor: '#84cc16' }}>◎ Lock</button>
+                  <button type="button" title="Remove the lock" aria-label="Remove the lock" onClick={onLockClear} style={chip}>✕</button>
+                </>
+              )}
+              <span style={{ position: 'relative', display: 'inline-flex' }}>
+                <button
+                  type="button"
+                  title="What the lock shows, its color and its sound"
+                  aria-expanded={styleOpen}
+                  onClick={() => setStyleOpen((v) => !v)}
+                  style={{ ...chip, background: styleOpen ? '#0f172a' : '#ffffff', color: styleOpen ? '#d2ff00' : '#0f172a', display: 'inline-flex', alignItems: 'center', gap: 5 }}
+                >
+                  <span style={{ width: 10, height: 10, borderRadius: '50%', background: LOCK_COLORS[lockStyle.color].hex, border: '1px solid #94a3b8' }} />
+                  Style
+                </button>
+                {styleOpen && (
+                  <div
+                    role="dialog"
+                    aria-label="Lock style"
+                    style={{ position: 'absolute', right: 0, bottom: 'calc(100% + 6px)', zIndex: 30, width: 250, background: '#ffffff', border: '1px solid #d0d5dd', borderRadius: 10, boxShadow: '0 8px 24px rgba(15,23,42,0.18)', padding: 12, display: 'flex', flexDirection: 'column', gap: 10 }}
+                  >
+                    <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: '0.04em', color: '#64748b' }}>WHAT THE LOCK SHOWS</div>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: '#0f172a', cursor: 'pointer' }} htmlFor="lock-show-name">
+                      <input id="lock-show-name" type="checkbox" checked={lockStyle.showName} onChange={(e) => onLockStyleChange({ ...lockStyle, showName: e.target.checked })} />
+                      Player name
+                    </label>
+                    <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 13, color: '#0f172a', cursor: 'pointer' }} htmlFor="lock-show-action">
+                      <input id="lock-show-action" type="checkbox" checked={lockStyle.showAction} onChange={(e) => onLockStyleChange({ ...lockStyle, showAction: e.target.checked })} />
+                      Name of the move
+                    </label>
+                    <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: '0.04em', color: '#64748b' }}>RING COLOR</div>
+                    <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                      {LOCK_COLOR_IDS.map((id) => (
+                        <button
+                          key={id}
+                          type="button"
+                          title={LOCK_COLORS[id].label}
+                          aria-label={LOCK_COLORS[id].label}
+                          aria-pressed={lockStyle.color === id}
+                          onClick={() => onLockStyleChange({ ...lockStyle, color: id })}
+                          style={{ width: 26, height: 26, borderRadius: '50%', cursor: 'pointer', background: LOCK_COLORS[id].hex, border: lockStyle.color === id ? '3px solid #2563eb' : '2px solid #cbd5e1', boxSizing: 'border-box', padding: 0 }}
+                        />
+                      ))}
+                    </div>
+                    <div style={{ fontSize: 11, fontWeight: 800, letterSpacing: '0.04em', color: '#64748b' }}>SOUND</div>
+                    <select
+                      aria-label="Sound of the lock"
+                      title="The sound when the picture locks on the player"
+                      value={lockSound}
+                      onChange={(e) => onLockSoundChange(e.target.value as LockSoundId)}
+                      style={{ ...chip, padding: '4px 6px', fontSize: 13 }}
+                    >
+                      {LOCK_SOUND_IDS.map((id) => <option key={id} value={id}>{id === 'off' ? '🔇 No sound' : `🔊 ${LOCK_SOUND_LABELS[id]}`}</option>)}
+                    </select>
+                  </div>
+                )}
+              </span>
             </span>
-            <span style={{ width: 1, height: 18, background: '#d0d5dd' }} />
             <button
               type="button"
               disabled={selected == null}
@@ -285,7 +384,7 @@ function ZoomMotionPanel({ clipStart, clipEnd, playerTime, anchors, ease, select
             </button>
           </div>
 
-          <ZoomGraph anchors={anchors} ease={ease} clipStart={clipStart} clipEnd={clipEnd} playerTime={playerTime} selectedIndex={selectedIndex} onSelect={onSelect} onChange={onChange} onDeletePoint={onDeletePoint} />
+          <ZoomGraph anchors={anchors} ease={ease} clipStart={clipStart} clipEnd={clipEnd} playerTime={playerTime} selectedIndex={selectedIndex} onSelect={onSelect} onChange={onChange} onDeletePoint={onDeletePoint} onSeek={onSeek} />
         </>
       )}
 

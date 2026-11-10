@@ -57,6 +57,7 @@ export const llcProjectV2Schema = z.object({
       rect: z.object({ x: z.number(), y: z.number(), w: z.number(), h: z.number() }),
     }).array().optional(),
     zoomEase: z.enum(['smooth', 'linear', 'dynamic']).optional(),
+    spotMark: z.object({ t: z.number(), x: z.number(), y: z.number(), size: z.number() }).optional(),
   }).array(),
 });
 
@@ -99,6 +100,17 @@ export interface ZoomAnchor {
   rect: ZoomRect,
 }
 
+/**
+ * A player lock on a clip: at source time `t` the picture freezes and a ring with the player's name
+ * is drawn at (x, y) — fractions of the picture (0-1). `size` is the ring radius as a fraction of the picture height.
+ */
+export interface SpotMark {
+  t: number,
+  x: number,
+  y: number,
+  size: number,
+}
+
 export interface StateSegment extends SegmentBase, SegmentColorIndex {
   name: string;
   segId: string;
@@ -115,6 +127,8 @@ export interface StateSegment extends SegmentBase, SegmentColorIndex {
   zoomAnchors?: ZoomAnchor[] | undefined;
   /** How the zoom glides between anchors (default smooth) */
   zoomEase?: 'smooth' | 'linear' | 'dynamic' | undefined;
+  /** Player lock: freeze + ring + name at one moment of the clip */
+  spotMark?: SpotMark | undefined;
 }
 
 export interface SegmentToExport extends DefiniteSegmentBase {

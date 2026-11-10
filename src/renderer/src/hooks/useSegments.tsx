@@ -14,6 +14,7 @@ import { getFileSize, shuffleArray } from '../util';
 import { errorToast } from '../swal';
 import { createNumSegments as createNumSegmentsDialog, createFixedByteSixedSegments as createFixedByteSixedSegmentsDialog, createRandomSegments as createRandomSegmentsDialog, labelSegmentDialog, askForShiftSegments, askForAlignSegments, selectSegmentsByLabelDialog, askForSegmentDuration, toastError } from '../dialogs';
 import { createSegment, sortSegments, invertSegments, combineOverlappingSegments as combineOverlappingSegments2, combineSelectedSegments as combineSelectedSegments2, isDurationValid, addSegmentColorIndex, filterNonMarkers, makeDurationSegments, isInitialSegment } from '../segments';
+import { reorderByIds } from '../util/clipOrder';
 import type { FfmpegDialog } from '../ffmpegParameters';
 import { parameters as allFfmpegParameters, getHint, getLabel } from '../ffmpegParameters';
 import { maxSegmentsAllowed } from '../util/constants';
@@ -567,6 +568,17 @@ function useSegments({ filePath, workingRef, setWorking, setProgress, videoStrea
     safeSetCutSegments(sortBy(cutSegments, (seg) => seg.start));
   }, [cutSegments, safeSetCutSegments]);
 
+  // Put the clips in the order the user chose (a list of segIds). The clip that was current stays current.
+  const reorderSegments = useCallback((segIdsInOrder: string[]) => {
+    const currentId = currentCutSeg?.segId;
+    const reordered = reorderByIds(cutSegments, segIdsInOrder);
+    safeSetCutSegments(reordered);
+    if (currentId != null) {
+      const newIndex = reordered.findIndex((seg) => seg.segId === currentId);
+      if (newIndex !== -1) setCurrentSegIndex(newIndex);
+    }
+  }, [cutSegments, safeSetCutSegments, currentCutSeg, setCurrentSegIndex]);
+
   const addSegment = useCallback(() => {
     try {
       const suggestedStart = getRelevantTime();
@@ -1015,6 +1027,7 @@ function useSegments({ filePath, workingRef, setWorking, setProgress, videoStrea
     updateSegOrder,
     updateSegOrders,
     reorderSegsByStartTime,
+    reorderSegments,
     addSegment,
     addClip,
     duplicateCurrentSegment,
